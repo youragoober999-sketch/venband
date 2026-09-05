@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Venband — Your Disband, supercharged</title>
+  <meta name="description" content="Venband is a client mod for Disband — themes, plugins, and quality-of-life features that put you in control of the app." />
+  <link rel="icon" type="image/png" href="https://disband.dev/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="no-scroll-y">
+  <canvas id="snow" aria-hidden="true"></canvas>
+  <div class="main-wrap">
+  <header class="nav">
+    <div class="container nav-inner">
+      <a href="#top" class="brand" aria-label="Venband home">
+        <span class="brand-mark" aria-hidden="true">V</span>
+        <span class="brand-name">Venband</span>
+        <span class="brand-beta">BETA</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#plugins">Plugins</a>
+        <a href="#themes">Themes</a>
+        <a href="#download">Download</a>
+      </nav>
+      <a href="#download" class="btn btn-small nav-cta">Get Venband</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow mono">A client mod for Disband</p>
+          <h1 class="hero-title">
+            Your Disband,
+            <br />
+            <span class="grad">supercharged.</span>
+          </h1>
+          <p class="hero-sub">
+            Venband is a free, open-source client mod that puts you in control of the app.
+            Install themes, run plugins, and reshape Disband your way — without breaking a sweat.
+          </p>
+          <div class="hero-actions">
+            <a href="venband.exe" download class="btn btn-primary">Download for desktop</a>
+            <a href="https://disband.dev/" class="btn btn-ghost" target="_blank" rel="noreferrer">
+              About Disband →
+            </a>
+          </div>
+          <p class="hero-note mono">Compatible with macOS · Windows · Linux · Web</p>
+        </div>
+
+        <div class="hero-visual">
+          <div class="frame" aria-hidden="true">
+            <div class="frame-title">
+              <span class="dot dot-red"></span>
+              <span class="dot dot-yellow"></span>
+              <span class="dot dot-green"></span>
+              <span class="frame-name">Disband — powered by Venband</span>
+            </div>
+            <div class="frame-body">
+              <div class="rail">
+                <div class="rail-logo">V</div>
+                <span class="rail-divider"></span>
+                <div class="rail-icon active">DH</div>
+                <div class="rail-icon">DL</div>
+              </div>
+              <div class="channels">
+                <div class="channels-head">Disband Demo HQ</div>
+                <p class="channel-label">Text channels</p>
+                <div class="channel muted"><svg class="ico" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>announcements</div>
+                <div class="channel active"><svg class="ico" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>general</div>
+                <div class="channel muted"><svg class="ico" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>design-review</div>
+                <p class="channel-label">Voice channels</p>
+                <div class="channel muted"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>Lounge</div>
+                <div class="plugin-pill">✦ 14 plugins active</div>
+              </div>
+              <div class="chat">
+                <div class="chat-head"><svg class="ico" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg><span>general</span></div>
+                <div class="msgs">
+                  <div class="msg">
+                    <span class="avatar" style="--c:#e0669a">N</span>
+                    <div class="msg-body">
+                      <p class="msg-meta"><b>Nova</b><time>10:24</time></p>
+                      <p class="msg-text">pushed the sidebar fix — holds up on 11-inch now</p>
+                    </div>
+                  </div>
+                  <div class="msg">
+                    <span class="avatar" style="--c:#3aa8c1">K</span>
+                    <div class="msg-body">
+                      <p class="msg-meta"><b>Kai</b><time>10:26</time></p>
+                      <p class="msg-text">nice, p95 down to 84ms after the batching change too</p>
+                    </div>
+                  </div>
+                  <div class="msg">
+                    <span class="avatar" style="--c:#8b6fd4">M</span>
+                    <div class="msg-body">
+                      <p class="msg-meta"><b>Mila</b><time>10:31</time></p>
+                      <p class="msg-text">community call Friday at 4 — I&rsquo;ll drop a reminder <span class="tag">✦ Venband</span></p>
+                    </div>
+                  </div>
+                </div>
+                <div class="composer"><span class="composer-plus">+</span><span class="composer-text">Message #general</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Specs -->
+    <section class="specs">
+      <div class="container specs-grid">
+        <div><p class="spec-label mono">Desktop</p><p class="spec-value">macOS · Windows · Linux</p></div>
+        <div><p class="spec-label mono">Browser</p><p class="spec-value">Any Chromium or WebKit</p></div>
+        <div><p class="spec-label mono">License</p><p class="spec-value">MIT — open source</p></div>
+        <div><p class="spec-label mono">Cost</p><p class="spec-value">Free, forever</p></div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="section">
+      <div class="container">
+        <h2 class="section-title">Everything you want,<br />nothing you don&rsquo;t.</h2>
+        <div class="grid-3">
+          <article class="card reveal">
+            <p class="card-index mono">01</p>
+            <h3 class="card-title">Plugin ecosystem</h3>
+            <p class="card-body">A growing library of plugins — from message logging and better notifications to productivity tools and UI tweaks. Toggle the ones you love, ignore the rest.</p>
+          </article>
+          <article class="card reveal">
+            <p class="card-index mono">02</p>
+            <h3 class="card-title">Theme it your way</h3>
+            <p class="card-body">Accent colors, custom CSS, and full theme packs. Venband injects your styles right at startup, so the app looks like yours the second it opens.</p>
+          </article>
+          <article class="card reveal">
+            <p class="card-index mono">03</p>
+            <h3 class="card-title">Private by default</h3>
+            <p class="card-body">No telemetry, no data off your machine. Venband is fully local and open source — inspect every line if you want to. Your Disband stays your Disband.</p>
+          </article>
+          <article class="card reveal">
+            <p class="card-index mono">04</p>
+            <h3 class="card-title">Up-to-date, always</h3>
+            <p class="card-body">Automatic updates track the latest Disband releases, so your mods keep working after every app update. One click and you&rsquo;re current.</p>
+          </article>
+          <article class="card reveal">
+            <p class="card-index mono">05</p>
+            <h3 class="card-title">Lightning-fast install</h3>
+            <p class="card-body">A single script installs Venband in seconds — no account, no build step, no acrobatics. From zero to modded in under a minute.</p>
+          </article>
+          <article class="card reveal">
+            <p class="card-index mono">06</p>
+            <h3 class="card-title">Built for every client</h3>
+            <p class="card-body">Works on the desktop app and the web client alike. Your plugins and themes follow you across the devices you actually use.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Plugins -->
+    <section id="plugins" class="section section-alt">
+      <div class="container">
+        <div class="split">
+          <div>
+            <p class="eyebrow mono">Plugins</p>
+            <h2 class="section-title">A plugin for every habit.</h2>
+            <p class="section-sub">Venband ships with a curated set of plugins out of the box, and an easy way to add more. Here are a few of our favorites.</p>
+          </div>
+          <div class="plugin-list">
+            <div class="plugin-row reveal"><span class="plugin-ico">👁</span><div><b>MessageLogger</b><p>Never lose a message again, even after the edit.</p></div></div>
+            <div class="plugin-row reveal"><span class="plugin-ico">🎨</span><div><b>ThemeBoard</b><p>Browse, preview, and apply community themes instantly.</p></div></div>
+            <div class="plugin-row reveal"><span class="plugin-ico">🔔</span><div><b>QuietMode</b><p>Fine-grained notification control for every channel.</p></div></div>
+            <div class="plugin-row reveal"><span class="plugin-ico">⚡</span><div><b>PowerUser</b><p>Keyboard shortcuts and power-user quality-of-life tweaks.</p></div></div>
+            <div class="plugin-row reveal"><span class="plugin-ico">🧹</span><div><b>CleanChat</b><p>Theming utilities to keep your message list tidy.</p></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Themes -->
+    <section id="themes" class="section">
+      <div class="container">
+        <div class="themes-head">
+          <div>
+            <p class="eyebrow mono">Themes</p>
+            <h2 class="section-title">Make it unmistakably yours.</h2>
+          </div>
+          <p class="section-sub themes-sub">From subtle re-skins to full transformations, the community has a theme for every taste. Bring your own CSS, or pick from the library.</p>
+        </div>
+        <div class="theme-grid">
+          <div class="theme-card reveal" style="--tc:#5865f2"><div class="theme-swatch"></div><p class="theme-name">Midnight</p><p class="theme-desc">AMOLED-optimized deep blacks</p></div>
+          <div class="theme-card reveal" style="--tc:#eb459e"><div class="theme-swatch"></div><p class="theme-name">Sunset</p><p class="theme-desc">Warm, rose-tinted glow</p></div>
+          <div class="theme-card reveal" style="--tc:#2dd4bf"><div class="theme-swatch"></div><p class="theme-name">Ocean</p><p class="theme-desc">Calm, cool aqua tones</p></div>
+          <div class="theme-card reveal" style="--tc:#c77dff"><div class="theme-swatch"></div><p class="theme-name">Plasma</p><p class="theme-desc">Electric violet energy</p></div>
+          <div class="theme-card reveal" style="--tc:#88c0d0"><div class="theme-swatch"></div><p class="theme-name">Nord</p><p class="theme-desc">Frosty arctic palette</p></div>
+          <div class="theme-card reveal" style="--tc:#f5a0b8"><div class="theme-swatch"></div><p class="theme-name">Rose Gold</p><p class="theme-desc">Soft, elegant shimmer</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Code -->
+    <section class="section section-alt">
+      <div class="container split">
+        <div>
+          <p class="eyebrow mono">Custom CSS</p>
+          <h2 class="section-title">Total control, zero compromise.</h2>
+          <p class="section-sub">Venband lets you drop in your own CSS and JS. Momentum is on your side — extend anything, override anything, and keep it all sync&rsquo;d between devices.</p>
+        </div>
+        <pre class="code-block"><code><span class="c-comment">/* my-theme.css */</span>
+<span class="c-var">:root</span> {
+  <span class="c-prop">--brand</span>: <span class="c-val">#5865f2</span>;
+  <span class="c-prop">--bg-primary</span>: <span class="c-val">#131417</span>;
+}
+
+<span class="c-var">.message</span> <span class="c-var">.avatar</span> {
+  <span class="c-prop">border-radius</span>: <span class="c-val">30%</span>;
+}
+
+<span class="c-prop">.channel</span><span class="c-var">:hover</span> {
+  <span class="c-prop">background</span>: <span class="c-val">rgba(255,255,255,.06)</span>;
+}</code></pre>
+      </div>
+    </section>
+
+    <!-- Download -->
+    <section id="download" class="section download">
+      <div class="container download-inner">
+        <h2 class="section-title">Ready to mod your Disband?</h2>
+        <p class="section-sub">Install in under a minute. Free forever, open source, and yours to keep.</p>
+        <div class="download-actions">
+          <a href="venband.exe" download class="btn btn-primary btn-lg">Download Venband (.exe)</a>
+          <a href="venband.exe" download class="btn btn-ghost btn-lg">Download for Windows</a>
+        </div>
+        <p class="download-note mono">venband.exe · Windows x64 · Requires the <a href="https://disband.dev/" target="_blank" rel="noreferrer">Disband</a> desktop app or web client.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <div class="footer-logo">V</div>
+        <div>
+          <p class="footer-title">Venband</p>
+          <p class="footer-sub">A client mod for Disband.</p>
+        </div>
+      </div>
+      <div class="footer-links">
+        <a href="#features">Features</a>
+        <a href="#plugins">Plugins</a>
+        <a href="#themes">Themes</a>
+        <a href="https://disband.dev/" target="_blank" rel="noreferrer">Disband</a>
+        <a href="#download">Download</a>
+      </div>
+    </div>
+    <p class="container footer-note">
+      © <span id="year"></span> Venband. Not affiliated with Disband. Disband is a trademark of its respective owner.
+    </p>
+  </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
