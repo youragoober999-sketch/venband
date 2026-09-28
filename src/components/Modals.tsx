@@ -340,7 +340,10 @@ export function NewDmModal({ onClose }: { onClose: () => void }) {
           setError(null);
           const { data } = await supabase.rpc('find_user', { p_username: username.replace(/^@/, '').trim() });
           const user = (data as Profile[] | null)?.[0];
-          if (!user) return setError('No user with that username.');
+          if (!user)
+            return setError(
+              `Nobody has the username “${username.replace(/^@/, '').trim()}”. Use their @username (shown under their name), not their display name.`,
+            );
           await startDm(user.id).catch((err) => setError(errorMessage(err)));
           onClose();
         }}

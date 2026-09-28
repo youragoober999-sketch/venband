@@ -29,8 +29,16 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('00000000-0000-0000-0000-00000000000c', 'carol@example.com', '{"username":"carol"}'),
   ('00000000-0000-0000-0000-00000000000d', 'dave@example.com',  '{"username":"dave"}');
 
-select pg_temp.must_fail($$insert into auth.users (email, raw_user_meta_data) values ('x@x', '{"username":"Bad Name!"}')$$);
-select pg_temp.must_fail($$insert into auth.users (email, raw_user_meta_data) values ('y@y', '{"username":"alice"}')$$);
+-- invalid / taken usernames get a safe unique one instead of failing signup
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000e1', 'x@x', '{"username":"Bad Name!"}'),
+  ('00000000-0000-0000-0000-0000000000e2', 'y@y', '{"username":"alice"}'),
+  ('00000000-0000-0000-0000-0000000000e3', 'zed.dash-board@example.com', '{}');
+do $t$ begin
+  assert (select username from public.profiles where id = '00000000-0000-0000-0000-0000000000e1') = 'badname';
+  assert (select username from public.profiles where id = '00000000-0000-0000-0000-0000000000e2') = 'alice2';
+  assert (select username from public.profiles where id = '00000000-0000-0000-0000-0000000000e3') = 'zed.dashboard';
+end $t$;
 
 set role authenticated;
 
@@ -214,6 +222,16 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b
 do $t$ begin
   assert not public.can_view_channel(current_setting('t.dm')::uuid), 'outsiders cannot read DMs';
   assert not public.realtime_topic_allowed('call:' || current_setting('t.dm'));
+end $t$;
+
+-- my_profile() recreates a missing profile ----------------------------------
+reset role;
+delete from public.profiles where id = '00000000-0000-0000-0000-0000000000e3';
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000e3', false);
+do $t$ begin
+  assert (select username from public.my_profile()) = 'zed.dashboard', 'profile recreated';
+  assert (select count(*) from public.profiles where id = auth.uid()) = 1;
 end $t$;
 
 -- anon ---------------------------------------------------------------------

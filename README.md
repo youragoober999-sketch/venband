@@ -71,7 +71,7 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 
 1. Create a free project at <https://supabase.com/dashboard>.
 2. Load the database schema. Use **either** option:
-   - **Dashboard:** open **SQL Editor** and run each file in `supabase/migrations/` **in order**: paste the whole file, click **Run**, then do the next one (`20260928000000_venband_schema.sql`, then `20260929000000_explicit_grants.sql`).
+   - **Dashboard:** open **SQL Editor** and run each file in `supabase/migrations/` **in order**: paste the whole file, click **Run**, then do the next one (`20260928000000_venband_schema.sql`, `20260929000000_explicit_grants.sql`, then `20260930000000_profile_self_heal.sql`).
    - **CLI:** `npx supabase login && npx supabase link --project-ref <ref> && npx supabase db push`
 3. **Authentication → Sign In / Providers → Email:** check that **Confirm email** is **on**.
 4. **Authentication → URL Configuration:**

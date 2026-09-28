@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
 import { configured } from './lib/supabase';
 import { initSession, sessionStore } from './lib/session';
-import { AuthScreen, IdentityResetScreen, RecoveryScreen, UnlockScreen } from './components/Auth';
+import { AuthScreen, IdentityResetScreen, RecoveryScreen, SetupErrorScreen, UnlockScreen } from './components/Auth';
 import { Shell } from './components/Shell';
 import { Logo } from './components/ui';
 
 export default function App() {
   const status = sessionStore.use((s) => s.status);
+  const hasProfile = sessionStore.use((s) => Boolean(s.me));
   useEffect(() => {
     if (configured) initSession();
   }, []);
@@ -28,16 +29,18 @@ export default function App() {
       return <RecoveryScreen />;
     case 'identity-reset':
       return <IdentityResetScreen />;
+    case 'setup-error':
+      return <SetupErrorScreen />;
     case 'ready':
-      return <Shell />;
+      return hasProfile ? <Shell /> : <SetupErrorScreen />;
   }
 }
 
 function NotConfigured() {
   return (
-    <div className="auth-bg">
-      <div className="auth-card">
-        <Logo size={48} />
+    <div className="simple-page">
+      <div className="simple-card">
+        <Logo size={40} />
         <h1>Venband isn’t configured yet</h1>
         <p className="muted">
           Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> (see <code>.env.example</code> and the

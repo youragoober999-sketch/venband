@@ -168,6 +168,7 @@ export function ChatView({
                 m={m}
                 grouped={Boolean(grouped) && !newDay}
                 name={nameOf(m.row.author_id)}
+                mine={mine}
                 color={colorOf(m.row.author_id)}
                 reply={m.row.reply_to ? byId.get(m.row.reply_to) ?? null : null}
                 replyName={m.row.reply_to && byId.get(m.row.reply_to) ? nameOf(byId.get(m.row.reply_to)!.row.author_id) : ''}
@@ -209,6 +210,7 @@ function MessageItem({
   m,
   grouped,
   name,
+  mine,
   color,
   reply,
   replyName,
@@ -225,6 +227,7 @@ function MessageItem({
   m: DecryptedMessage;
   grouped: boolean;
   name: string;
+  mine: boolean;
   color?: string;
   reply: DecryptedMessage | null;
   replyName: string;
@@ -268,6 +271,7 @@ function MessageItem({
               <button className="author" style={{ color }} onClick={onProfile}>
                 {name}
               </button>
+              {mine && <span className="tag-soft accent">you</span>}
               {trust === 'changed' && (
                 <span className="trust-warn" title="This user's security key changed. Verify their fingerprint.">
                   <Icon name="warning" size={14} />
@@ -473,6 +477,7 @@ function Composer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null);
   const lastTyping = useRef(0);
   const sendTyping = useTypingSender(channelId);
 
@@ -539,6 +544,7 @@ function Composer({
           }}
         />
         <textarea
+          ref={textarea}
           rows={1}
           value={text}
           maxLength={MAX_TEXT}
@@ -562,7 +568,22 @@ function Composer({
             }
           }}
         />
-        {busy && <div className="spinner small" />}
+        {busy ? (
+          <div className="spinner small" />
+        ) : (
+          <EmojiButton
+            disabled={disabled}
+            onPick={(emoji) => {
+              const el = textarea.current;
+              const at = el?.selectionStart ?? text.length;
+              setText((t) => t.slice(0, at) + emoji + t.slice(el?.selectionEnd ?? at));
+              requestAnimationFrame(() => {
+                el?.focus();
+                el?.setSelectionRange(at + emoji.length, at + emoji.length);
+              });
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -608,4 +629,47 @@ function friendlyTime(d: Date): string {
   if (d.toDateString() === today.toDateString()) return `Today at ${clock}`;
   if (d.toDateString() === yesterday.toDateString()) return `Yesterday at ${clock}`;
   return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' })}, ${clock}`;
+}
+
+const EMOJI = [
+  '😀', '😂', '🥲', '😊', '😍', '🥰', '😎', '🤔', '😴', '😭', '😤', '😳',
+  '🙃', '😅', '🤯', '🥳', '😬', '🫠', '🙏', '👍', '👎', '👏', '🙌', '💪',
+  '👀', '🔥', '✨', '💯', '❤️', '💜', '💙', '💚', '🎉', '🎮', '🎧', '🍕',
+  '☕', '🌙', '⭐', '✅', '❌', '⚡', '💀', '🤝', '👋', '🫡', '🤷', '🔒',
+];
+
+function EmojiButton({ onPick, disabled }: { onPick: (e: string) => void; disabled: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  return (
+    <div className="emoji-wrap" ref={ref}>
+      <button type="button" className="icon-btn" disabled={disabled} onClick={() => setOpen((o) => !o)} title="Emoji">
+        <Icon name="smile" />
+      </button>
+      {open && (
+        <div className="emoji-pop" role="dialog" aria-label="Pick an emoji">
+          {EMOJI.map((e) => (
+            <button
+              type="button"
+              key={e}
+              onClick={() => {
+                onPick(e);
+                setOpen(false);
+              }}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

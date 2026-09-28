@@ -37,7 +37,13 @@ async function mailLink(email) {
 async function signupAndVerify(u) {
   const { page } = u;
   await page.goto(APP);
-  await page.getByRole('button', { name: 'Make an account' }).click();
+  if (SHOTS && u.name === 'alice') {
+    await page.locator('.hero').waitFor();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/0-landing.png` });
+    await page.screenshot({ path: `${SHOTS}/0-landing-full.png`, fullPage: true });
+  }
+  await page.locator('.topnav').getByRole('button', { name: 'Sign up' }).click();
   const inputs = page.locator('form input');
   await inputs.nth(0).fill(u.email);
   await inputs.nth(1).fill(u.name[0].toUpperCase() + u.name.slice(1));
@@ -69,7 +75,7 @@ async function login(u, remember = false) {
     await page.locator('input[type=email]').fill(u.email);
     await page.locator('input[type=password]').fill(u.password);
     if (remember) await page.getByRole('checkbox').check();
-    await page.getByRole('button', { name: 'Log in' }).click();
+    await page.locator('.auth-card').getByRole('button', { name: 'Log in' }).click();
   }
   await page.locator('.user-panel').waitFor({ timeout: 30000 });
   log(u.name, 'is in the app');
@@ -216,7 +222,7 @@ await alice.page.getByText('Welcome back').waitFor({ timeout: 20000 });
 await alice.page.locator('input[type=email]').fill(alice.email);
 await alice.page.locator('input[type=password]').fill(alice.password);
 await alice.page.getByRole('checkbox').uncheck();
-await alice.page.getByRole('button', { name: 'Log in' }).click();
+await alice.page.locator('.auth-card').getByRole('button', { name: 'Log in' }).click();
 await alice.page.locator('.user-panel').waitFor({ timeout: 30000 });
 await alice.page.reload();
 await alice.page.getByText('Enter your password').waitFor({ timeout: 20000 });
@@ -228,7 +234,7 @@ await bob.page.locator('.user-panel [title="User settings"]').click();
 await bob.page.getByRole('button', { name: /Log Out/i }).click();
 await bob.page.locator('input[type=email]').fill(bob.email);
 await bob.page.locator('input[type=password]').fill('not-the-password-123');
-await bob.page.getByRole('button', { name: 'Log in' }).click();
+await bob.page.locator('.auth-card').getByRole('button', { name: 'Log in' }).click();
 await bob.page.getByText('don’t match an account').waitFor({ timeout: 30000 });
 log('✅ wrong password shows a friendly error');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/0-login-error.png` });

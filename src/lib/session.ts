@@ -25,6 +25,7 @@ export type AuthStatus =
   | 'locked' // signed in, identity keys not unlocked on this device
   | 'identity-reset' // password was reset: keys can't be opened
   | 'recovery' // arrived from a password-reset email
+  | 'setup-error' // signed in, but the account couldn't be loaded
   | 'ready';
 
 interface SessionState {
@@ -34,6 +35,7 @@ interface SessionState {
   keyring: Keyring | null;
   me: Profile | null;
   notice: string | null;
+  setupError: string | null;
   pendingVault: CryptoKey | null;
 }
 
@@ -44,6 +46,7 @@ export const sessionStore = createStore<SessionState>({
   keyring: null,
   me: null,
   notice: null,
+  setupError: null,
   pendingVault: null,
 });
 
@@ -52,15 +55,41 @@ async function enterApp(session: Session, identity: Identity) {
   initTrust(userId);
   setPresenceUser(userId);
   await supabase.realtime.setAuth(session.access_token);
-  await loadProfiles([userId], true);
+  let me: Profile;
+  try {
+    me = await fetchMyProfile(userId);
+  } catch (e) {
+    sessionStore.set({ status: 'setup-error', session, setupError: errorMessage(e) });
+    return;
+  }
   sessionStore.set({
     status: 'ready',
     session,
     identity,
     keyring: new Keyring(identity),
-    me: getProfile(userId) ?? null,
+    me,
+    setupError: null,
     pendingVault: null,
   });
+}
+
+/** Load (and if needed create) the signed-in user's profile. */
+async function fetchMyProfile(userId: string): Promise<Profile> {
+  const rpc = await supabase.rpc('my_profile');
+  const fromRpc = rpc.data as Profile | null;
+  if (!rpc.error && fromRpc?.id) {
+    putProfile(fromRpc);
+    return fromRpc;
+  }
+  // Databases set up before my_profile() existed: fall back to a plain read.
+  await loadProfiles([userId], true);
+  const me = getProfile(userId);
+  if (me) return me;
+  const { error } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
+  if (error) throw new Error(`Couldn’t load your profile: ${friendlyError(error)}`);
+  throw new Error(
+    'Your account doesn’t have a profile yet. If you run this site, run the newest SQL file from supabase/migrations in the Supabase SQL editor, then reload.',
+  );
 }
 
 async function currentIdentityMatches(userId: string, keyId: string) {
@@ -68,7 +97,15 @@ async function currentIdentityMatches(userId: string, keyId: string) {
   return data?.key_id === keyId;
 }
 
+// While signIn()/unlock() run they decide what screen to show; the auth
+// listener must not race them (it would flash the unlock screen).
+let authInProgress = 0;
+
 async function onSession(session: Session | null) {
+  if (session && authInProgress > 0) {
+    sessionStore.set({ session });
+    return;
+  }
   if (!session) {
     if (arrivedFromEmailLink) {
       // The link was opened in a different browser/app than the one used to
@@ -171,19 +208,36 @@ export async function resendVerification(email: string) {
 
 export async function signIn(email: string, password: string, remember: boolean) {
   const { authPassword, vaultKey } = await deriveMasterKeys(email, password);
-  const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: authPassword });
-  if (error) throw error;
-  await unlockWith(data.session, vaultKey, remember);
+  authInProgress++;
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: authPassword });
+    if (error) throw error;
+    await unlockWith(data.session, vaultKey, remember);
+  } finally {
+    authInProgress--;
+  }
 }
 
 export async function unlock(password: string, remember: boolean) {
   const session = sessionStore.get().session;
   if (!session?.user.email) throw new Error('Not signed in');
   const { vaultKey } = await deriveMasterKeys(session.user.email, password);
-  await unlockWith(session, vaultKey, remember);
+  authInProgress++;
+  try {
+    await unlockWith(session, vaultKey, remember);
+  } finally {
+    authInProgress--;
+  }
 }
 
 async function unlockWith(session: Session, vaultKey: CryptoKey, remember: boolean) {
+  // Make sure the profile exists first: identity keys reference it.
+  try {
+    await fetchMyProfile(session.user.id);
+  } catch (e) {
+    sessionStore.set({ status: 'setup-error', session, setupError: errorMessage(e) });
+    return;
+  }
   try {
     const identity = await loadIdentity(session.user.id, vaultKey);
     if (remember) await rememberIdentity(identity);
@@ -225,7 +279,14 @@ export async function signOut() {
   leaveCall();
   await forgetIdentities();
   await supabase.auth.signOut();
-  sessionStore.set({ status: 'signed-out', session: null, identity: null, keyring: null, me: null });
+  sessionStore.set({
+    status: 'signed-out',
+    session: null,
+    identity: null,
+    keyring: null,
+    me: null,
+    notice: 'You’re logged out. See you soon.',
+  });
 }
 
 export async function updateMyProfile(patch: Partial<Pick<Profile, 'display_name' | 'avatar_color' | 'about'>>) {

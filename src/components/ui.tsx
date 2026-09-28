@@ -1,19 +1,33 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { Profile } from '../lib/types';
 
-/** Venband mark: five sound bars that hang into a "v". */
+/** Venband glyph: two nested "v" strokes, like a sound echo. Uses currentColor. */
+export function LogoGlyph({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden className="logo-glyph">
+      <path d="M3.5 5.5 12 19.5l8.5-14" />
+      <path d="M8.6 5.5 12 11.4l3.4-5.9" />
+    </svg>
+  );
+}
+
+/** App icon: the glyph on an accent tile. */
 export function Logo({ size = 32 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-label="Venband" role="img" className="logo">
-      <rect width="64" height="64" rx="15" fill="var(--accent)" />
-      <g stroke="var(--on-accent)" strokeWidth="5.5" strokeLinecap="round">
-        <path d="M14 17v12" />
-        <path d="M23 17v21" />
-        <path d="M32 17v30" />
-        <path d="M41 17v21" />
-        <path d="M50 17v12" />
-      </g>
-    </svg>
+    <span className="logo-tile" style={{ width: size, height: size, borderRadius: size * 0.3 }} role="img" aria-label="Venband">
+      <LogoGlyph size={size * 0.62} />
+    </span>
+  );
+}
+
+/** Glyph + wordmark, for navigation bars. */
+export function Wordmark() {
+  return (
+    <span className="wordmark">
+      <LogoGlyph size={22} />
+      Venband
+    </span>
   );
 }
 
@@ -110,6 +124,7 @@ const ICONS: Record<string, string> = {
   check: 'M20 6 9 17l-5-5',
   file: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6',
   download: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',
+  smile: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01',
   compass: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM16.2 7.8l-2.1 6.4-6.4 2.1 2.1-6.4z',
 };
 
