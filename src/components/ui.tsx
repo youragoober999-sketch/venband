@@ -1,17 +1,18 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { Profile } from '../lib/types';
 
+/** Venband mark: five sound bars that hang into a "v". */
 export function Logo({ size = 32 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-label="Venband" role="img">
-      <defs>
-        <linearGradient id="vb-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#8b6cff" />
-          <stop offset="1" stopColor="#4f7cff" />
-        </linearGradient>
-      </defs>
-      <rect width="64" height="64" rx="18" fill="url(#vb-g)" />
-      <path d="M16 18h8l8 20 8-20h8L36 48h-8z" fill="#fff" />
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-label="Venband" role="img" className="logo">
+      <rect width="64" height="64" rx="15" fill="var(--accent)" />
+      <g stroke="var(--on-accent)" strokeWidth="5.5" strokeLinecap="round">
+        <path d="M14 17v12" />
+        <path d="M23 17v21" />
+        <path d="M32 17v30" />
+        <path d="M41 17v21" />
+        <path d="M50 17v12" />
+      </g>
     </svg>
   );
 }
@@ -19,7 +20,7 @@ export function Logo({ size = 32 }: { size?: number }) {
 export function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';
-  return (parts.length === 1 ? parts[0].slice(0, 2) : parts[0][0] + parts[1][0]).toUpperCase();
+  return (parts.length === 1 ? parts[0][0] : parts[0][0] + parts[1][0]).toUpperCase();
 }
 
 export function Avatar({
@@ -130,16 +131,30 @@ export function Icon({ name, size = 20 }: { name: keyof typeof ICONS | string; s
   );
 }
 
-export function Field({ label, error, children, hint }: { label: string; error?: string | null; hint?: ReactNode; children: ReactNode }) {
+export function Field({
+  label,
+  error,
+  children,
+  hint,
+  aside,
+}: {
+  label: string;
+  error?: string | null;
+  hint?: ReactNode;
+  aside?: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <label className="field">
-      <span className={`field-label${error ? ' error' : ''}`}>
-        {label}
-        {error && <em> — {error}</em>}
-      </span>
-      {children}
-      {hint && <span className="field-hint">{hint}</span>}
-    </label>
+    <div className="field">
+      <div className="field-top">
+        <label className="field-label">{label}</label>
+        {aside}
+      </div>
+      <label className="field-control" aria-label={label}>
+        {children}
+      </label>
+      {error ? <span className="field-error">{error}</span> : hint ? <span className="field-hint">{hint}</span> : null}
+    </div>
   );
 }
 

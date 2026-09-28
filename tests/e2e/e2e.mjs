@@ -37,7 +37,7 @@ async function mailLink(email) {
 async function signupAndVerify(u) {
   const { page } = u;
   await page.goto(APP);
-  await page.getByRole('button', { name: 'Register' }).click();
+  await page.getByRole('button', { name: 'Make an account' }).click();
   const inputs = page.locator('form input');
   await inputs.nth(0).fill(u.email);
   await inputs.nth(1).fill(u.name[0].toUpperCase() + u.name.slice(1));
@@ -47,8 +47,8 @@ async function signupAndVerify(u) {
   await page.getByRole('checkbox').check();
   await page.waitForTimeout(600);
   if (SHOTS && u.name === 'alice') await page.screenshot({ path: `${SHOTS}/1-signup.png` });
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByText('Verify your email').waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByText('Check your email').waitFor({ timeout: 30000 });
   log(u.name, 'signed up; waiting for verification email');
   if (SHOTS && u.name === 'alice') await page.screenshot({ path: `${SHOTS}/2-verify.png` });
 
@@ -62,14 +62,14 @@ async function signupAndVerify(u) {
 async function login(u, remember = false) {
   const { page } = u;
   const status = await page.evaluate(() => document.body.innerText);
-  if (/Unlock your keys/.test(status)) {
+  if (/Enter your password/.test(status)) {
     await page.locator('input[type=password]').fill(u.password);
-    await page.getByRole('button', { name: 'Unlock' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
   } else if (/Welcome back/.test(status)) {
     await page.locator('input[type=email]').fill(u.email);
     await page.locator('input[type=password]').fill(u.password);
     if (remember) await page.getByRole('checkbox').check();
-    await page.getByRole('button', { name: 'Log In' }).click();
+    await page.getByRole('button', { name: 'Log in' }).click();
   }
   await page.locator('.user-panel').waitFor({ timeout: 30000 });
   log(u.name, 'is in the app');
@@ -89,11 +89,11 @@ await login(alice);
 await alice.page.locator('.rail-item.add').click();
 await alice.page.locator('.modal input').first().fill('Venband HQ');
 await alice.page.locator('.modal form').getByRole('button', { name: 'Create' }).click();
-await alice.page.getByText('Welcome to #general!').waitFor({ timeout: 20000 });
+await alice.page.getByText('This is the start of #general').waitFor({ timeout: 20000 });
 await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
 await alice.page.locator('.composer textarea').fill('hello bob, this is **encrypted** 🔐');
 await alice.page.keyboard.press('Enter');
-await alice.page.getByText('this is').waitFor();
+await alice.page.getByText('hello bob, this is').waitFor();
 log('alice sent a message');
 
 // ---- invite
@@ -110,8 +110,6 @@ await alice.page.keyboard.press('Escape');
 await signupAndVerify(bob);
 await login(bob);
 await bob.page.goto(invite);
-await bob.page.getByText('Unlock your keys').waitFor();
-await login(bob);
 await bob.page.locator('.server-header').waitFor({ timeout: 20000 });
 log('bob joined server');
 await bob.page.getByText('hello bob, this is').waitFor({ timeout: 30000 });
@@ -175,7 +173,7 @@ const epochs = execSync(`psql ${DB} -Atc "select max(epoch) from public.channel_
 log('✅ after kick, general channel is on key epoch', epochs);
 
 // ---- kicked bob is sent home; DMs + DM call ringing
-await bob.page.getByText('Welcome to Venband').waitFor({ timeout: 20000 });
+await bob.page.getByText('It’s quiet in here').waitFor({ timeout: 20000 });
 log('✅ kicked bob was moved out of the server');
 await alice.page.locator('.rail-item.home').click();
 await alice.page.getByRole('button', { name: 'New direct message' }).click();
@@ -204,13 +202,36 @@ log('✅ DM call rang on bob and connected');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/7-dm-call.png` });
 await alice.page.locator('.voice-bar [title=Disconnect]').click();
 
-// ---- reload alice -> unlock screen (keys not remembered)
+// ---- refreshing keeps you signed in ("stay signed in" is on by default)
 await alice.page.reload();
-await alice.page.getByText('Unlock your keys').waitFor({ timeout: 20000 });
-await login(alice);
+await alice.page.locator('.user-panel').waitFor({ timeout: 20000 });
 await alice.page.locator('.rail-item:not(.home):not(.add)').first().click();
 await alice.page.getByText('secret after kick').waitFor({ timeout: 20000 });
-log('✅ unlock after reload works and history decrypts');
+log('✅ refresh keeps you signed in and history still decrypts');
+
+// ---- logging out and back in works; unticking "stay signed in" asks for the password after refresh
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.getByRole('button', { name: /Log Out/i }).click();
+await alice.page.getByText('Welcome back').waitFor({ timeout: 20000 });
+await alice.page.locator('input[type=email]').fill(alice.email);
+await alice.page.locator('input[type=password]').fill(alice.password);
+await alice.page.getByRole('checkbox').uncheck();
+await alice.page.getByRole('button', { name: 'Log in' }).click();
+await alice.page.locator('.user-panel').waitFor({ timeout: 30000 });
+await alice.page.reload();
+await alice.page.getByText('Enter your password').waitFor({ timeout: 20000 });
+await login(alice);
+log('✅ logout / login / password-on-refresh all work');
+
+// ---- wrong password gives a clear message
+await bob.page.locator('.user-panel [title="User settings"]').click();
+await bob.page.getByRole('button', { name: /Log Out/i }).click();
+await bob.page.locator('input[type=email]').fill(bob.email);
+await bob.page.locator('input[type=password]').fill('not-the-password-123');
+await bob.page.getByRole('button', { name: 'Log in' }).click();
+await bob.page.getByText('don’t match an account').waitFor({ timeout: 30000 });
+log('✅ wrong password shows a friendly error');
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/0-login-error.png` });
 
 await browser.close();
 log('ALL E2E CHECKS PASSED');

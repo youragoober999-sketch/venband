@@ -111,8 +111,8 @@ export function VoiceView({ data, compact }: { data?: ServerData; compact?: bool
         <header className="chat-header">
           <Icon name="speaker" />
           <h3>{call.channelName}</h3>
-          <span className="e2ee-pill" title="Media is sent peer-to-peer with DTLS-SRTP; SDP is signed with identity keys.">
-            <Icon name="lock" size={12} /> E2EE
+          <span className="lock-hint" title="Calls go directly between participants and are encrypted end to end.">
+            <Icon name="lock" size={13} />
           </span>
         </header>
       )}

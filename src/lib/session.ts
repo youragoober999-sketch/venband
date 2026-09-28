@@ -1,6 +1,6 @@
 // Authentication + identity state machine.
 import type { Session } from '@supabase/supabase-js';
-import { supabase, appUrl } from './supabase';
+import { supabase, appUrl, errorMessage } from './supabase';
 import { createStore } from './store';
 import { deriveMasterKeys, type Identity } from './crypto';
 import {
@@ -70,6 +70,13 @@ async function currentIdentityMatches(userId: string, keyId: string) {
 
 async function onSession(session: Session | null) {
   if (!session) {
+    if (arrivedFromEmailLink) {
+      // The link was opened in a different browser/app than the one used to
+      // sign up, so it couldn't sign in here — but the email IS confirmed.
+      arrivedFromEmailLink = false;
+      window.history.replaceState(null, '', window.location.pathname);
+      sessionStore.set({ notice: 'Your email is confirmed. Log in below to get started.' });
+    }
     sessionStore.set({ status: 'signed-out', session: null, identity: null, keyring: null, me: null });
     return;
   }
@@ -90,10 +97,34 @@ async function onSession(session: Session | null) {
   sessionStore.set({ status: 'locked', session });
 }
 
+/** Turn Supabase / network errors into something a person can act on. */
+export function friendlyError(e: unknown): string {
+  const msg = errorMessage(e);
+  if (/invalid login credentials/i.test(msg))
+    return 'That email and password don’t match an account. Check for typos, or make a new account.';
+  if (/already registered|already exists/i.test(msg)) return 'There’s already an account with that email. Try logging in instead.';
+  if (/rate limit|security purposes|too many/i.test(msg)) return 'Too many attempts. Wait a minute, then try again.';
+  if (/error sending .*email/i.test(msg))
+    return 'The email couldn’t be sent. If you run this site, set up custom SMTP in Supabase (see the README).';
+  if (/permission denied/i.test(msg))
+    return 'The server is missing database permissions. If you run this site, run the latest SQL migration (see the README).';
+  if (/failed to fetch|networkerror|load failed/i.test(msg)) return 'Can’t reach the server. Check your internet connection.';
+  if (/invalid or has expired|otp_expired|expired/i.test(msg))
+    return 'That link has expired or was already used. If you already confirmed your email, just log in.';
+  return msg;
+}
+
+let arrivedFromEmailLink = false;
+
 export function initSession() {
   const url = new URL(window.location.href);
-  const authError = url.searchParams.get('error_description') ?? new URLSearchParams(url.hash.slice(1)).get('error_description');
-  if (authError) sessionStore.set({ notice: authError });
+  const hash = new URLSearchParams(url.hash.slice(1));
+  const authError = url.searchParams.get('error_description') ?? hash.get('error_description');
+  arrivedFromEmailLink = url.searchParams.has('code');
+  if (authError) {
+    sessionStore.set({ notice: friendlyError(authError) });
+    window.history.replaceState(null, '', url.pathname);
+  }
 
   supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'PASSWORD_RECOVERY' && session) {
@@ -102,7 +133,8 @@ export function initSession() {
     }
     if (event === 'SIGNED_IN' && url.searchParams.has('code') && sessionStore.get().status !== 'ready') {
       // came back from an email link
-      if (!url.searchParams.has('reset')) sessionStore.set({ notice: 'Email verified — welcome to Venband!' });
+      arrivedFromEmailLink = false;
+      if (!url.searchParams.has('reset')) sessionStore.set({ notice: 'Email confirmed. Enter your password once to finish setting up.' });
       window.history.replaceState(null, '', url.pathname + (url.searchParams.has('reset') ? '?reset=1' : ''));
     }
     if (event === 'TOKEN_REFRESHED' && session) supabase.realtime.setAuth(session.access_token);
@@ -124,6 +156,11 @@ export async function signUp(input: { email: string; password: string; username:
     },
   });
   if (error) throw error;
+  // With email confirmation on, Supabase hides whether an email is taken by
+  // returning a user with no identities.
+  if (data.user && data.user.identities?.length === 0) {
+    throw new Error('There’s already an account with that email. Try logging in instead.');
+  }
   return data;
 }
 

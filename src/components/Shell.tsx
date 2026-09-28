@@ -160,8 +160,8 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
         ) : (
           <div className="empty-state">
             <Logo size={80} />
-            <h2>Welcome to Venband</h2>
-            <p className="muted">Create or join a server with the + on the left, or start a direct message.</p>
+            <h2>It’s quiet in here</h2>
+            <p className="muted">Start a server with the + on the left, or send someone a message.</p>
             <div className="empty-actions">
               <button className="btn primary" onClick={() => setNewDm(true)}>
                 New direct message
@@ -418,13 +418,13 @@ function VoiceChannelView({ channel, data }: { channel: Channel; data: ServerDat
     <div className="empty-state">
       <Icon name="speaker" size={64} />
       <h2>{channel.name}</h2>
-      <p className="muted">Voice, video and screen sharing — encrypted end to end.</p>
+      <p className="muted">Talk, turn on your camera, or share your screen.</p>
       <button
         className="btn primary"
         disabled={!has(data.myPermissions, P.CONNECT)}
         onClick={() => joinCall(identity, channel.id, data.server!.id, channel.name)}
       >
-        Join Voice
+        Join voice
       </button>
     </div>
   );
@@ -493,7 +493,7 @@ export function UserPanel() {
         <div className="voice-bar">
           <div className="voice-bar-info">
             <span className={`voice-status ${call.status}`}>
-              <Icon name="shield" size={14} /> {call.status === 'connected' ? 'Voice Connected' : 'Connecting…'}
+              <span className="live-dot" /> {call.status === 'connected' ? 'In a call' : 'Connecting…'}
             </span>
             <button className="voice-channel-link" onClick={() => openCallChannel(call.scopeId, call.channelId)}>
               {call.channelName}

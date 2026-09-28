@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { supabase, errorMessage } from '../lib/supabase';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
 import { passwordStrength } from '../lib/crypto';
 import {
   completePasswordReset,
   confirmIdentityReset,
+  friendlyError,
   requestPasswordReset,
   resendVerification,
   sessionStore,
@@ -12,50 +13,87 @@ import {
   signUp,
   unlock,
 } from '../lib/session';
-import { Field, Icon, Logo } from './ui';
+import { Field, Logo } from './ui';
 
 type Mode = 'login' | 'signup' | 'verify' | 'forgot' | 'forgot-sent';
 
-export function AuthScreen() {
-  const [mode, setMode] = useState<Mode>('login');
-  const [email, setEmail] = useState('');
-  const notice = sessionStore.use((s) => s.notice);
+// ------------------------------------------------------------------ layout --
 
+const SAMPLE = [
+  { name: 'mara', color: '#e0795b', text: 'anyone around for a call at 9?' },
+  { name: 'jules', color: '#6aa2d8', text: 'yes!! I finished the new map' },
+  { name: 'theo', color: '#8fbf6a', text: 'share your screen, I want to see it' },
+];
+
+function AuthLayout({ children }: { children: ReactNode }) {
+  const notice = sessionStore.use((s) => s.notice);
   return (
-    <div className="auth-bg">
-      <div className="auth-card">
+    <div className="auth">
+      <aside className="auth-side">
         <div className="auth-brand">
-          <Logo size={44} />
+          <Logo size={30} />
           <span>venband</span>
         </div>
-        {notice && <div className="notice">{notice}</div>}
-        {mode === 'login' && <Login email={email} setEmail={setEmail} setMode={setMode} />}
-        {mode === 'signup' && <Signup email={email} setEmail={setEmail} setMode={setMode} />}
-        {mode === 'verify' && <VerifySent email={email} setMode={setMode} />}
-        {mode === 'forgot' && <Forgot email={email} setEmail={setEmail} setMode={setMode} />}
-        {mode === 'forgot-sent' && (
-          <>
-            <h1>Check your inbox</h1>
-            <p className="muted">
-              If an account exists for <b>{email}</b>, we sent a link to reset the password.
-            </p>
-            <button className="btn link" onClick={() => setMode('login')}>
-              Back to login
-            </button>
-          </>
-        )}
-        <E2EEBadge />
-      </div>
+        <div className="auth-pitch">
+          <h2>A group chat that stays between you and your friends.</h2>
+          <p>
+            Servers, channels, roles, voice and screen sharing. Messages are locked on your device before they’re sent,
+            so the server only ever stores scrambled text.
+          </p>
+        </div>
+        <div className="auth-sample" aria-hidden>
+          {SAMPLE.map((m) => (
+            <div key={m.name} className="sample-msg">
+              <span className="sample-avatar" style={{ background: m.color }}>
+                {m.name[0]}
+              </span>
+              <div>
+                <span className="sample-name" style={{ color: m.color }}>
+                  {m.name}
+                </span>
+                <p>{m.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="auth-foot">Free and open source.</p>
+      </aside>
+      <main className="auth-main">
+        <div className="auth-form">
+          <div className="auth-brand mobile-only">
+            <Logo size={28} />
+            <span>venband</span>
+          </div>
+          {notice && <div className="notice">{notice}</div>}
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
 
-function E2EEBadge() {
+export function AuthScreen() {
+  const [mode, setMode] = useState<Mode>('login');
+  const [email, setEmail] = useState('');
+
   return (
-    <div className="e2ee-badge">
-      <Icon name="shield" size={16} />
-      <span>End-to-end encrypted. Your password never leaves this device — only a derived login key does.</span>
-    </div>
+    <AuthLayout>
+      {mode === 'login' && <Login email={email} setEmail={setEmail} setMode={setMode} />}
+      {mode === 'signup' && <Signup email={email} setEmail={setEmail} setMode={setMode} />}
+      {mode === 'verify' && <VerifySent email={email} setMode={setMode} />}
+      {mode === 'forgot' && <Forgot email={email} setEmail={setEmail} setMode={setMode} />}
+      {mode === 'forgot-sent' && (
+        <>
+          <h1>Check your inbox</h1>
+          <p className="sub">
+            If there’s an account for <b>{email}</b>, a reset link is on its way.
+          </p>
+          <button className="btn link" onClick={() => setMode('login')}>
+            ← Back to log in
+          </button>
+        </>
+      )}
+    </AuthLayout>
   );
 }
 
@@ -65,9 +103,21 @@ interface FormProps {
   setMode: (m: Mode) => void;
 }
 
+function StaySignedIn({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="checkbox">
+      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
+      <span>
+        Stay signed in on this device
+        <small>Turn this off on shared computers.</small>
+      </span>
+    </label>
+  );
+}
+
 function Login({ email, setEmail, setMode }: FormProps) {
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,15 +125,15 @@ function Login({ email, setEmail, setMode }: FormProps) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    sessionStore.set({ notice: null });
     try {
       await signIn(email, password, remember);
     } catch (err) {
-      const msg = errorMessage(err);
-      if (/confirm/i.test(msg)) {
+      if (/not confirmed/i.test(String((err as Error)?.message))) {
         setMode('verify');
         return;
       }
-      setError(/invalid/i.test(msg) ? 'Wrong email or password.' : msg);
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
@@ -91,28 +141,30 @@ function Login({ email, setEmail, setMode }: FormProps) {
 
   return (
     <form onSubmit={submit}>
-      <h1>Welcome back!</h1>
-      <p className="muted">We’re so excited to see you again.</p>
-      <Field label="Email" error={error}>
+      <h1>Welcome back</h1>
+      <p className="sub">Log in to pick up where you left off.</p>
+      <Field label="Email">
         <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
       </Field>
-      <Field label="Password">
+      <Field
+        label="Password"
+        aside={
+          <button type="button" className="btn link" onClick={() => setMode('forgot')}>
+            Forgot it?
+          </button>
+        }
+      >
         <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
-      <button type="button" className="btn link small" onClick={() => setMode('forgot')}>
-        Forgot your password?
-      </button>
-      <label className="checkbox">
-        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-        Keep my keys unlocked on this device
-      </label>
+      {error && <div className="form-error">{error}</div>}
+      <StaySignedIn value={remember} onChange={setRemember} />
       <button className="btn primary full" disabled={busy}>
-        {busy ? 'Deriving keys…' : 'Log In'}
+        {busy ? 'Logging in…' : 'Log in'}
       </button>
-      <p className="muted small">
-        Need an account?{' '}
+      <p className="switch">
+        New here?{' '}
         <button type="button" className="btn link" onClick={() => setMode('signup')}>
-          Register
+          Make an account
         </button>
       </p>
     </form>
@@ -144,69 +196,77 @@ function Signup({ email, setEmail, setMode }: FormProps) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!usernameValid) return setError('Username: 2–32 characters, lowercase letters, numbers, _ and .');
-    if (available === false) return setError('That username is taken.');
-    if (!strength.ok) return setError('Choose a stronger password (10+ characters, mix of types).');
-    if (password !== confirm) return setError('Passwords don’t match.');
+    if (!usernameValid) return setError('Usernames are 2–32 characters: lowercase letters, numbers, _ and .');
+    if (available === false) return setError('Someone already has that username.');
+    if (!strength.ok) return setError('Pick a longer password — at least 10 characters. A short sentence works well.');
+    if (password !== confirm) return setError('The two passwords don’t match.');
     setBusy(true);
     try {
       await signUp({ email, password, username, displayName });
       setMode('verify');
     } catch (err) {
-      setError(errorMessage(err));
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
   }
 
+  const usernameHint =
+    username && !usernameValid
+      ? 'Lowercase letters, numbers, _ and . only'
+      : available === false
+        ? 'Taken, try another'
+        : available
+          ? 'Available'
+          : 'This is how friends find you.';
+
   return (
     <form onSubmit={submit}>
-      <h1>Create an account</h1>
-      {error && <div className="form-error">{error}</div>}
+      <h1>Make an account</h1>
+      <p className="sub">Takes a minute. You’ll confirm your email after.</p>
       <Field label="Email">
         <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
       </Field>
-      <Field label="Display name">
-        <input maxLength={32} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="How others see you" />
-      </Field>
-      <Field
-        label="Username"
-        hint={
-          username && !usernameValid
-            ? 'Lowercase letters, numbers, _ and . (2–32)'
-            : available === false
-              ? 'Taken'
-              : available
-                ? 'Available ✓'
-                : ' '
-        }
-      >
-        <input
-          required
-          autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s/g, ''))}
-        />
-      </Field>
-      <Field label="Password" hint={password ? `Strength: ${strength.label}` : 'At least 10 characters. A passphrase is best.'}>
+      <div className="row">
+        <Field label="Display name">
+          <input maxLength={32} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Jules" />
+        </Field>
+        <Field label="Username" hint={<span className={available === false ? 'bad' : available ? 'good' : ''}>{usernameHint}</span>}>
+          <input
+            required
+            autoComplete="username"
+            placeholder="jules"
+            value={username}
+            onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s/g, ''))}
+          />
+        </Field>
+      </div>
+      <Field label="Password" hint={password ? `${strength.label}` : 'At least 10 characters.'}>
         <input type="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         <div className="strength">
           <div style={{ width: `${Math.min(100, (strength.bits / 90) * 100)}%` }} className={strength.ok ? 'ok' : ''} />
         </div>
       </Field>
-      <Field label="Confirm password">
+      <Field label="Password again">
         <input type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
       </Field>
       <label className="checkbox">
         <input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} required />
-        I understand my password encrypts my keys. Nobody — not even the server — can recover it for me.
+        <span>
+          I get that my password is the key to my messages.
+          <small>It never leaves this device, so nobody can recover it for you.</small>
+        </span>
       </label>
+      {error && <div className="form-error">{error}</div>}
       <button className="btn primary full" disabled={busy || !understood}>
-        {busy ? 'Creating account…' : 'Continue'}
+        {busy ? 'Setting things up…' : 'Create account'}
       </button>
-      <button type="button" className="btn link small" onClick={() => setMode('login')}>
-        Already have an account?
-      </button>
+      <p className="switch">
+        Already have one?{' '}
+        <button type="button" className="btn link" onClick={() => setMode('login')}>
+          Log in
+        </button>
+      </p>
     </form>
   );
 }
@@ -221,13 +281,14 @@ function VerifySent({ email, setMode }: { email: string; setMode: (m: Mode) => v
   }, [cooldown]);
   return (
     <div>
-      <div className="big-icon">
-        <Icon name="message" size={40} />
-      </div>
-      <h1>Verify your email</h1>
-      <p className="muted">
-        We sent a verification link to <b>{email || 'your email'}</b>. Click it to activate your account, then log in.
+      <h1>Check your email</h1>
+      <p className="sub">
+        We sent a link to <b>{email || 'your email'}</b>. Open it to confirm it’s you, then come back and log in.
       </p>
+      <ul className="tips">
+        <li>It can take a minute. Check spam too.</li>
+        <li>Opening the link on another device is fine — just log in here afterwards.</li>
+      </ul>
       {status && <div className="notice">{status}</div>}
       <button
         className="btn secondary full"
@@ -235,18 +296,20 @@ function VerifySent({ email, setMode }: { email: string; setMode: (m: Mode) => v
         onClick={async () => {
           try {
             await resendVerification(email);
-            setStatus('Sent! Check your inbox (and spam folder).');
+            setStatus('Sent another one.');
             setCooldown(60);
           } catch (e) {
-            setStatus(errorMessage(e));
+            setStatus(friendlyError(e));
           }
         }}
       >
-        {cooldown ? `Resend in ${cooldown}s` : 'Resend email'}
+        {cooldown ? `Resend (${cooldown}s)` : 'Resend the email'}
       </button>
-      <button className="btn link small" onClick={() => setMode('login')}>
-        Back to login
-      </button>
+      <p className="switch">
+        <button className="btn link" onClick={() => setMode('login')}>
+          ← Back to log in
+        </button>
+      </p>
     </div>
   );
 }
@@ -259,48 +322,48 @@ function Forgot({ email, setEmail, setMode }: FormProps) {
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
+        setError(null);
         try {
           await requestPasswordReset(email);
           setMode('forgot-sent');
         } catch (err) {
-          setError(errorMessage(err));
+          setError(friendlyError(err));
         } finally {
           setBusy(false);
         }
       }}
     >
-      <h1>Reset password</h1>
+      <h1>Reset your password</h1>
+      <p className="sub">We’ll email you a link.</p>
       <div className="warning-box">
-        <Icon name="warning" size={18} />
-        <span>
-          Because Venband is end-to-end encrypted, resetting your password creates new encryption keys. Older messages
-          stay unreadable until another member who still has those keys comes online and re-shares them.
-        </span>
+        Heads up: your password is what unlocks your messages. After a reset, older messages stay locked until a friend
+        who has them comes online — their app re-shares the keys automatically.
       </div>
-      <Field label="Email" error={error}>
+      <Field label="Email">
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
       </Field>
+      {error && <div className="form-error">{error}</div>}
       <button className="btn primary full" disabled={busy}>
         Send reset link
       </button>
-      <button type="button" className="btn link small" onClick={() => setMode('login')}>
-        Back to login
-      </button>
+      <p className="switch">
+        <button type="button" className="btn link" onClick={() => setMode('login')}>
+          ← Back to log in
+        </button>
+      </p>
     </form>
   );
 }
 
 export function UnlockScreen() {
   const session = sessionStore.use((s) => s.session);
-  const notice = sessionStore.use((s) => s.notice);
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <div className="auth-bg">
+    <AuthLayout>
       <form
-        className="auth-card"
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
@@ -308,35 +371,32 @@ export function UnlockScreen() {
           try {
             await unlock(password, remember);
           } catch (err) {
-            setError(errorMessage(err));
+            setError(friendlyError(err));
           } finally {
             setBusy(false);
           }
         }}
       >
-        {notice && <div className="notice">{notice}</div>}
-        <div className="big-icon">
-          <Icon name="lock" size={40} />
-        </div>
-        <h1>Unlock your keys</h1>
-        <p className="muted">
-          Signed in as <b>{session?.user.email}</b>. Enter your password to decrypt your encryption keys on this device.
+        <h1>Enter your password</h1>
+        <p className="sub">
+          You’re signed in as <b>{session?.user.email}</b>. Your password unlocks your messages on this device.
         </p>
-        <Field label="Password" error={error}>
+        <Field label="Password">
           <input type="password" autoComplete="current-password" autoFocus required value={password} onChange={(e) => setPassword(e.target.value)} />
         </Field>
-        <label className="checkbox">
-          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-          Keep my keys unlocked on this device
-        </label>
+        {error && <div className="form-error">{error}</div>}
+        <StaySignedIn value={remember} onChange={setRemember} />
         <button className="btn primary full" disabled={busy}>
-          {busy ? 'Unlocking…' : 'Unlock'}
+          {busy ? 'Unlocking…' : 'Continue'}
         </button>
-        <button type="button" className="btn link small" onClick={() => signOut()}>
-          Log out
-        </button>
+        <p className="switch">
+          Not you?{' '}
+          <button type="button" className="btn link" onClick={() => signOut()}>
+            Log out
+          </button>
+        </p>
       </form>
-    </div>
+    </AuthLayout>
   );
 }
 
@@ -347,36 +407,36 @@ export function RecoveryScreen() {
   const [error, setError] = useState<string | null>(null);
   const strength = passwordStrength(password);
   return (
-    <div className="auth-bg">
+    <AuthLayout>
       <form
-        className="auth-card"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!strength.ok) return setError('Choose a stronger password.');
-          if (password !== confirm) return setError('Passwords don’t match.');
+          if (!strength.ok) return setError('Pick a longer password — at least 10 characters.');
+          if (password !== confirm) return setError('The two passwords don’t match.');
           setBusy(true);
           try {
             await completePasswordReset(password);
           } catch (err) {
-            setError(errorMessage(err));
+            setError(friendlyError(err));
           } finally {
             setBusy(false);
           }
         }}
       >
         <h1>Choose a new password</h1>
-        {error && <div className="form-error">{error}</div>}
-        <Field label="New password" hint={password ? `Strength: ${strength.label}` : undefined}>
+        <p className="sub">Make it something you’ll remember.</p>
+        <Field label="New password" hint={password ? strength.label : undefined}>
           <input type="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         </Field>
-        <Field label="Confirm new password">
+        <Field label="New password again">
           <input type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </Field>
+        {error && <div className="form-error">{error}</div>}
         <button className="btn primary full" disabled={busy}>
           Save password
         </button>
       </form>
-    </div>
+    </AuthLayout>
   );
 }
 
@@ -384,37 +444,33 @@ export function IdentityResetScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <div className="auth-bg">
-      <div className="auth-card">
-        <div className="big-icon warn">
-          <Icon name="warning" size={40} />
-        </div>
-        <h1>Your encryption keys are locked</h1>
-        <p className="muted">
-          Your password was changed or reset, so the keys stored for your account can’t be opened with it. You can create
-          new keys: you keep your servers and DMs, and other members automatically re-share channel keys with your new
-          keys when they come online. Until then, older messages stay unreadable.
-        </p>
-        {error && <div className="form-error">{error}</div>}
-        <button
-          className="btn danger full"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              await confirmIdentityReset(false);
-            } catch (e) {
-              setError(errorMessage(e));
-              setBusy(false);
-            }
-          }}
-        >
-          Create new encryption keys
+    <AuthLayout>
+      <h1>Your old keys are locked</h1>
+      <p className="sub">
+        Your password changed, so the keys saved with your account can’t be opened with it. You can make new ones and
+        carry on — your servers and DMs stay. Older messages unlock again once a friend who has them comes online.
+      </p>
+      {error && <div className="form-error">{error}</div>}
+      <button
+        className="btn primary full"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await confirmIdentityReset(true);
+          } catch (e) {
+            setError(friendlyError(e));
+            setBusy(false);
+          }
+        }}
+      >
+        Make new keys and continue
+      </button>
+      <p className="switch">
+        <button className="btn link" onClick={() => signOut()}>
+          Log out and try a different password
         </button>
-        <button className="btn link small" onClick={() => signOut()}>
-          Log out and try another password
-        </button>
-      </div>
-    </div>
+      </p>
+    </AuthLayout>
   );
 }
