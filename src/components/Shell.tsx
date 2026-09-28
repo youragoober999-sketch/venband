@@ -67,7 +67,7 @@ function ServerRail({ servers, current, onAdd }: { servers: Server[]; current: s
   return (
     <nav className="rail" aria-label="Servers">
       <button className={`rail-item home${current === null ? ' active' : ''}`} onClick={() => openServer(null)} title="Direct Messages">
-        <Logo size={48} />
+        <Logo size={46} />
       </button>
       <div className="rail-sep" />
       {servers.map((s) => (
@@ -113,7 +113,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
         </header>
         <div className="sidebar-scroll">
           <div className="category">
-            <span>Direct Messages</span>
+            <span>Direct messages — {dms.length}</span>
             <button className="icon-btn" onClick={() => setNewDm(true)} title="New DM">
               <Icon name="plus" size={16} />
             </button>
@@ -432,6 +432,7 @@ function VoiceChannelView({ channel, data }: { channel: Channel; data: ServerDat
 
 function MemberList({ data, online }: { data: ServerData; online: Set<string> }) {
   const [profileOf, setProfileOf] = useState<string | null>(null);
+  const myId = sessionStore.use((s) => s.identity?.userId);
   useEffect(() => {
     loadProfiles(data.members.map((m) => m.user_id));
   }, [data.members]);
@@ -465,12 +466,11 @@ function MemberList({ data, online }: { data: ServerData; online: Set<string> })
             return (
               <button key={m.user_id} className={`member${isOnline ? '' : ' offline'}`} onClick={() => setProfileOf(m.user_id)}>
                 <Avatar profile={getProfile(m.user_id)} size={32} online={isOnline} />
-                <span style={{ color: top?.color }}>{displayName(m.user_id, m.nickname)}</span>
-                {data.server?.owner_id === m.user_id && (
-                  <span className="crown" title="Server owner">
-                    ♛
-                  </span>
-                )}
+                <span className="member-name" style={{ color: top?.color }}>
+                  {displayName(m.user_id, m.nickname)}
+                </span>
+                {data.server?.owner_id === m.user_id && <span className="tag-soft">owner</span>}
+                {m.user_id === myId && <span className="tag-soft accent">you</span>}
               </button>
             );
           })}

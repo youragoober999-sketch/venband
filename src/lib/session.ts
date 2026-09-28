@@ -279,7 +279,14 @@ export async function signOut() {
   leaveCall();
   await forgetIdentities();
   await supabase.auth.signOut();
-  sessionStore.set({ status: 'signed-out', session: null, identity: null, keyring: null, me: null });
+  sessionStore.set({
+    status: 'signed-out',
+    session: null,
+    identity: null,
+    keyring: null,
+    me: null,
+    notice: 'You’re logged out. See you soon.',
+  });
 }
 
 export async function updateMyProfile(patch: Partial<Pick<Profile, 'display_name' | 'avatar_color' | 'about'>>) {

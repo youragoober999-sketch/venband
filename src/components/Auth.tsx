@@ -13,57 +13,36 @@ import {
   signUp,
   unlock,
 } from '../lib/session';
-import { Field, Logo } from './ui';
+import { Field, Wordmark } from './ui';
+import { Landing, TopNav } from './Landing';
 
 type Mode = 'login' | 'signup' | 'verify' | 'forgot' | 'forgot-sent';
 
 // ------------------------------------------------------------------ layout --
 
-const SAMPLE = [
-  { name: 'mara', color: '#e0795b', text: 'anyone around for a call at 9?' },
-  { name: 'jules', color: '#6aa2d8', text: 'yes!! I finished the new map' },
-  { name: 'theo', color: '#8fbf6a', text: 'share your screen, I want to see it' },
-];
+interface NavActions {
+  onLogin: () => void;
+  onSignup: () => void;
+  onHome: () => void;
+}
 
-function AuthLayout({ children }: { children: ReactNode }) {
+function AuthLayout({ children, nav }: { children: ReactNode; nav?: NavActions }) {
   const notice = sessionStore.use((s) => s.notice);
   return (
     <div className="auth">
-      <aside className="auth-side">
-        <div className="auth-brand">
-          <Logo size={30} />
-          <span>venband</span>
-        </div>
-        <div className="auth-pitch">
-          <h2>A group chat that stays between you and your friends.</h2>
-          <p>
-            Servers, channels, roles, voice and screen sharing. Messages are locked on your device before they’re sent,
-            so the server only ever stores scrambled text.
-          </p>
-        </div>
-        <div className="auth-sample" aria-hidden>
-          {SAMPLE.map((m) => (
-            <div key={m.name} className="sample-msg">
-              <span className="sample-avatar" style={{ background: m.color }}>
-                {m.name[0]}
-              </span>
-              <div>
-                <span className="sample-name" style={{ color: m.color }}>
-                  {m.name}
-                </span>
-                <p>{m.text}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="auth-foot">Free and open source.</p>
-      </aside>
-      <main className="auth-main">
-        <div className="auth-form">
-          <div className="auth-brand mobile-only">
-            <Logo size={28} />
-            <span>venband</span>
+      {nav ? (
+        <TopNav {...nav} />
+      ) : (
+        <header className="topnav">
+          <div className="container topnav-inner">
+            <span className="topnav-brand">
+              <Wordmark />
+            </span>
           </div>
+        </header>
+      )}
+      <main className="auth-main">
+        <div className="auth-card">
           {notice && <div className="notice">{notice}</div>}
           {children}
         </div>
@@ -73,11 +52,21 @@ function AuthLayout({ children }: { children: ReactNode }) {
 }
 
 export function AuthScreen() {
-  const [mode, setMode] = useState<Mode>('login');
+  const hasNotice = sessionStore.use((s) => Boolean(s.notice));
+  const [mode, setMode] = useState<Mode | 'home'>(() =>
+    hasNotice || new URLSearchParams(window.location.search).has('invite') ? 'login' : 'home',
+  );
   const [email, setEmail] = useState('');
+  const nav: NavActions = {
+    onLogin: () => setMode('login'),
+    onSignup: () => setMode('signup'),
+    onHome: () => setMode('home'),
+  };
+
+  if (mode === 'home') return <Landing onLogin={nav.onLogin} onSignup={nav.onSignup} />;
 
   return (
-    <AuthLayout>
+    <AuthLayout nav={nav}>
       {mode === 'login' && <Login email={email} setEmail={setEmail} setMode={setMode} />}
       {mode === 'signup' && <Signup email={email} setEmail={setEmail} setMode={setMode} />}
       {mode === 'verify' && <VerifySent email={email} setMode={setMode} />}
