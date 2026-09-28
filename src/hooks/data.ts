@@ -31,12 +31,19 @@ export function useDirectory() {
 
 // ------------------------------------------------------------- db feeds ----
 
-type Change = { table: string; filter?: string };
+type Change = { table: string; filter?: string; /** deliver INSERT rows to onRow instead of reloading */ rows?: boolean };
 
 /** Subscribe to postgres changes on a private topic and call `onChange` (debounced). */
-function useDbFeed(topic: string | null, changes: Change[], onChange: () => void) {
+function useDbFeed(
+  topic: string | null,
+  changes: Change[],
+  onChange: () => void,
+  onRow?: (table: string, row: Record<string, unknown>) => void,
+) {
   const cb = useRef(onChange);
   cb.current = onChange;
+  const rowCb = useRef(onRow);
+  rowCb.current = onRow;
   const key = JSON.stringify(changes);
   useEffect(() => {
     if (!topic) return;
@@ -47,7 +54,13 @@ function useDbFeed(topic: string | null, changes: Change[], onChange: () => void
     };
     let ch: RealtimeChannel = supabase.channel(topic, { config: { private: true } });
     for (const c of JSON.parse(key) as Change[]) {
-      ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: c.table, filter: c.filter }, fire);
+      if (c.rows) {
+        ch = ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: c.table, filter: c.filter }, (p) =>
+          rowCb.current?.(c.table, p.new as Record<string, unknown>),
+        );
+      } else {
+        ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: c.table, filter: c.filter }, fire);
+      }
     }
     ch.subscribe();
     return () => {
@@ -59,7 +72,7 @@ function useDbFeed(topic: string | null, changes: Change[], onChange: () => void
 
 // ---------------------------------------------------------------- servers --
 
-export function useMyServers() {
+export function useMyServers(onMessage?: (row: MessageRow) => void) {
   const me = sessionStore.use((s) => s.me);
   const [servers, setServers] = useState<Server[]>([]);
   const [dms, setDms] = useState<DmChannel[]>([]);
@@ -102,9 +115,12 @@ export function useMyServers() {
           { table: 'server_members', filter: `user_id=eq.${me.id}` },
           { table: 'dm_participants', filter: `user_id=eq.${me.id}` },
           { table: 'servers' },
+          // every message the user is allowed to read (RLS applies) — for unread badges / notifications
+          { table: 'messages', rows: true },
         ]
       : [],
     load,
+    (table, row) => table === 'messages' && onMessage?.(row as unknown as MessageRow),
   );
 
   return { servers, dms, loaded, reload: load };

@@ -188,6 +188,8 @@ await alice.page.getByRole('button', { name: 'Open DM' }).click();
 await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
 await alice.page.locator('.composer textarea').fill('private DM for bob only');
 await alice.page.keyboard.press('Enter');
+await bob.page.locator('.channel.dm', { hasText: 'Alice' }).locator('.badge').waitFor({ timeout: 20000 });
+log('✅ unread badge shown for the new DM');
 await bob.page.locator('.channel.dm', { hasText: 'Alice' }).click({ timeout: 20000 });
 await bob.page.getByText('private DM for bob only').waitFor({ timeout: 20000 });
 log('✅ DM delivered and decrypted');

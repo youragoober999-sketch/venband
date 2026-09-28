@@ -10,7 +10,7 @@ export function TopNav({ onLogin, onSignup, onHome }: { onLogin: () => void; onS
         <button className="topnav-brand" onClick={onHome}>
           <Wordmark />
         </button>
-        <nav className="topnav-links">
+        <nav className="topnav-links" aria-label="Site">
           <a href="#features" onClick={onHome}>
             Features
           </a>
@@ -41,7 +41,9 @@ export function Landing({ onLogin, onSignup }: { onLogin: () => void; onSignup: 
 
       <section className="hero container">
         <div className="hero-copy">
-          <p className="eyebrow">Venband · free &amp; open source · in your browser</p>
+          <p className="hero-chip">
+            <span className="chip-dot" /> Free &amp; open source · runs in your browser
+          </p>
           <h1>
             Talk with your people.
             <br />
@@ -60,11 +62,10 @@ export function Landing({ onLogin, onSignup }: { onLogin: () => void; onSignup: 
             </button>
           </div>
         </div>
-        <AppMockup />
-      </section>
-
-      <section className="facts">
-        <div className="container facts-grid">
+        <div className="hero-shot">
+          <AppMockup />
+        </div>
+        <div className="facts">
           <Fact label="Works in">Chrome, Edge, Firefox, Safari</Fact>
           <Fact label="Encryption">On for every message</Fact>
           <Fact label="Calls">Voice, video, screen share</Fact>
@@ -75,15 +76,15 @@ export function Landing({ onLogin, onSignup }: { onLogin: () => void; onSignup: 
       <section className="features container" id="features">
         <h2>All the good parts of a group chat, none of the snooping.</h2>
         <div className="feature-grid">
-          <Feature n="01" title="Servers that fit your group">
+          <Feature icon="users" title="Servers that fit your group">
             Text and voice channels in categories, roles with a dozen permissions, private channels, invite links that
             expire, kicks and bans.
           </Feature>
-          <Feature n="02" title="Calls without the setup">
+          <Feature icon="phone" title="Calls without the setup">
             Voice, video and screen sharing straight from the browser, connected directly between people. DM calls ring
             the other person.
           </Feature>
-          <Feature n="03" title="Private by default">
+          <Feature icon="lock" title="Private by default">
             Messages and files are locked on your device. Kick someone and the channel gets a new key, so they can’t read
             what comes next.
           </Feature>
@@ -137,10 +138,12 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Feature({ n, title, children }: { n: string; title: string; children: ReactNode }) {
+function Feature({ icon, title, children }: { icon: string; title: string; children: ReactNode }) {
   return (
     <div className="feature">
-      <span className="mono-num">{n}</span>
+      <span className="feature-icon">
+        <Icon name={icon} size={20} />
+      </span>
       <h3>{title}</h3>
       <p>{children}</p>
     </div>

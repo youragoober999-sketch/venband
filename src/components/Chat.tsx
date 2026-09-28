@@ -6,6 +6,7 @@ import { displayName, getProfile, trustState } from '../lib/directory';
 import type { DecryptedMessage } from '../lib/keyring';
 import type { Channel, MessageRow } from '../lib/types';
 import { useMessages, type ServerData } from '../hooks/data';
+import { setViewingChannel } from '../lib/notify';
 import { Avatar, Icon } from './ui';
 import { ProfileModal } from './Modals';
 
@@ -46,6 +47,8 @@ export function ChatView({
     stick.current = true;
     setReplyTo(null);
     setEditing(null);
+    setViewingChannel(channel.id);
+    return () => setViewingChannel(null);
   }, [channel.id]);
 
   // hide "typing…" for people whose message already arrived
