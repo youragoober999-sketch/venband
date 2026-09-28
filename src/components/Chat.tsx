@@ -115,10 +115,10 @@ export function ChatView({
       <header className="chat-header">
         <Icon name={channel.type === 'dm' ? 'message' : 'hash'} />
         <h3>{title}</h3>
-        {channel.topic && <span className="topic">{channel.topic}</span>}
-        <span className="e2ee-pill" title="Messages are end-to-end encrypted. The server only stores ciphertext.">
-          <Icon name="lock" size={12} /> E2EE
+        <span className="lock-hint" title="End-to-end encrypted: only people in this conversation can read it.">
+          <Icon name="lock" size={13} />
         </span>
+        {channel.topic && <span className="topic">{channel.topic}</span>}
         <div className="chat-header-actions">{headerExtra}</div>
       </header>
       <div
@@ -139,10 +139,12 @@ export function ChatView({
             <div className="channel-intro-icon">
               <Icon name={channel.type === 'dm' ? 'message' : 'hash'} size={36} />
             </div>
-            <h1>{channel.type === 'dm' ? title : `Welcome to #${title}!`}</h1>
+            <h1>{channel.type === 'dm' ? title : `#${title}`}</h1>
             <p className="muted">
-              <Icon name="shield" size={14} /> Messages here are end-to-end encrypted. Only members can read them — not
-              Venband, not the database host.
+              {channel.type === 'dm'
+                ? `This is the start of your conversation with ${title}.`
+                : `This is the start of #${title}.`}{' '}
+              Only the people in here can read it.
             </p>
           </div>
         )}
@@ -276,7 +278,9 @@ function MessageItem({
                   <Icon name="check" size={14} />
                 </span>
               )}
-              <time dateTime={m.row.created_at}>{time.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</time>
+              <time dateTime={m.row.created_at} title={time.toLocaleString()}>
+                {friendlyTime(time)}
+              </time>
             </div>
           )}
           {m.error === 'missing-key' && (
@@ -595,4 +599,13 @@ function useTypingSender(channelId: string) {
   return () => {
     typingChannels.get(channelId)?.send({ type: 'broadcast', event: 'typing', payload: { user_id: me } });
   };
+}
+
+function friendlyTime(d: Date): string {
+  const clock = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 86_400_000);
+  if (d.toDateString() === today.toDateString()) return `Today at ${clock}`;
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday at ${clock}`;
+  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' })}, ${clock}`;
 }

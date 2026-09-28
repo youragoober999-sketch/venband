@@ -31,7 +31,5 @@ grant select, insert, delete on storage.objects to authenticated;
 
 create publication supabase_realtime;
 
--- Supabase grants table access to API roles by default; RLS does the rest.
-alter default privileges in schema public grant all on tables to anon, authenticated;
-alter default privileges in schema public grant all on sequences to anon, authenticated;
-alter default privileges in schema public grant execute on functions to anon, authenticated;
+-- Like new hosted Supabase projects, nothing in `public` is exposed to the
+-- API roles by default: the migrations must grant everything explicitly.
