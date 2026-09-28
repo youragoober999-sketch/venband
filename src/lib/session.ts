@@ -92,14 +92,34 @@ async function fetchMyProfile(userId: string): Promise<Profile> {
   );
 }
 
-async function currentIdentityMatches(userId: string, keyId: string) {
-  const { data } = await supabase.from('user_private_keys').select('key_id').eq('user_id', userId).maybeSingle();
-  return data?.key_id === keyId;
+/**
+ * Is the identity remembered on this device still the account's current one?
+ * Returns null when we can't tell (network hiccup, token being refreshed) —
+ * that must never lock the user out.
+ */
+async function currentIdentityMatches(userId: string, keyId: string): Promise<boolean | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) {
+      await new Promise((r) => setTimeout(r, 800 * attempt));
+      await supabase.auth.getSession(); // refreshes an expired access token
+    }
+    const { data, error } = await supabase.from('user_private_keys').select('key_id').eq('user_id', userId).maybeSingle();
+    if (!error) return data?.key_id === keyId;
+  }
+  return null;
 }
 
 // While signIn()/unlock() run they decide what screen to show; the auth
 // listener must not race them (it would flash the unlock screen).
 let authInProgress = 0;
+
+// Auth events can arrive in bursts (initial session, token refresh, tab
+// focus). Handle them one at a time so a slow, stale check can't undo a newer
+// successful one.
+let sessionQueue: Promise<void> = Promise.resolve();
+function queueSession(session: Session | null) {
+  sessionQueue = sessionQueue.then(() => onSession(session)).catch((e) => console.warn('session error', e));
+}
 
 async function onSession(session: Session | null) {
   if (session && authInProgress > 0) {
@@ -122,15 +142,31 @@ async function onSession(session: Session | null) {
     sessionStore.set({ session });
     return;
   }
+  if (s.status === 'ready' && s.session && s.session.user.id !== session.user.id) {
+    // Another tab of this browser logged into a different account; tabs share
+    // one saved login, so switch cleanly and say why.
+    try {
+      sessionStorage.setItem('venband:notice', 'You logged into a different account in another tab. To use two accounts at once, open the second one in a private/incognito window.');
+    } catch {
+      /* ignore */
+    }
+    window.location.reload();
+    return;
+  }
   if (new URLSearchParams(window.location.search).has('reset')) {
     sessionStore.set({ status: 'recovery', session });
     return;
   }
   const remembered = await recallIdentity(session.user.id);
-  if (remembered && (await currentIdentityMatches(session.user.id, remembered.keyId))) {
-    await enterApp(session, remembered);
-    return;
+  if (remembered) {
+    // `null` = couldn't check right now: trust this device's keys rather than
+    // kicking the user out; a real key change is caught on the next load.
+    if ((await currentIdentityMatches(session.user.id, remembered.keyId)) !== false) {
+      await enterApp(session, remembered);
+      return;
+    }
   }
+  if (sessionStore.get().status === 'ready' && sessionStore.get().session?.user.id === session.user.id) return;
   sessionStore.set({ status: 'locked', session });
 }
 
@@ -158,6 +194,15 @@ export function initSession() {
   const hash = new URLSearchParams(url.hash.slice(1));
   const authError = url.searchParams.get('error_description') ?? hash.get('error_description');
   arrivedFromEmailLink = url.searchParams.has('code');
+  try {
+    const carried = sessionStorage.getItem('venband:notice');
+    if (carried) {
+      sessionStorage.removeItem('venband:notice');
+      sessionStore.set({ notice: carried });
+    }
+  } catch {
+    /* ignore */
+  }
   if (authError) {
     sessionStore.set({ notice: friendlyError(authError) });
     window.history.replaceState(null, '', url.pathname);
@@ -174,9 +219,15 @@ export function initSession() {
       if (!url.searchParams.has('reset')) sessionStore.set({ notice: 'Email confirmed. Enter your password once to finish setting up.' });
       window.history.replaceState(null, '', url.pathname + (url.searchParams.has('reset') ? '?reset=1' : ''));
     }
-    if (event === 'TOKEN_REFRESHED' && session) supabase.realtime.setAuth(session.access_token);
+    if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') && session) supabase.realtime.setAuth(session.access_token);
+    if (event === 'SIGNED_OUT' && !signingOut && sessionStore.get().status === 'ready') {
+      sessionStore.set({
+        notice:
+          'You were logged out, probably from another tab of this browser (all tabs share one login). To use two accounts at once, open the second one in a private/incognito window.',
+      });
+    }
     // defer: never await supabase calls inside the auth callback
-    setTimeout(() => onSession(session), 0);
+    setTimeout(() => queueSession(session), 0);
   });
 }
 
@@ -241,6 +292,7 @@ async function unlockWith(session: Session, vaultKey: CryptoKey, remember: boole
   try {
     const identity = await loadIdentity(session.user.id, vaultKey);
     if (remember) await rememberIdentity(identity);
+    sessionStore.set({ notice: null }); // "email confirmed / logged out" messages are done now
     await enterApp(session, identity);
   } catch (e) {
     if (e instanceof IdentityLockedError) {
@@ -275,10 +327,16 @@ export async function completePasswordReset(newPassword: string) {
   await unlockWith(session, vaultKey, false);
 }
 
+let signingOut = false;
+
 export async function signOut() {
+  signingOut = true;
   leaveCall();
   await forgetIdentities();
-  await supabase.auth.signOut();
+  // 'local': only this browser. The default ('global') also logs out every
+  // other device, which looks like a random logout there.
+  await supabase.auth.signOut({ scope: 'local' });
+  signingOut = false;
   sessionStore.set({
     status: 'signed-out',
     session: null,

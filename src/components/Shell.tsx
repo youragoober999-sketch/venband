@@ -1,10 +1,21 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { sessionStore } from '../lib/session';
 import { supabase, errorMessage } from '../lib/supabase';
 import { activeCallVersion, getActiveCall, joinCall, leaveCall, subscribeActiveCall } from '../lib/call';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
 import { has, P } from '../lib/permissions';
-import type { Channel, DmChannel, Server } from '../lib/types';
+import type { Channel, DmChannel, MessageRow, Server } from '../lib/types';
+import {
+  addUnread,
+  askForNotifications,
+  isViewing,
+  notificationPermission,
+  notify,
+  playMessageSound,
+  startRing,
+  stopRing,
+  unreadStore,
+} from '../lib/notify';
 import { nav, openChannel, openServer, useDirectory, useMyServers, useScopePresence, useServerData, type ServerData } from '../hooks/data';
 import { Avatar, Icon, Logo, initials } from './ui';
 import { ChatView } from './Chat';
@@ -17,8 +28,56 @@ export function useActiveCall() {
   return getActiveCall();
 }
 
+// channel id -> where it lives, for notifications about channels not on screen
+const channelMeta = new Map<string, { type: Channel['type']; name: string; server_id: string | null }>();
+
+async function describeChannel(id: string) {
+  const cached = channelMeta.get(id);
+  if (cached) return cached;
+  const { data } = await supabase.from('channels').select('type, name, server_id').eq('id', id).maybeSingle();
+  if (data) channelMeta.set(id, data as { type: Channel['type']; name: string; server_id: string | null });
+  return (data as { type: Channel['type']; name: string; server_id: string | null } | null) ?? null;
+}
+
+/** New message somewhere → unread badge, and for DMs / @mentions a sound + desktop notification. */
+function useMessageAlerts(servers: Server[]) {
+  const serversRef = useRef(servers);
+  serversRef.current = servers;
+  return useCallback(async (row: MessageRow) => {
+    const { me, keyring } = sessionStore.get();
+    if (!me || !keyring || row.author_id === me.id || isViewing(row.channel_id)) return;
+    const meta = await describeChannel(row.channel_id);
+    if (!meta) return;
+    let text = '';
+    try {
+      await keyring.loadChannel(row.channel_id);
+      const dec = await keyring.decrypt(row);
+      text = dec.payload ? dec.payload.text || (dec.payload.attachments?.length ? 'Sent a file' : '') : '';
+    } catch {
+      /* preview is optional */
+    }
+    const isDm = meta.type === 'dm';
+    const mention = !isDm && new RegExp(`(^|\\s)@(${me.username.replace(/[.]/g, "\\.")}|everyone|here)\\b`, 'i').test(text);
+    addUnread(row.channel_id, meta.server_id, mention);
+    if (!isDm && !mention) return;
+    playMessageSound();
+    await loadProfiles([row.author_id]);
+    const who = getProfile(row.author_id)?.display_name ?? 'Someone';
+    const server = serversRef.current.find((x) => x.id === meta.server_id);
+    notify(
+      isDm ? who : `${who} in #${meta.name}${server ? ` · ${server.name}` : ''}`,
+      text ? text.slice(0, 140) : 'New encrypted message',
+      () => (isDm ? openChannel('@me', row.channel_id) : openChannel(meta.server_id!, row.channel_id)),
+      row.channel_id,
+    );
+  }, []);
+}
+
 export function Shell() {
-  const { servers, dms, loaded, reload } = useMyServers();
+  const [serversForAlerts, setServersForAlerts] = useState<Server[]>([]);
+  const onMessage = useMessageAlerts(serversForAlerts);
+  const { servers, dms, loaded, reload } = useMyServers(onMessage);
+  useEffect(() => setServersForAlerts(servers), [servers]);
   const serverId = nav.use((s) => s.serverId);
   useEffect(() => {
     if (serverId && loaded && !servers.some((s) => s.id === serverId)) reload();
@@ -50,7 +109,8 @@ export function Shell() {
 
   return (
     <div className="shell">
-      <ServerRail servers={servers} current={serverId} onAdd={() => setModal('create-join')} />
+      <AppBanner />
+      <ServerRail servers={servers} dms={dms} current={serverId} onAdd={() => setModal('create-join')} />
       {serverId ? <ServerView key={serverId} serverId={serverId} /> : <HomeView dms={dms} />}
       <CallAudio />
       <div className="toasts">
@@ -63,11 +123,18 @@ export function Shell() {
   );
 }
 
-function ServerRail({ servers, current, onAdd }: { servers: Server[]; current: string | null; onAdd: () => void }) {
+function ServerRail({ servers, dms, current, onAdd }: { servers: Server[]; dms: DmChannel[]; current: string | null; onAdd: () => void }) {
+  const unread = unreadStore.use((s) => s);
+  const dmUnread = dms.reduce((n, d) => n + (unread.counts[d.channel.id] ?? 0), 0);
+  const serverState = (id: string) => {
+    const chans = Object.keys(unread.counts).filter((c) => unread.serverOf[c] === id);
+    return { any: chans.length > 0, mentions: chans.reduce((n, c) => n + (unread.mentions[c] ?? 0), 0) };
+  };
   return (
     <nav className="rail" aria-label="Servers">
-      <button className={`rail-item home${current === null ? ' active' : ''}`} onClick={() => openServer(null)} title="Direct Messages">
+      <button className={`rail-item home${current === null ? ' active' : ''}`} onClick={() => openServer(null)} title="Direct messages">
         <Logo size={46} />
+        {dmUnread > 0 && <span className="badge">{dmUnread > 99 ? '99+' : dmUnread}</span>}
       </button>
       <div className="rail-sep" />
       {servers.map((s) => (
@@ -78,10 +145,11 @@ function ServerRail({ servers, current, onAdd }: { servers: Server[]; current: s
           title={s.name}
           style={{ background: current === s.id ? s.icon_color : undefined }}
         >
-          <span className="rail-pill" />
+          <span className={`rail-pill${serverState(s.id).any ? ' unread' : ''}`} />
           <span className="rail-initials" style={{ color: current === s.id ? '#fff' : undefined }}>
             {initials(s.name)}
           </span>
+          {serverState(s.id).mentions > 0 && <span className="badge">{serverState(s.id).mentions}</span>}
         </button>
       ))}
       <button className="rail-item add" onClick={onAdd} title="Add a server">
@@ -95,6 +163,7 @@ function ServerRail({ servers, current, onAdd }: { servers: Server[]; current: s
 
 function HomeView({ dms }: { dms: DmChannel[] }) {
   const selected = nav.use((s) => s.channelByServer['@me']);
+  const unread = unreadStore.use((s) => s);
   const [newDm, setNewDm] = useState(false);
   const current = dms.find((d) => d.channel.id === selected) ?? null;
   const call = useActiveCall();
@@ -102,6 +171,21 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
   const identity = sessionStore.use((s) => s.identity)!;
   const inCall = call?.channelId === current?.channel.id;
   const othersInCall = presence.filter((p) => p.voice_channel_id === current?.channel.id && p.user_id !== identity.userId);
+  const waiting = Boolean(inCall && call && call.remotePeers.length === 0);
+  const [noAnswer, setNoAnswer] = useState(false);
+  useEffect(() => {
+    setNoAnswer(false);
+    if (!waiting) return;
+    startRing('outgoing');
+    const t = setTimeout(() => {
+      stopRing('outgoing');
+      setNoAnswer(true);
+    }, 45_000);
+    return () => {
+      clearTimeout(t);
+      stopRing('outgoing');
+    };
+  }, [waiting]);
 
   return (
     <>
@@ -126,6 +210,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
             >
               <Avatar profile={d.other} size={32} />
               <span className="channel-name">{d.other?.display_name ?? 'Unknown user'}</span>
+              {(unread.counts[d.channel.id] ?? 0) > 0 && <span className="badge inline">{unread.counts[d.channel.id]}</span>}
             </button>
           ))}
           {!dms.length && <p className="empty-hint">No conversations yet. Start one with the + button.</p>}
@@ -137,6 +222,14 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           <>
             {inCall && (
               <div className="dm-call">
+                {waiting && (
+                  <div className="calling-banner">
+                    <Avatar profile={current.other} size={28} />
+                    {noAnswer
+                      ? `${current.other?.display_name ?? 'They'} didn’t pick up. They’ll see you’re in the call when they open Venband.`
+                      : `Calling ${current.other?.display_name ?? ''}…`}
+                  </div>
+                )}
                 <VoiceView compact />
               </div>
             )}
@@ -315,6 +408,7 @@ function ChannelList({
   const [editing, setEditing] = useState<Channel | null>(null);
   const [creating, setCreating] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const unread = unreadStore.use((s) => s);
   const identity = sessionStore.use((s) => s.identity)!;
   const call = useActiveCall();
   const canManage = has(data.myPermissions, P.MANAGE_CHANNELS);
@@ -374,8 +468,9 @@ function ChannelList({
                   onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLElement).click()}
                 >
                   <Icon name={c.type === 'voice' ? 'speaker' : 'hash'} size={18} />
-                  <span className="channel-name">{c.name}</span>
+                  <span className={`channel-name${unread.counts[c.id] && selected !== c.id ? ' unread' : ''}`}>{c.name}</span>
                   {c.is_private && <Icon name="lock" size={12} />}
+                  {(unread.mentions[c.id] ?? 0) > 0 && selected !== c.id && <span className="badge inline">{unread.mentions[c.id]}</span>}
                   {canManage && (
                     <button
                       className="icon-btn channel-gear"
@@ -555,11 +650,19 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
   const [dismissedAt, setDismissedAt] = useState(0);
   const caller = presence.find((p) => p.voice_channel_id === dm.channel.id && p.user_id !== identity.userId);
   const ringing = caller && call?.channelId !== dm.channel.id;
-  useEffect(() => {
-    if (!caller) setDismissedAt(0);
-  }, [caller]);
-  if (!ringing || dismissedAt) return null;
   const name = dm.other?.display_name ?? 'Someone';
+  const callerId = caller?.user_id;
+  useEffect(() => {
+    if (!callerId) setDismissedAt(0);
+  }, [callerId]);
+  const active = Boolean(ringing && !dismissedAt);
+  useEffect(() => {
+    if (!active) return;
+    startRing('incoming');
+    notify(`${name} is calling you`, 'Click to open Venband and join the call.', () => openChannel('@me', dm.channel.id), `call-${dm.channel.id}`);
+    return () => stopRing('incoming');
+  }, [active, name, dm.channel.id]);
+  if (!active) return null;
   return (
     <div className="toast" role="alert">
       <Avatar profile={dm.other} size={40} />
@@ -579,6 +682,52 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
         }}
       >
         <Icon name="phone" size={18} />
+      </button>
+    </div>
+  );
+}
+
+/** Slim banner at the top: session notices and the one-time notification prompt. */
+function AppBanner() {
+  const notice = sessionStore.use((s) => s.notice);
+  const [perm, setPerm] = useState(notificationPermission());
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem('venband:notif-prompt') === 'dismissed';
+    } catch {
+      return false;
+    }
+  });
+  if (notice && !/logged out|session ended/i.test(notice)) {
+    return (
+      <div className="app-banner">
+        <span>{notice}</span>
+        <button className="icon-btn" onClick={() => sessionStore.set({ notice: null })} title="Dismiss">
+          <Icon name="x" size={16} />
+        </button>
+      </div>
+    );
+  }
+  if (perm !== 'default' || hidden) return null;
+  return (
+    <div className="app-banner">
+      <span>Get notified when someone messages or calls you, even when this tab is in the background.</span>
+      <button className="btn primary small" onClick={async () => setPerm(await askForNotifications())}>
+        Turn on notifications
+      </button>
+      <button
+        className="icon-btn"
+        title="Not now"
+        onClick={() => {
+          setHidden(true);
+          try {
+            localStorage.setItem('venband:notif-prompt', 'dismissed');
+          } catch {
+            /* ignore */
+          }
+        }}
+      >
+        <Icon name="x" size={16} />
       </button>
     </div>
   );
