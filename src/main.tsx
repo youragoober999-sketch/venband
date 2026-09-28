@@ -16,12 +16,13 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div className="auth-bg">
-        <div className="auth-card">
-          <h1>Something went wrong</h1>
-          <p className="muted">{this.state.error.message}</p>
+      <div className="simple-page">
+        <div className="simple-card">
+          <h1>Something broke</h1>
+          <p className="muted">Venband hit an unexpected error. Reloading usually fixes it.</p>
+          <pre className="error-detail">{this.state.error.message}</pre>
           <button className="btn primary full" onClick={() => window.location.reload()}>
-            Reload Venband
+            Reload
           </button>
         </div>
       </div>

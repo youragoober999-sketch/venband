@@ -153,6 +153,13 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 22px 0; }
 .strength > div { height: 100%; background: var(--warning); transition: width .2s; }
 .strength > div.ok { background: var(--success); }
 
+/* Standalone message pages (crash / not configured). */
+.simple-page { height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg-2); }
+.simple-card { width: 100%; max-width: 440px; }
+.simple-card h1 { font-size: 24px; margin: 16px 0 6px; }
+.simple-card .muted { margin: 0 0 16px; }
+.error-detail { background: var(--bg-0); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 12.5px; color: var(--text-2); white-space: pre-wrap; margin: 0 0 18px; }
+
 /* --------------------------------------------------------------- shell -- */
 .shell { display: flex; height: 100%; }
 .rail {

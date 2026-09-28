@@ -474,3 +474,22 @@ export function IdentityResetScreen() {
     </AuthLayout>
   );
 }
+
+export function SetupErrorScreen() {
+  const message = sessionStore.use((s) => s.setupError);
+  return (
+    <AuthLayout>
+      <h1>We couldn’t finish loading your account</h1>
+      <p className="sub">You’re logged in, but something on the server side isn’t set up right.</p>
+      <div className="form-error">{message ?? 'Unknown error.'}</div>
+      <button className="btn primary full" onClick={() => window.location.reload()}>
+        Try again
+      </button>
+      <p className="switch">
+        <button className="btn link" onClick={() => signOut()}>
+          Log out
+        </button>
+      </p>
+    </AuthLayout>
+  );
+}
