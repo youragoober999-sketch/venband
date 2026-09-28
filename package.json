@@ -1,0 +1,36 @@
+{
+  "name": "venband",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Venband - open source, end-to-end encrypted chat with servers, roles, channels, voice, video and screen sharing.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "node --test tests/*.test.ts",
+    "test:db": "tests/db/run.sh",
+    "test:e2e": "node tests/e2e/e2e.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "hash-wasm": "^4.12.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "playwright": "^1.63.0",
+    "supabase": "^2.118.0",
+    "typescript": "5.9",
+    "vite": "^8.3.1"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
