@@ -100,6 +100,10 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 - **Testing with two accounts?** All tabs of one browser share a single login, so logging into account B in a second tab logs account A out everywhere in that browser. Use a private/incognito window, or a different browser, for the second account.
 - **Notifications:** click **Turn on notifications** at the top of the app so calls and DMs reach you while the tab is in the background.
 
+### Something says "missing database permission"?
+
+Run [`supabase/repair.sql`](supabase/repair.sql) in the Supabase **SQL Editor**. It's safe to run any time: it re-applies every permission the app needs and ends with a checklist that should say `ok` on every row.
+
 ## Local development
 
 Requires Node 22.18+ and Docker.

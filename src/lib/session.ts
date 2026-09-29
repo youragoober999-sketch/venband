@@ -180,7 +180,7 @@ export function friendlyError(e: unknown): string {
   if (/error sending .*email/i.test(msg))
     return 'The email couldn’t be sent. If you run this site, set up custom SMTP in Supabase (see the README).';
   if (/permission denied/i.test(msg))
-    return 'The server is missing database permissions. If you run this site, run the latest SQL migration (see the README).';
+    return `The server is missing a database permission (${msg}). If you run this site, run supabase/repair.sql in the Supabase SQL editor.`;
   if (/failed to fetch|networkerror|load failed/i.test(msg)) return 'Can’t reach the server. Check your internet connection.';
   if (/invalid or has expired|otp_expired|expired/i.test(msg))
     return 'That link has expired or was already used. If you already confirmed your email, just log in.';
@@ -222,8 +222,7 @@ export function initSession() {
     if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') && session) supabase.realtime.setAuth(session.access_token);
     if (event === 'SIGNED_OUT' && !signingOut && sessionStore.get().status === 'ready') {
       sessionStore.set({
-        notice:
-          'You were logged out, probably from another tab of this browser (all tabs share one login). To use two accounts at once, open the second one in a private/incognito window.',
+        notice: 'You were logged out. (If you logged out or switched accounts in another tab, that logs out every tab in this browser — use an incognito window for a second account.)',
       });
     }
     // defer: never await supabase calls inside the auth callback
@@ -263,7 +262,17 @@ export async function signIn(email: string, password: string, remember: boolean)
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: authPassword });
     if (error) throw error;
-    await unlockWith(data.session, vaultKey, remember);
+    try {
+      await unlockWith(data.session, vaultKey, remember);
+    } catch (e) {
+      // Password was right but setup failed: sign out quietly so the next
+      // attempt starts clean instead of looking like a surprise logout.
+      signingOut = true;
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+      signingOut = false;
+      sessionStore.set({ status: 'signed-out', session: null });
+      throw e;
+    }
   } finally {
     authInProgress--;
   }

@@ -14,7 +14,7 @@ async function fetchSealed(userId: string): Promise<SealedIdentity | null> {
     .select('key_id, iv, ciphertext')
     .eq('user_id', userId)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(`Reading your saved keys failed: ${error.message}`);
   return data ? { keyId: data.key_id, iv: data.iv, ciphertext: data.ciphertext } : null;
 }
 
@@ -25,12 +25,12 @@ async function publish(identity: Identity, sealed: SealedIdentity, isNew: boolea
     enc_public: identity.encPublic,
     sign_public: identity.signPublic,
   });
-  if (e1) throw e1;
+  if (e1) throw new Error(`Saving your public key failed: ${e1.message}`);
   const row = { user_id: identity.userId, key_id: sealed.keyId, iv: sealed.iv, ciphertext: sealed.ciphertext };
   const { error: e2 } = isNew
     ? await supabase.from('user_private_keys').insert(row)
     : await supabase.from('user_private_keys').update({ ...row, updated_at: new Date().toISOString() }).eq('user_id', identity.userId);
-  if (e2) throw e2;
+  if (e2) throw new Error(`Saving your encrypted private key failed: ${e2.message}`);
 }
 
 /**
