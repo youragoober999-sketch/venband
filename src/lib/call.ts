@@ -26,6 +26,8 @@ interface Signal {
   from: string;
   fromUser: string;
   to: string;
+  /** id of the sender's RTCPeerConnection, so a rebuilt connection is detected */
+  pc?: string;
   description?: RTCSessionDescriptionInit;
   sig?: string;
   candidate?: RTCIceCandidateInit | null;
@@ -41,6 +43,9 @@ export interface RemotePeer {
 
 interface Peer extends RemotePeer {
   pc: RTCPeerConnection;
+  pcId: string;
+  remotePcId: string | null;
+  missingSince: number | null;
   polite: boolean;
   makingOffer: boolean;
   ignoreOffer: boolean;
@@ -139,6 +144,7 @@ export class Call {
     });
     this.rt = rt;
     rt.on('presence', { event: 'sync' }, () => this.reconcile());
+    this.tick = setInterval(() => this.reconcile(), 3000);
     rt.on('broadcast', { event: 'signal' }, ({ payload }) => this.onSignal(payload as Signal));
     rt.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
@@ -156,6 +162,7 @@ export class Call {
     if (this.closed) return;
     this.closed = true;
     this.status = 'closed';
+    if (this.tick) clearInterval(this.tick);
     for (const p of this.peers.values()) p.pc.close();
     this.peers.clear();
     for (const s of [this.mic, this.cam, this.screen]) s?.getTracks().forEach((t) => t.stop());
@@ -179,6 +186,9 @@ export class Call {
   }
 
   private allowed: Set<string> | null = null;
+  private tick: ReturnType<typeof setInterval> | null = null;
+  /** candidates from a rebuilt remote connection that arrived before its offer */
+  private earlyCandidates = new Map<string, RTCIceCandidateInit[]>();
 
   private reconcile() {
     if (!this.rt || this.closed) return;
@@ -192,14 +202,27 @@ export class Call {
       const peer = this.peers.get(session) ?? this.createPeer(session, meta.user_id);
       if (peer.userId !== meta.user_id) continue; // presence key/user mismatch: ignore
       peer.meta = meta;
+      peer.missingSince = null;
     }
+    // Presence blips (e.g. when someone mutes/deafens and re-announces their
+    // state) must not tear down a working connection. Only drop a peer after
+    // it has been gone for a while, or its connection has actually died.
+    const now = Date.now();
     for (const [session, peer] of this.peers) {
-      if (!seen.has(session)) {
-        peer.pc.close();
-        this.peers.delete(session);
-      }
+      if (seen.has(session)) continue;
+      peer.missingSince ??= now;
+      const dead = peer.pc.connectionState === 'failed' || peer.pc.connectionState === 'closed';
+      const longGone = now - peer.missingSince > 10_000 && peer.pc.connectionState !== 'connected';
+      if (dead || longGone || now - peer.missingSince > 60_000) this.dropPeer(session);
     }
     this.changed();
+  }
+
+  private dropPeer(session: string) {
+    const peer = this.peers.get(session);
+    if (!peer) return;
+    peer.pc.close();
+    this.peers.delete(session);
   }
 
   private createPeer(session: string, userId: string): Peer {
@@ -207,6 +230,9 @@ export class Call {
     const peer: Peer = {
       session,
       userId,
+      pcId: crypto.randomUUID(),
+      remotePcId: null,
+      missingSince: null,
       meta: null,
       streams: new Map(),
       state: 'new',
@@ -240,7 +266,7 @@ export class Call {
       }
     };
     pc.onicecandidate = ({ candidate }) => {
-      this.send({ from: this.session, fromUser: this.identity.userId, to: session, candidate: candidate?.toJSON() ?? null });
+      this.send({ from: this.session, fromUser: this.identity.userId, to: session, pc: peer.pcId, candidate: candidate?.toJSON() ?? null });
     };
     pc.ontrack = ({ track, streams }) => {
       const stream = streams[0] ?? new MediaStream([track]);
@@ -270,15 +296,34 @@ export class Call {
       this.identity,
       sdpSignaturePayload(this.channelId, this.session, this.identity.userId, peer.session, d.type!, d.sdp),
     );
-    this.send({ from: this.session, fromUser: this.identity.userId, to: peer.session, description: d, sig });
+    this.send({ from: this.session, fromUser: this.identity.userId, to: peer.session, pc: peer.pcId, description: d, sig });
   }
 
   private onSignal(s: Signal) {
     if (this.closed || s.to !== this.session || s.from === this.session) return;
     if (this.allowed && !this.allowed.has(s.fromUser)) return;
     let peer = this.peers.get(s.from);
+    if (peer && s.pc && peer.remotePcId && s.pc !== peer.remotePcId) {
+      // The other side rebuilt its connection. Follow it on a fresh offer;
+      // anything else from the old connection is stale.
+      if (s.description?.type !== 'offer') {
+        if (s.candidate) {
+          const k = `${s.from}|${s.pc}`;
+          this.earlyCandidates.set(k, [...(this.earlyCandidates.get(k) ?? []), s.candidate].slice(-50));
+        }
+        return;
+      }
+      const meta = peer.meta;
+      this.dropPeer(s.from);
+      peer = this.createPeer(s.from, s.fromUser);
+      peer.meta = meta;
+      const k = `${s.from}|${s.pc}`;
+      peer.pendingCandidates.push(...(this.earlyCandidates.get(k) ?? []));
+      this.earlyCandidates.delete(k);
+    }
     if (!peer) peer = this.createPeer(s.from, s.fromUser);
     if (peer.userId !== s.fromUser) return;
+    if (s.pc && !peer.remotePcId) peer.remotePcId = s.pc;
     const p = peer;
     p.queue = p.queue.then(() => this.handleSignal(p, s)).catch((e) => console.warn('signal error', e));
   }

@@ -100,7 +100,7 @@ const ICONS: Record<string, string> = {
   mic: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
   micOff: 'M2 2l20 20M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V5a3 3 0 0 0-5.9-.6M17 16.9A7 7 0 0 1 5 12v-2M19 10v2c0 .7-.1 1.4-.3 2M12 19v3',
   headphones: 'M3 18v-6a9 9 0 0 1 18 0v6M21 19a2 2 0 0 1-2 2h-1v-7h3zM3 19a2 2 0 0 0 2 2h1v-7H3z',
-  headphonesOff: 'M2 2l20 20M3 18v-6a9 9 0 0 1 14.5-7.1M21 12v6M21 19a2 2 0 0 1-2 2h-1v-4M3 19a2 2 0 0 0 2 2h1v-7H3z',
+  headphonesOff: 'M3 18v-6a9 9 0 0 1 18 0v6M21 19a2 2 0 0 1-2 2h-1v-7h3zM3 19a2 2 0 0 0 2 2h1v-7H3zM2 2l20 20',
   video: 'M23 7l-7 5 7 5V7zM1 5h15v14H1z',
   videoOff: 'M2 2l20 20M16 16v3H1V5h3m5 0h7v7l1 1 6-4v10',
   screen: 'M2 3h20v14H2zM8 21h8M12 17v4',

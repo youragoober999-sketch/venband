@@ -207,6 +207,17 @@ await alice.page.locator('.chat-header').getByRole('button', { name: /Call/ }).c
 await bob.page.locator('.toast').getByTitle('Join call').click({ timeout: 20000 });
 await bob.page.locator('.tile').nth(1).waitFor({ timeout: 30000 });
 log('✅ DM call rang on bob and connected');
+// deafen / mute several times: nobody may drop out of the call
+for (const btn of ['Deafen', 'Deafen', 'Mute', 'Unmute', 'Deafen']) {
+  await bob.page.locator(`.call-controls [title="${btn}"]`).first().click();
+  await bob.page.waitForTimeout(700);
+}
+await alice.page.waitForTimeout(12000);
+const aliceTiles = await alice.page.locator('.voice-view .tile').count();
+const bobTiles = await bob.page.locator('.voice-view .tile').count();
+const calling = await alice.page.locator('.calling-banner').count();
+if (aliceTiles < 2 || bobTiles < 2 || calling) throw new Error(`call dropped after deafen: alice ${aliceTiles} tiles, bob ${bobTiles}, calling banner ${calling}`);
+log('✅ deafen/mute toggling keeps both people in the call');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/7-dm-call.png` });
 await alice.page.locator('.voice-bar [title=Disconnect]').click();
 
