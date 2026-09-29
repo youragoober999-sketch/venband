@@ -93,36 +93,44 @@ function audio() {
   return ctx;
 }
 
-function tone(freqs: number[], start: number, length: number, volume = 0.12) {
-  const a = audio();
-  const gain = a.createGain();
-  gain.gain.setValueAtTime(0, a.currentTime + start);
-  gain.gain.linearRampToValueAtTime(volume, a.currentTime + start + 0.03);
-  gain.gain.setValueAtTime(volume, a.currentTime + start + length - 0.05);
-  gain.gain.linearRampToValueAtTime(0, a.currentTime + start + length);
-  gain.connect(a.destination);
-  for (const f of freqs) {
-    const o = a.createOscillator();
-    o.type = 'sine';
-    o.frequency.value = f;
-    o.connect(gain);
-    o.start(a.currentTime + start);
-    o.stop(a.currentTime + start + length + 0.02);
-  }
-}
-
 /** Short two-note blip for new messages. */
 export function playMessageSound() {
   try {
-    tone([880], 0, 0.09, 0.06);
-    tone([1175], 0.1, 0.12, 0.06);
+    pluck(1046.5, 0, 0.35, 0.07);
+    pluck(1568, 0.09, 0.45, 0.06);
   } catch {
     /* audio blocked until the user interacts with the page */
   }
 }
 
+/** A soft mallet-like note: quick attack, natural decay. */
+function pluck(freq: number, start: number, length: number, volume: number) {
+  const a = audio();
+  const t0 = a.currentTime + start;
+  const gain = a.createGain();
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + length);
+  gain.connect(a.destination);
+  // body + a quiet octave overtone gives a marimba-ish colour
+  for (const [mult, type, level] of [[1, 'triangle', 1], [2, 'sine', 0.25]] as const) {
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = type;
+    o.frequency.value = freq * mult;
+    g.gain.value = level;
+    o.connect(g).connect(gain);
+    o.start(t0);
+    o.stop(t0 + length + 0.05);
+  }
+}
+
 let ringTimer: ReturnType<typeof setInterval> | null = null;
 let ringKind: 'incoming' | 'outgoing' | null = null;
+
+// Notes in Hz: a bright rising phrase for incoming calls, a calm pair for ring-back.
+const INCOMING = [659.25, 783.99, 987.77, 1174.66, 987.77, 1318.51]; // E5 G5 B5 D6 B5 E6
+const OUTGOING = [523.25, 659.25]; // C5 E5
 
 /** Loop a ringtone: 'incoming' for the person being called, 'outgoing' ring-back for the caller. */
 export function startRing(kind: 'incoming' | 'outgoing') {
@@ -132,17 +140,16 @@ export function startRing(kind: 'incoming' | 'outgoing') {
   const play = () => {
     try {
       if (kind === 'incoming') {
-        tone([660, 880], 0, 0.35);
-        tone([660, 880], 0.45, 0.35);
+        INCOMING.forEach((f, i) => pluck(f, i * 0.13, 0.7, 0.16));
       } else {
-        tone([440, 480], 0, 1.2, 0.07);
+        OUTGOING.forEach((f, i) => pluck(f, i * 0.28, 1.1, 0.07));
       }
     } catch {
-      /* ignore */
+      /* audio blocked until the user interacts with the page */
     }
   };
   play();
-  ringTimer = setInterval(play, kind === 'incoming' ? 2000 : 3500);
+  ringTimer = setInterval(play, kind === 'incoming' ? 2200 : 3000);
 }
 
 export function stopRing(kind?: 'incoming' | 'outgoing') {
