@@ -4,7 +4,7 @@ import { changePassword, sessionStore, signOut, updateMyProfile } from '../lib/s
 import { fingerprint, passwordStrength } from '../lib/crypto';
 import { acceptKeyChange, getCurrentKey, getProfile, loadProfiles, markVerified, putProfile, trustState } from '../lib/directory';
 import { has, P } from '../lib/permissions';
-import type { Channel, Profile } from '../lib/types';
+import type { Channel, DmChannel, Profile } from '../lib/types';
 import { openChannel, openServer, useDirectory, type ServerData } from '../hooks/data';
 import { Avatar, ColorPicker, Field, Icon, Modal, randomColor } from './ui';
 
@@ -616,6 +616,161 @@ export function UserSettingsModal({ onClose }: { onClose: () => void }) {
           </form>
         </div>
       )}
+    </Modal>
+  );
+}
+
+// ------------------------------------------------------------ group chats --
+
+/** Pick people by @username. Used for creating a group and adding to one. */
+function PeoplePicker({ picked, setPicked, exclude = [] }: { picked: Profile[]; setPicked: (p: Profile[]) => void; exclude?: string[] }) {
+  const [username, setUsername] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  async function add() {
+    const name = username.replace(/^@/, '').trim().toLowerCase();
+    if (!name) return;
+    setError(null);
+    const { data } = await supabase.rpc('find_user', { p_username: name });
+    const user = (data as Profile[] | null)?.[0];
+    if (!user) return setError(`Nobody has the username “${name}”.`);
+    if (user.id === sessionStore.get().me?.id || exclude.includes(user.id)) return setError('They’re already in here.');
+    if (!picked.some((p) => p.id === user.id)) {
+      putProfile(user as Profile);
+      setPicked([...picked, user as Profile]);
+    }
+    setUsername('');
+  }
+  return (
+    <>
+      <Field label="Add people by username" error={error}>
+        <div className="copy-row">
+          <input
+            value={username}
+            placeholder="@username"
+            onChange={(e) => setUsername(e.target.value.toLowerCase())}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                add();
+              }
+            }}
+          />
+          <button type="button" className="btn secondary" onClick={add}>
+            Add
+          </button>
+        </div>
+      </Field>
+      {picked.length > 0 && (
+        <div className="role-pills">
+          {picked.map((p) => (
+            <span key={p.id} className="role-pill">
+              <Avatar profile={p} size={18} /> {p.display_name}
+              <button type="button" className="pill-x" onClick={() => setPicked(picked.filter((x) => x.id !== p.id))}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function NewGroupModal({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [picked, setPicked] = useState<Profile[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal title="New group chat" onClose={onClose}>
+      <p className="muted small">Up to 10 people. Everything in the group is end-to-end encrypted.</p>
+      {error && <div className="form-error">{error}</div>}
+      <Field label="Group name (optional)">
+        <input maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder="Weekend plans" />
+      </Field>
+      <PeoplePicker picked={picked} setPicked={setPicked} />
+      <button
+        className="btn primary full"
+        disabled={!picked.length || busy}
+        onClick={async () => {
+          setBusy(true);
+          const fallback = [sessionStore.get().me?.display_name, ...picked.map((p) => p.display_name)].filter(Boolean).join(', ');
+          const { data, error } = await supabase.rpc('create_group', {
+            p_members: picked.map((p) => p.id),
+            p_name: name.trim() || fallback.slice(0, 100),
+          });
+          setBusy(false);
+          if (error) return setError(errorMessage(error));
+          openChannel('@me', data as string);
+          onClose();
+        }}
+      >
+        Create group{picked.length ? ` with ${picked.length + 1} people` : ''}
+      </button>
+    </Modal>
+  );
+}
+
+export function GroupSettingsModal({ dm, onClose }: { dm: DmChannel; onClose: () => void }) {
+  const [name, setName] = useState(dm.channel.name);
+  const [picked, setPicked] = useState<Profile[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const me = sessionStore.use((s) => s.me)!;
+  return (
+    <Modal title="Group settings" onClose={onClose}>
+      {error && <div className="form-error">{error}</div>}
+      <Field label="Group name">
+        <div className="copy-row">
+          <input maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
+          <button
+            className="btn secondary"
+            onClick={async () => {
+              const { error } = await supabase.rpc('rename_group', { p_channel: dm.channel.id, p_name: name });
+              setError(error ? errorMessage(error) : null);
+              if (!error) onClose();
+            }}
+          >
+            Save
+          </button>
+        </div>
+      </Field>
+      <div className="field-label">Members — {dm.members.length + 1}</div>
+      <div className="group-members">
+        {[me, ...dm.members].map((p) => (
+          <div key={p.id} className="member">
+            <Avatar profile={p} size={28} />
+            <span className="member-name">{p.display_name}</span>
+            {p.id === me.id && <span className="tag-soft accent">you</span>}
+          </div>
+        ))}
+      </div>
+      <PeoplePicker picked={picked} setPicked={setPicked} exclude={dm.members.map((m) => m.id)} />
+      {picked.length > 0 && (
+        <button
+          className="btn primary full"
+          onClick={async () => {
+            const { error } = await supabase.rpc('add_group_members', { p_channel: dm.channel.id, p_members: picked.map((p) => p.id) });
+            if (error) return setError(errorMessage(error));
+            await sessionStore.get().keyring?.distribute(dm.channel.id);
+            onClose();
+          }}
+        >
+          Add {picked.length} {picked.length === 1 ? 'person' : 'people'}
+        </button>
+      )}
+      <hr />
+      <button
+        className="btn danger"
+        onClick={async () => {
+          if (!confirm(`Leave “${dm.title}”? You won’t see new messages unless someone adds you back.`)) return;
+          const { error } = await supabase.rpc('leave_group', { p_channel: dm.channel.id });
+          if (error) return setError(errorMessage(error));
+          openChannel('@me', '');
+          onClose();
+        }}
+      >
+        Leave group
+      </button>
     </Modal>
   );
 }

@@ -25,6 +25,7 @@ export interface Channel {
   category: string;
   position: number;
   is_private: boolean;
+  is_group?: boolean;
   key_rotation_needed: boolean;
   created_at: string;
 }
@@ -95,5 +96,10 @@ export interface UserKey {
 
 export interface DmChannel {
   channel: Channel;
+  /** 1:1 DM: the other person. Group: null. */
   other: Profile | null;
+  /** everyone else in the conversation */
+  members: Profile[];
+  /** what to show as the conversation's name */
+  title: string;
 }

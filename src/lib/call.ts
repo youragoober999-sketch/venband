@@ -217,8 +217,14 @@ export class Call {
     // state) must not tear down a working connection. Only drop a peer after
     // it has been gone for a while, or its connection has actually died.
     const now = Date.now();
+    const presentUsers = new Set([...seen].map((sess) => this.peers.get(sess)?.userId));
     for (const [session, peer] of this.peers) {
       if (seen.has(session)) continue;
+      // same person is back on a new connection (refresh / rejoin): drop the stale one now
+      if (presentUsers.has(peer.userId)) {
+        this.dropPeer(session);
+        continue;
+      }
       peer.missingSince ??= now;
       const state = peer.pc.connectionState;
       const dead = state === 'failed' || state === 'closed';

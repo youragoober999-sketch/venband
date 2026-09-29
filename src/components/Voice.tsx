@@ -154,7 +154,19 @@ export function VoiceView({ data, compact }: { data?: ServerData; compact?: bool
 
 function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onClick: () => void; big?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const speaking = useSpeaking(tile.audio, !tile.muted);
+  const [isFull, setIsFull] = useState(false);
+  useEffect(() => {
+    const on = () => setIsFull(document.fullscreenElement === box.current);
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
+  }, []);
+  const toggleFull = (e?: { stopPropagation: () => void }) => {
+    e?.stopPropagation();
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else box.current?.requestFullscreen().catch(() => {});
+  };
   useEffect(() => {
     if (ref.current && tile.video) {
       ref.current.srcObject = tile.video;
@@ -162,7 +174,12 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
     }
   }, [tile.video]);
   return (
-    <div className={`tile${speaking ? ' speaking' : ''}${big ? ' big' : ''}${tile.kind === 'screen' ? ' screen' : ''}`} onClick={onClick}>
+    <div
+      ref={box}
+      className={`tile${speaking ? ' speaking' : ''}${big ? ' big' : ''}${tile.kind === 'screen' ? ' screen' : ''}${isFull ? ' fullscreen' : ''}`}
+      onClick={isFull ? undefined : onClick}
+      onDoubleClick={tile.video ? toggleFull : undefined}
+    >
       {tile.video ? (
         <video ref={ref} autoPlay playsInline muted className={tile.local && tile.kind === 'user' ? 'mirror' : ''} />
       ) : (
@@ -174,6 +191,11 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
         {tile.kind === 'screen' ? '’s screen' : ''}
         {tile.deafened ? <Icon name="headphonesOff" size={14} /> : tile.muted ? <Icon name="micOff" size={14} /> : null}
       </div>
+      {tile.video && (
+        <button className="tile-full" onClick={toggleFull} title={isFull ? 'Exit full screen (Esc)' : 'Full screen'}>
+          <Icon name={isFull ? 'minimize' : 'maximize'} size={16} />
+        </button>
+      )}
     </div>
   );
 }
