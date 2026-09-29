@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { sessionStore } from '../lib/session';
 import { supabase, errorMessage } from '../lib/supabase';
-import { activeCallVersion, getActiveCall, joinCall, leaveCall, subscribeActiveCall } from '../lib/call';
+import { activeCallVersion, getActiveCall, joinCall, leaveCall, leftRecently, subscribeActiveCall } from '../lib/call';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
 import { has, P } from '../lib/permissions';
 import type { Channel, DmChannel, MessageRow, Server } from '../lib/types';
@@ -171,7 +171,9 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
   const identity = sessionStore.use((s) => s.identity)!;
   const inCall = call?.channelId === current?.channel.id;
   const othersInCall = presence.filter((p) => p.voice_channel_id === current?.channel.id && p.user_id !== identity.userId);
-  const waiting = Boolean(inCall && call && call.remotePeers.length === 0);
+  const alone = Boolean(inCall && call && call.remotePeers.length === 0);
+  // ring only until someone picks up; after that, being alone means they left
+  const waiting = alone && !call?.everJoined;
   const [noAnswer, setNoAnswer] = useState(false);
   useEffect(() => {
     setNoAnswer(false);
@@ -222,6 +224,15 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           <>
             {inCall && (
               <div className="dm-call">
+                {alone && !waiting && (
+                  <div className="calling-banner">
+                    <Avatar profile={current.other} size={28} />
+                    {current.other?.display_name ?? 'They'} left the call.
+                    <button className="btn small secondary" onClick={() => leaveCall()}>
+                      Hang up
+                    </button>
+                  </div>
+                )}
                 {waiting && (
                   <div className="calling-banner">
                     <Avatar profile={current.other} size={28} />
@@ -656,19 +667,21 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
     if (!callerId) setDismissedAt(0);
   }, [callerId]);
   const active = Boolean(ringing && !dismissedAt);
+  // we just hung up and they stayed: don't ring, just offer to rejoin
+  const quiet = leftRecently(dm.channel.id);
   useEffect(() => {
-    if (!active) return;
+    if (!active || quiet) return;
     startRing('incoming');
     notify(`${name} is calling you`, 'Click to open Venband and join the call.', () => openChannel('@me', dm.channel.id), `call-${dm.channel.id}`);
     return () => stopRing('incoming');
-  }, [active, name, dm.channel.id]);
+  }, [active, quiet, name, dm.channel.id]);
   if (!active) return null;
   return (
     <div className="toast" role="alert">
       <Avatar profile={dm.other} size={40} />
       <div className="toast-text">
         <b>{name}</b>
-        <span className="small muted">is calling you…</span>
+        <span className="small muted">{quiet ? 'is still in the call' : 'is calling you…'}</span>
       </div>
       <button className="round-btn hangup small" title="Dismiss" onClick={() => setDismissedAt(Date.now())}>
         <Icon name="phoneOff" size={18} />

@@ -218,6 +218,16 @@ const bobTiles = await bob.page.locator('.voice-view .tile').count();
 const calling = await alice.page.locator('.calling-banner').count();
 if (aliceTiles < 2 || bobTiles < 2 || calling) throw new Error(`call dropped after deafen: alice ${aliceTiles} tiles, bob ${bobTiles}, calling banner ${calling}`);
 log('✅ deafen/mute toggling keeps both people in the call');
+// bob hangs up: alice must see it quickly, and bob must not get "rung" by alice still being there
+await bob.page.locator('.voice-bar [title=Disconnect]').click();
+await alice.page.getByText('left the call').waitFor({ timeout: 8000 });
+if ((await alice.page.locator('.voice-view .tile').count()) !== 1) throw new Error('bob still shown in alice\'s call');
+await bob.page.getByText('is still in the call').waitFor({ timeout: 8000 });
+log('✅ hanging up is seen immediately; no ringing for the person who left');
+// and joining again from the toast works
+await bob.page.locator('.toast').getByTitle('Join call').click();
+await alice.page.locator('.voice-view .tile').nth(1).waitFor({ timeout: 20000 });
+log('✅ rejoining the call works');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/7-dm-call.png` });
 await alice.page.locator('.voice-bar [title=Disconnect]').click();
 
