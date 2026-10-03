@@ -102,11 +102,12 @@ export function VoiceView({ data, compact }: { data?: ServerData; compact?: bool
     ...call.remotePeers.flatMap(tilesFor),
   ];
   const focused = tiles.find((t) => t.key === focus) ?? null;
+  const sharing = tiles.some((t) => t.kind === 'screen');
   const canVideo = !data || has(data.myPermissions, P.VIDEO);
   const nameOf = (id: string) => displayName(id, data?.members.find((m) => m.user_id === id)?.nickname);
 
   return (
-    <div className={`voice-view${compact ? ' compact' : ''}`}>
+    <div className={`voice-view${compact ? ' compact' : ''}${compact && (focused || sharing) ? ' expanded' : ''}`}>
       {!compact && (
         <header className="chat-header">
           <Icon name="speaker" />
@@ -118,17 +119,17 @@ export function VoiceView({ data, compact }: { data?: ServerData; compact?: bool
       )}
       {call.error && <div className="call-error">{call.error}</div>}
       <div className={`tiles${focused ? ' has-focus' : ''}`}>
-        {focused && (
-          <div className="focus-area">
-            <VideoTile tile={focused} name={nameOf(focused.userId)} onClick={() => setFocus(null)} big />
-          </div>
-        )}
+        {/* One list: focusing a tile only restyles it, it never re-mounts the video */}
         <div className="tile-grid" data-count={tiles.length}>
-          {tiles
-            .filter((t) => t.key !== focus)
-            .map((t) => (
-              <VideoTile key={t.key} tile={t} name={nameOf(t.userId)} onClick={() => setFocus(t.key)} />
-            ))}
+          {tiles.map((t) => (
+            <VideoTile
+              key={t.key}
+              tile={t}
+              name={nameOf(t.userId)}
+              big={t.key === focus}
+              onClick={() => setFocus((f) => (f === t.key ? null : t.key))}
+            />
+          ))}
         </div>
       </div>
       <div className="call-controls">
@@ -177,8 +178,10 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
     <div
       ref={box}
       className={`tile${speaking ? ' speaking' : ''}${big ? ' big' : ''}${tile.kind === 'screen' ? ' screen' : ''}${isFull ? ' fullscreen' : ''}`}
-      onClick={isFull ? undefined : onClick}
-      onDoubleClick={tile.video ? toggleFull : undefined}
+      // screen shares: click = real full screen. cameras: click = spotlight, double-click = full screen
+      onClick={isFull ? undefined : tile.kind === 'screen' && tile.video ? () => toggleFull() : onClick}
+      onDoubleClick={tile.video && tile.kind !== 'screen' ? toggleFull : undefined}
+      title={tile.kind === 'screen' && !isFull ? 'Click for full screen' : undefined}
     >
       {tile.video ? (
         <video ref={ref} autoPlay playsInline muted className={tile.local && tile.kind === 'user' ? 'mirror' : ''} />
@@ -192,8 +195,9 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
         {tile.deafened ? <Icon name="headphonesOff" size={14} /> : tile.muted ? <Icon name="micOff" size={14} /> : null}
       </div>
       {tile.video && (
-        <button className="tile-full" onClick={toggleFull} title={isFull ? 'Exit full screen (Esc)' : 'Full screen'}>
+        <button className={`tile-full${tile.kind === 'screen' ? ' always' : ''}`} onClick={toggleFull} title={isFull ? 'Exit full screen (Esc)' : 'Full screen'}>
           <Icon name={isFull ? 'minimize' : 'maximize'} size={16} />
+          {tile.kind === 'screen' && <span>{isFull ? 'Exit' : 'Full screen'}</span>}
         </button>
       )}
     </div>

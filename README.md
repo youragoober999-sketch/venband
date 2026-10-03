@@ -105,6 +105,13 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 
 Run [`supabase/repair.sql`](supabase/repair.sql) in the Supabase **SQL Editor**. It's safe to run any time: it re-applies every permission the app needs and ends with a checklist that should say `ok` on every row.
 
+### Deploy on Vercel instead (or as well)
+
+1. On <https://vercel.com/new>, import this GitHub repository. Vercel reads `vercel.json`, so the build settings are already correct.
+2. Under **Environment Variables**, add `VITE_SUPABASE_URL` (your Supabase project URL) and `VITE_SUPABASE_ANON_KEY` (the **anon** or **publishable** key). Never add the `service_role` or secret key: the app doesn't need it, and anything in a `VITE_` variable is visible to everyone.
+3. Click **Deploy**. Then in Supabase → **Authentication → URL Configuration**, add your Vercel URL (for example `https://venband.vercel.app/`) to **Redirect URLs**, and make it the **Site URL** if it's your main address. Otherwise signup and password-reset emails will link to the wrong site.
+4. Optional: in Vercel → **Settings → Domains**, add your own domain or subdomain, e.g. `chat.yoursite.com`, and add that URL in Supabase too.
+
 ## Local development
 
 Requires Node 22.18+ and Docker.

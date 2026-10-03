@@ -224,18 +224,19 @@ export function useServerData(serverId: string | null): ServerData {
 
 // --------------------------------------------------------------- presence --
 
-export function useScopePresence(scopeId: string | null): PresenceMeta[] {
+export function useScopePresence(scopeId: string | null, opts: { online?: boolean } = {}): PresenceMeta[] {
   const [, force] = useState(0);
+  const online = Boolean(opts.online);
   useEffect(() => {
     if (!scopeId) return;
-    const release = acquireScope(scopeId);
+    const release = acquireScope(scopeId, { online });
     const unsub = subscribeScope(scopeId, () => force((x) => x + 1));
     force((x) => x + 1);
     return () => {
       unsub();
       release();
     };
-  }, [scopeId]);
+  }, [scopeId, online]);
   return scopeId ? scopeState(scopeId) : [];
 }
 

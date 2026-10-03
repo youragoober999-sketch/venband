@@ -10,7 +10,8 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { sdpSignaturePayload, sign, verify, type Identity } from './crypto';
 import { getCurrentKey, observeKey } from './directory';
-import { setVoiceState } from './presence';
+import { acquireScope, setVoiceState } from './presence';
+import { stopRing } from './notify';
 
 interface CallMeta {
   user_id: string;
@@ -122,8 +123,35 @@ export class Call {
     };
   }
 
+  private stateTimer: ReturnType<typeof setTimeout> | null = null;
+  /** latest call state each participant broadcast (session -> meta) */
+  private metas = new Map<string, CallMeta>();
+  private releaseScope: (() => void) | null = null;
+  private ticks = 0;
+
+  /**
+   * Mute / deafen / camera / screen go over Broadcast, not Presence: Supabase
+   * only allows a few Presence updates per 30s and closes the channel when
+   * they're exceeded. Presence is written once, on join ("I'm in the call").
+   */
+  private broadcastState() {
+    if (!this.rt || this.closed || this.status !== 'connected') return;
+    this.rt.send({ type: 'broadcast', event: 'state', payload: this.meta() });
+  }
+
+  private onState(meta: CallMeta) {
+    if (!meta?.session || meta.session === this.session) return;
+    this.metas.set(meta.session, meta);
+    const peer = this.peers.get(meta.session);
+    if (peer && peer.userId === meta.user_id) {
+      peer.meta = meta;
+      this.changed();
+    }
+  }
+
   private publishState() {
-    this.rt?.track(this.meta());
+    if (this.stateTimer) clearTimeout(this.stateTimer);
+    this.stateTimer = setTimeout(() => this.broadcastState(), 120); // coalesce rapid toggles
     setVoiceState({
       scope: this.scopeId,
       voice_channel_id: this.channelId,
@@ -145,16 +173,25 @@ export class Call {
       this.mic = new MediaStream();
       this.muted = true;
     }
+    // keep this call visible in the server / DM sidebar even if you navigate away
+    this.releaseScope = acquireScope(this.scopeId);
     const rt = supabase.channel(`call:${this.channelId}`, {
       config: { private: true, presence: { key: this.session }, broadcast: { self: false } },
     });
     this.rt = rt;
     rt.on('presence', { event: 'sync' }, () => this.reconcile());
-    this.tick = setInterval(() => this.reconcile(), 3000);
+    rt.on('presence', { event: 'join' }, () => this.broadcastState()); // newcomers learn our state right away
+    this.tick = setInterval(() => {
+      this.reconcile();
+      if (++this.ticks % 2 === 0) this.broadcastState(); // heartbeat
+    }, 3000);
     rt.on('broadcast', { event: 'signal' }, ({ payload }) => this.onSignal(payload as Signal));
+    rt.on('broadcast', { event: 'state' }, ({ payload }) => this.onState(payload as CallMeta));
     rt.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         this.status = 'connected';
+        // the one Presence write for this call
+        rt.track({ user_id: this.identity.userId, session: this.session });
         this.publishState();
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         this.error = 'Could not connect to the voice channel (check your permissions).';
@@ -172,14 +209,17 @@ export class Call {
       this.send({ from: this.session, fromUser: this.identity.userId, to: p.session, bye: true });
     }
     if (this.tick) clearInterval(this.tick);
+    if (this.stateTimer) clearTimeout(this.stateTimer);
     for (const p of this.peers.values()) p.pc.close();
     this.peers.clear();
     for (const s of [this.mic, this.cam, this.screen]) s?.getTracks().forEach((t) => t.stop());
-    if (this.rt) {
-      this.rt.untrack();
-      supabase.removeChannel(this.rt);
-    }
+    // leaving the channel removes our presence; no extra untrack() write needed
+    if (this.rt) supabase.removeChannel(this.rt);
     setVoiceState({ scope: null, voice_channel_id: null, muted: false, deafened: false, video: false, screen: false });
+    // let the "left the call" presence update go out before the scope may close
+    const release = this.releaseScope;
+    this.releaseScope = null;
+    if (release) setTimeout(release, 3000);
     this.changed();
   }
 
@@ -205,12 +245,14 @@ export class Call {
     const seen = new Set<string>();
     for (const [session, metas] of Object.entries(state)) {
       if (session === this.session) continue;
-      const meta = metas[metas.length - 1] as unknown as CallMeta;
-      if (this.allowed && !this.allowed.has(meta.user_id)) continue;
+      const who = metas[metas.length - 1] as unknown as { user_id: string };
+      if (!who?.user_id) continue;
+      if (this.allowed && !this.allowed.has(who.user_id)) continue;
       seen.add(session);
-      const peer = this.peers.get(session) ?? this.createPeer(session, meta.user_id);
-      if (peer.userId !== meta.user_id) continue; // presence key/user mismatch: ignore
-      peer.meta = meta;
+      const peer = this.peers.get(session) ?? this.createPeer(session, who.user_id);
+      if (peer.userId !== who.user_id) continue; // presence key/user mismatch: ignore
+      const meta = this.metas.get(session);
+      if (meta && meta.user_id === peer.userId) peer.meta = meta;
       peer.missingSince = null;
     }
     // Presence blips (e.g. when someone mutes/deafens and re-announces their
@@ -240,6 +282,7 @@ export class Call {
     if (!peer) return;
     peer.pc.close();
     this.peers.delete(session);
+    this.metas.delete(session);
     if (![...this.peers.values()].some((p) => p.userId === peer.userId)) this.lastLeft = peer.userId;
     this.changed();
   }
@@ -252,7 +295,7 @@ export class Call {
       pcId: crypto.randomUUID(),
       remotePcId: null,
       missingSince: null,
-      meta: null,
+      meta: this.metas.get(session) ?? null,
       streams: new Map(),
       state: 'new',
       pc,
@@ -492,6 +535,7 @@ function bump() {
 }
 
 export async function joinCall(identity: Identity, channelId: string, scopeId: string, channelName: string) {
+  stopRing(); // answering always silences any ringtone
   if (active?.channelId === channelId) return active;
   active?.leave();
   const call = new Call(identity, channelId, scopeId, channelName);

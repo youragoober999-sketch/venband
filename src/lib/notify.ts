@@ -137,6 +137,7 @@ export function startRing(kind: 'incoming' | 'outgoing') {
   if (ringKind === kind) return;
   stopRing();
   ringKind = kind;
+  document.documentElement.dataset.ringing = kind; // lets tests (and devtools) see what's ringing
   const play = () => {
     try {
       if (kind === 'incoming') {
@@ -157,4 +158,5 @@ export function stopRing(kind?: 'incoming' | 'outgoing') {
   if (ringTimer) clearInterval(ringTimer);
   ringTimer = null;
   ringKind = null;
+  document.documentElement.dataset.ringing = '';
 }

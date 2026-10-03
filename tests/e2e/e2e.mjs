@@ -7,6 +7,7 @@ const MAIL = 'http://127.0.0.1:54324/api/v1';
 const SHOTS = process.env.SHOTS;
 const DB = process.env.DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const run = Date.now().toString(36);
+const testStart = Date.now();
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined,
@@ -203,14 +204,27 @@ const stored = execSync(`psql ${DB} -Atc "select count(*) from storage.objects w
 log('✅ encrypted attachment uploaded, decrypted and shown to bob; objects in bucket:', stored);
 await bob.page.locator('.rail-item.home').click();
 await bob.page.evaluate(() => { history.replaceState(null, '', location.pathname); });
+// bob also has a second tab open (same login)
+const bobTab2 = await bob.ctx.newPage();
+await bobTab2.goto(APP);
+await bobTab2.locator('.user-panel').waitFor({ timeout: 30000 });
+const ringing = (p) => p.evaluate(() => document.documentElement.dataset.ringing || '');
 await alice.page.locator('.chat-header').getByRole('button', { name: /Call/ }).click();
-await bob.page.locator('.toast').getByTitle('Join call').click({ timeout: 20000 });
+await bob.page.locator('.toast').getByTitle('Join call').waitFor({ timeout: 20000 });
+await bob.page.waitForFunction(() => document.documentElement.dataset.ringing === 'incoming', null, { timeout: 10000 });
+await bob.page.locator('.toast').getByTitle('Join call').click();
 await bob.page.locator('.tile').nth(1).waitFor({ timeout: 30000 });
 log('✅ DM call rang on bob and connected');
+await bob.page.waitForTimeout(4000);
+const ringStates = { alice: await ringing(alice.page), bob: await ringing(bob.page), bobTab2: await ringing(bobTab2) };
+if (Object.values(ringStates).some(Boolean)) throw new Error('still ringing after answering: ' + JSON.stringify(ringStates));
+log('✅ all ringing stops once the call is answered (incl. other tabs)');
+await bobTab2.close();
 // deafen / mute several times: nobody may drop out of the call
-for (const btn of ['Deafen', 'Deafen', 'Mute', 'Unmute', 'Deafen']) {
+// mash the buttons like an impatient human: 10 quick toggles
+for (const btn of ['Deafen', 'Deafen', 'Mute', 'Unmute', 'Deafen', 'Deafen', 'Mute', 'Unmute', 'Deafen', 'Deafen']) {
   await bob.page.locator(`.call-controls [title="${btn}"]`).first().click();
-  await bob.page.waitForTimeout(700);
+  await bob.page.waitForTimeout(200);
 }
 await alice.page.waitForTimeout(12000);
 const aliceTiles = await alice.page.locator('.voice-view .tile').count();
@@ -238,6 +252,22 @@ await bob.page.waitForFunction(() => Boolean(document.fullscreenElement), null, 
 await bob.page.keyboard.press('Escape');
 await bob.page.evaluate(() => document.fullscreenElement && document.exitFullscreen());
 log('✅ full screen video works');
+// screen share: one click on the shared screen = full screen
+await alice.page.locator('.call-controls [title="Share screen"]').click();
+const screenTile = bob.page.locator('.voice-view .tile.screen');
+await screenTile.waitFor({ timeout: 20000 });
+if (!(await screenTile.locator('.tile-full').isVisible())) throw new Error('full screen button not visible on screen share');
+await screenTile.click();
+await bob.page.waitForFunction(() => document.fullscreenElement?.classList.contains('screen'), null, { timeout: 5000 });
+const fsBox = await bob.page.evaluate(() => {
+  const r = document.fullscreenElement.getBoundingClientRect();
+  return { w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight };
+});
+if (fsBox.w < fsBox.vw - 2 || fsBox.h < fsBox.vh - 2) throw new Error('screen share not filling the screen: ' + JSON.stringify(fsBox));
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/8-screen-fullscreen.png` });
+await bob.page.evaluate(() => document.exitFullscreen());
+await alice.page.locator('.call-controls [title="Share screen"]').click();
+log('✅ clicking a screen share opens it full screen, filling the display');
 await alice.page.locator('.call-controls [title=Camera]').click();
 // refresh mid-call and come back: must not show the same person twice
 await bob.page.reload();
@@ -304,6 +334,18 @@ await bob.page.locator('.auth-card').getByRole('button', { name: 'Log in' }).cli
 await bob.page.getByText('don’t match an account').waitFor({ timeout: 30000 });
 log('✅ wrong password shows a friendly error');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/0-login-error.png` });
+
+// the realtime server must never have had to rate-limit us (that closes channels)
+try {
+  const since = new Date(testStart).toISOString();
+  const logs = execSync(`docker logs supabase_realtime_venband --since ${since} 2>&1`).toString();
+  const hits = logs.split('\n').filter((l) => /RateLimitReached/.test(l));
+  if (hits.length) throw new Error(`realtime rate limit hit ${hits.length}x: ${hits[0].slice(0, 200)}`);
+  log('✅ no realtime rate-limit errors during the whole run');
+} catch (e) {
+  if (/rate limit hit/.test(e.message)) throw e;
+  log('(skipped realtime log check: docker not available)');
+}
 
 await browser.close();
 log('ALL E2E CHECKS PASSED');
