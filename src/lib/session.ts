@@ -138,11 +138,15 @@ async function onSession(session: Session | null) {
   }
   if (!session) {
     if (arrivedFromEmailLink) {
-      // The link was opened in a different browser/app than the one used to
-      // sign up, so it couldn't sign in here — but the email IS confirmed.
+      // The link was opened in a different browser/app than the one it was
+      // requested from, so it couldn't sign in here.
       arrivedFromEmailLink = false;
       window.history.replaceState(null, '', window.location.pathname);
-      sessionStore.set({ notice: 'Your email is confirmed. Log in below to get started.' });
+      sessionStore.set({
+        notice: resetLink
+          ? 'That password reset link has to be opened in the same browser you asked for it from. Click “Forgot it?” below to get a new link here, then open it in this browser.'
+          : 'Your email link worked. Log in below. (If you were resetting your password, ask for a new reset link from this browser and open it here.)',
+      });
     }
     sessionStore.set({ status: 'signed-out', session: null, identity: null, keyring: null, me: null });
     return;
@@ -163,7 +167,7 @@ async function onSession(session: Session | null) {
     window.location.reload();
     return;
   }
-  if (new URLSearchParams(window.location.search).has('reset')) {
+  if (recovering || new URLSearchParams(window.location.search).has('reset')) {
     sessionStore.set({ status: 'recovery', session });
     return;
   }
@@ -200,12 +204,17 @@ export function friendlyError(e: unknown): string {
 }
 
 let arrivedFromEmailLink = false;
+/** the link was a password reset (from ?reset=1, which Supabase may drop) */
+let resetLink = false;
+/** Supabase said this sign-in came from a password reset link: show the reset form, whatever else happens */
+let recovering = false;
 
 export function initSession() {
   const url = new URL(window.location.href);
   const hash = new URLSearchParams(url.hash.slice(1));
   const authError = url.searchParams.get('error_description') ?? hash.get('error_description');
   arrivedFromEmailLink = url.searchParams.has('code');
+  resetLink = url.searchParams.has('reset');
   try {
     const carried = sessionStorage.getItem('venband:notice');
     if (carried) {
@@ -222,6 +231,9 @@ export function initSession() {
 
   supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'PASSWORD_RECOVERY' && session) {
+      recovering = true;
+      arrivedFromEmailLink = false;
+      window.history.replaceState(null, '', url.pathname + '?reset=1');
       sessionStore.set({ status: 'recovery', session });
       return;
     }
@@ -344,6 +356,7 @@ export async function completePasswordReset(newPassword: string) {
   const { authPassword, vaultKey } = await deriveMasterKeys(session.user.email, newPassword);
   const { error } = await supabase.auth.updateUser({ password: authPassword });
   if (error) throw error;
+  recovering = false;
   window.history.replaceState(null, '', window.location.pathname);
   await unlockWith(session, vaultKey, false);
 }

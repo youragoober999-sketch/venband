@@ -102,7 +102,7 @@ function Toggle({ label, desc, checked, onChange }: { label: string; desc?: stri
         <b>{label}</b>
         {desc && <span className="small muted">{desc}</span>}
       </span>
-      <input type="checkbox" className="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <input type="checkbox" className="toggle-switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
     </label>
   );
 }

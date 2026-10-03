@@ -74,6 +74,10 @@ export function AuthScreen() {
     else if (r.kind === 'sign-in') setModeState((m) => (m === 'login' || m === 'forgot' || m === 'forgot-sent' || m === 'verify' ? m : 'login'));
     else if (r.kind === 'root') setModeState('home');
   }, [route]);
+  // a notice (e.g. about an email link) belongs next to the login form
+  useEffect(() => {
+    if (hasNotice) setModeState((m) => (m === 'home' ? 'login' : m));
+  }, [hasNotice]);
   useEffect(() => {
     const r = parseRoute();
     // deep link while logged out: show the login form at /sign-in
