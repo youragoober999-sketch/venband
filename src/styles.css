@@ -463,6 +463,21 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 22px 0; }
 .tile video { width: 100%; height: 100%; object-fit: cover; background: #000; }
 .tile.screen video, .tile.big video { object-fit: contain; }
 .tile video.mirror { transform: scaleX(-1); }
+.tile-full {
+  position: absolute; right: 8px; top: 8px; width: 32px; height: 32px; border-radius: 8px; background: #000000a6; color: #fff;
+  display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .12s;
+}
+.tile:hover .tile-full, .tile.fullscreen .tile-full { opacity: 1; }
+.tile.fullscreen { border-radius: 0; outline: 0; background: #000; cursor: default; }
+.tile.fullscreen video { object-fit: contain; }
+.tile.fullscreen .tile-label { left: 16px; bottom: 16px; font-size: 15px; }
+.group-avatar { position: relative; display: inline-block; flex-shrink: 0; }
+.group-avatar > .avatar { position: absolute; border: 2px solid var(--bg-1); box-sizing: content-box; }
+.group-avatar > .avatar:first-child { left: 0; top: 0; }
+.group-avatar > .avatar:nth-child(2) { right: -2px; bottom: -2px; }
+.convo-sub { display: block; font-size: 11.5px; color: var(--muted); font-weight: 400; }
+.category-actions { display: flex; gap: 2px; }
+.group-members { display: flex; flex-direction: column; margin: 6px 0 16px; }
 .tile-label {
   position: absolute; left: 8px; bottom: 8px; display: flex; align-items: center; gap: 6px; background: #000000a6;
   padding: 3px 8px; border-radius: 6px; font-size: 13px; font-weight: 550;

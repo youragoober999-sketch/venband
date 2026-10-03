@@ -31,6 +31,8 @@ interface Signal {
   description?: RTCSessionDescriptionInit;
   sig?: string;
   candidate?: RTCIceCandidateInit | null;
+  /** sent when hanging up so others drop us immediately */
+  bye?: boolean;
 }
 
 export interface RemotePeer {
@@ -82,6 +84,10 @@ export class Call {
   deafened = false;
   error: string | null = null;
   status: 'connecting' | 'connected' | 'closed' = 'connecting';
+  /** someone has been in the call with us at some point */
+  everJoined = false;
+  /** name-less record of who left most recently (user id) */
+  lastLeft: string | null = null;
 
   constructor(
     readonly identity: Identity,
@@ -162,6 +168,9 @@ export class Call {
     if (this.closed) return;
     this.closed = true;
     this.status = 'closed';
+    for (const p of this.peers.values()) {
+      this.send({ from: this.session, fromUser: this.identity.userId, to: p.session, bye: true });
+    }
     if (this.tick) clearInterval(this.tick);
     for (const p of this.peers.values()) p.pc.close();
     this.peers.clear();
@@ -208,12 +217,20 @@ export class Call {
     // state) must not tear down a working connection. Only drop a peer after
     // it has been gone for a while, or its connection has actually died.
     const now = Date.now();
+    const presentUsers = new Set([...seen].map((sess) => this.peers.get(sess)?.userId));
     for (const [session, peer] of this.peers) {
       if (seen.has(session)) continue;
+      // same person is back on a new connection (refresh / rejoin): drop the stale one now
+      if (presentUsers.has(peer.userId)) {
+        this.dropPeer(session);
+        continue;
+      }
       peer.missingSince ??= now;
-      const dead = peer.pc.connectionState === 'failed' || peer.pc.connectionState === 'closed';
-      const longGone = now - peer.missingSince > 10_000 && peer.pc.connectionState !== 'connected';
-      if (dead || longGone || now - peer.missingSince > 60_000) this.dropPeer(session);
+      const state = peer.pc.connectionState;
+      const dead = state === 'failed' || state === 'closed';
+      // not in the call list and no live connection → they left
+      const gone = state !== 'connected' && now - peer.missingSince > 3_000;
+      if (dead || gone || now - peer.missingSince > 45_000) this.dropPeer(session);
     }
     this.changed();
   }
@@ -223,6 +240,8 @@ export class Call {
     if (!peer) return;
     peer.pc.close();
     this.peers.delete(session);
+    if (![...this.peers.values()].some((p) => p.userId === peer.userId)) this.lastLeft = peer.userId;
+    this.changed();
   }
 
   private createPeer(session: string, userId: string): Peer {
@@ -280,6 +299,10 @@ export class Call {
     };
     pc.onconnectionstatechange = () => {
       peer.state = pc.connectionState;
+      if (pc.connectionState === 'connected') {
+        this.everJoined = true;
+        this.lastLeft = null;
+      }
       if (pc.connectionState === 'failed') pc.restartIce();
       this.changed();
     };
@@ -301,6 +324,10 @@ export class Call {
 
   private onSignal(s: Signal) {
     if (this.closed || s.to !== this.session || s.from === this.session) return;
+    if (s.bye) {
+      if (this.peers.get(s.from)?.userId === s.fromUser) this.dropPeer(s.from);
+      return;
+    }
     if (this.allowed && !this.allowed.has(s.fromUser)) return;
     let peer = this.peers.get(s.from);
     if (peer && s.pc && peer.remotePcId && s.pc !== peer.remotePcId) {
@@ -475,7 +502,15 @@ export async function joinCall(identity: Identity, channelId: string, scopeId: s
   return call;
 }
 
+/** channel id -> when we hung up there (so the other person staying doesn't "ring" us) */
+const recentlyLeft = new Map<string, number>();
+export function leftRecently(channelId: string) {
+  const t = recentlyLeft.get(channelId);
+  return t !== undefined && Date.now() - t < 10 * 60_000;
+}
+
 export function leaveCall() {
+  if (active) recentlyLeft.set(active.channelId, Date.now());
   active?.leave();
   active = null;
   bump();

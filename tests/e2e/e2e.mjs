@@ -182,7 +182,7 @@ log('✅ after kick, general channel is on key epoch', epochs);
 await bob.page.getByText('It’s quiet in here').waitFor({ timeout: 20000 });
 log('✅ kicked bob was moved out of the server');
 await alice.page.locator('.rail-item.home').click();
-await alice.page.getByRole('button', { name: 'New direct message' }).click();
+await alice.page.locator('.empty-actions').getByRole('button', { name: 'New direct message' }).click();
 await alice.page.locator('.modal input').fill('bob_' + run);
 await alice.page.getByRole('button', { name: 'Open DM' }).click();
 await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
@@ -218,8 +218,61 @@ const bobTiles = await bob.page.locator('.voice-view .tile').count();
 const calling = await alice.page.locator('.calling-banner').count();
 if (aliceTiles < 2 || bobTiles < 2 || calling) throw new Error(`call dropped after deafen: alice ${aliceTiles} tiles, bob ${bobTiles}, calling banner ${calling}`);
 log('✅ deafen/mute toggling keeps both people in the call');
+// bob hangs up: alice must see it quickly, and bob must not get "rung" by alice still being there
+await bob.page.locator('.voice-bar [title=Disconnect]').click();
+await alice.page.getByText('left the call').waitFor({ timeout: 8000 });
+if ((await alice.page.locator('.voice-view .tile').count()) !== 1) throw new Error('bob still shown in alice\'s call');
+await bob.page.getByText('is still in the call').waitFor({ timeout: 8000 });
+log('✅ hanging up is seen immediately; no ringing for the person who left');
+// and joining again from the toast works
+await bob.page.locator('.toast').getByTitle('Join call').click();
+await alice.page.locator('.voice-view .tile').nth(1).waitFor({ timeout: 20000 });
+log('✅ rejoining the call works');
+// full screen on a video tile
+await alice.page.locator('.call-controls [title=Camera]').click();
+const camTile = bob.page.locator('.voice-view .tile:has(video)').first();
+await camTile.waitFor({ timeout: 20000 });
+await camTile.hover();
+await camTile.locator('.tile-full').click();
+await bob.page.waitForFunction(() => Boolean(document.fullscreenElement), null, { timeout: 5000 });
+await bob.page.keyboard.press('Escape');
+await bob.page.evaluate(() => document.fullscreenElement && document.exitFullscreen());
+log('✅ full screen video works');
+await alice.page.locator('.call-controls [title=Camera]').click();
+// refresh mid-call and come back: must not show the same person twice
+await bob.page.reload();
+await bob.page.locator('.user-panel').waitFor({ timeout: 30000 });
+await bob.page.locator('.toast').getByTitle('Join call').click({ timeout: 20000 });
+await alice.page.waitForTimeout(6000);
+const tilesAfterRejoin = await alice.page.locator('.voice-view .tile').count();
+if (tilesAfterRejoin !== 2) throw new Error(`expected 2 tiles after bob refreshed and rejoined, got ${tilesAfterRejoin}`);
+log('✅ refreshing and rejoining does not duplicate people');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/7-dm-call.png` });
 await alice.page.locator('.voice-bar [title=Disconnect]').click();
+
+// ---- group chats
+await alice.page.locator('.rail-item.home').click();
+await alice.page.getByTitle('New group chat').click();
+await alice.page.locator('.modal input').first().fill('Test crew');
+await alice.page.locator('.modal input[placeholder="@username"]').fill('bob_' + run);
+await alice.page.locator('.modal').getByRole('button', { name: 'Add', exact: true }).click();
+await alice.page.locator('.modal .role-pill').waitFor();
+await alice.page.locator('.modal').getByRole('button', { name: /Create group/ }).click();
+await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
+await alice.page.locator('.composer textarea').fill('hello group');
+await alice.page.keyboard.press('Enter');
+await bob.page.locator('.rail-item.home').click();
+await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).click({ timeout: 20000 });
+await bob.page.getByText('hello group').waitFor({ timeout: 20000 });
+log('✅ group chat created, bob sees the group and decrypts messages');
+await bob.page.getByTitle(/Group settings/).click();
+bob.page.once('dialog', (d) => d.accept());
+await bob.page.getByRole('button', { name: 'Leave group' }).click();
+await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).waitFor({ state: 'detached', timeout: 20000 });
+await alice.page.locator('.composer textarea').fill('after bob left');
+await alice.page.keyboard.press('Enter');
+await alice.page.getByText('after bob left').waitFor({ timeout: 20000 });
+log('✅ leaving a group works and the group keeps working (keys rotated)');
 
 // ---- refreshing keeps you signed in ("stay signed in" is on by default)
 await alice.page.reload();

@@ -224,6 +224,36 @@ do $t$ begin
   assert not public.realtime_topic_allowed('call:' || current_setting('t.dm'));
 end $t$;
 
+-- group chats ---------------------------------------------------------------
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+select set_config('t.group', public.create_group(array['00000000-0000-0000-0000-00000000000b','00000000-0000-0000-0000-00000000000d']::uuid[], 'Trip')::text, false);
+do $t$ begin
+  assert (select count(*) from public.dm_participants where channel_id = current_setting('t.group')::uuid) = 3;
+  assert public.realtime_topic_allowed('call:' || current_setting('t.group'));
+  -- a 1:1 DM is never the group
+  assert public.open_dm('00000000-0000-0000-0000-00000000000b')::text <> current_setting('t.group');
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000c', false);
+do $t$ begin
+  assert not public.can_view_channel(current_setting('t.group')::uuid), 'outsider cannot see group';
+end $t$;
+select pg_temp.must_fail($$select public.add_group_members(current_setting('t.group')::uuid, array['00000000-0000-0000-0000-00000000000c']::uuid[])$$);
+select pg_temp.must_fail($$select public.rename_group(current_setting('t.group')::uuid, 'hijacked')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000d', false);
+select public.add_group_members(current_setting('t.group')::uuid, array['00000000-0000-0000-0000-00000000000c']::uuid[]);
+select public.rename_group(current_setting('t.group')::uuid, 'Road trip');
+select public.leave_group(current_setting('t.group')::uuid);
+do $t$ begin
+  assert not public.can_view_channel(current_setting('t.group')::uuid), 'left the group';
+end $t$;
+reset role;
+do $t$ begin
+  assert (select name from public.channels where id = current_setting('t.group')::uuid) = 'Road trip';
+  assert (select key_rotation_needed from public.channels where id = current_setting('t.group')::uuid), 'leaving rotates keys';
+  assert (select count(*) from public.dm_participants where channel_id = current_setting('t.group')::uuid) = 3;
+end $t$;
+set role authenticated;
+
 -- my_profile() recreates a missing profile ----------------------------------
 reset role;
 delete from public.profiles where id = '00000000-0000-0000-0000-0000000000e3';

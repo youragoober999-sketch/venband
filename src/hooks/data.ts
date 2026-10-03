@@ -96,8 +96,13 @@ export function useMyServers(onMessage?: (row: MessageRow) => void) {
     setDms(
       ((chs ?? []) as Channel[])
         .map((c) => {
-          const other = byChannel.get(c.id)?.find((u) => u !== me.id);
-          return { channel: c, other: other ? getProfile(other) ?? null : null };
+          const ids = (byChannel.get(c.id) ?? []).filter((u) => u !== me.id);
+          const members = ids.map((u) => getProfile(u)).filter((p): p is NonNullable<typeof p> => Boolean(p));
+          const other = c.is_group ? null : (members[0] ?? null);
+          const title = c.is_group
+            ? c.name
+            : (other?.display_name ?? 'Unknown user');
+          return { channel: c, other, members, title };
         })
         .sort((a, b) => (a.channel.created_at < b.channel.created_at ? 1 : -1)),
     );
@@ -113,7 +118,8 @@ export function useMyServers(onMessage?: (row: MessageRow) => void) {
     me
       ? [
           { table: 'server_members', filter: `user_id=eq.${me.id}` },
-          { table: 'dm_participants', filter: `user_id=eq.${me.id}` },
+          { table: 'dm_participants' }, // RLS: only conversations I'm in
+          { table: 'channels', filter: 'type=eq.dm' },
           { table: 'servers' },
           // every message the user is allowed to read (RLS applies) — for unread badges / notifications
           { table: 'messages', rows: true },

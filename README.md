@@ -20,6 +20,7 @@
 - **Moderation:** kick, ban and unban. Removing someone automatically rotates the encryption key of every channel they could read.
 - **Messaging:** real-time messages with replies, edits, deletes, `code`, **bold**, *italic*, links, typing indicators and online status.
 - **Encrypted file attachments:** images, video and audio preview inline. Files can be up to 25 MB.
+- **Group chats:** up to 10 people, with names, adding people and leaving. Leaving swaps the group's encryption key.
 - **Direct messages:** 1-on-1 DMs, including DM calls that ring the other person.
 - **Voice, video and screen sharing:** calls use WebRTC with mute, deafen, camera, screen share (with audio), speaking indicators and a focus view.
 - **Security fingerprints:** you can check another user's fingerprint to make sure nobody is intercepting your conversation, and you get a warning if someone's key changes.
@@ -71,7 +72,7 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 
 1. Create a free project at <https://supabase.com/dashboard>.
 2. Load the database schema. Use **either** option:
-   - **Dashboard:** open **SQL Editor** and run each file in `supabase/migrations/` **in order**: paste the whole file, click **Run**, then do the next one (`20260928000000_venband_schema.sql`, `20260929000000_explicit_grants.sql`, then `20260930000000_profile_self_heal.sql`).
+   - **Dashboard:** open **SQL Editor** and run each file in `supabase/migrations/` **in order**: paste the whole file, click **Run**, then do the next one (`20260928000000_venband_schema.sql`, `20260929000000_explicit_grants.sql`, `20260930000000_profile_self_heal.sql`, then `20261001000000_group_chats.sql`). Or simply run `supabase/repair.sql` after the first file — it contains all the later ones.
    - **CLI:** `npx supabase login && npx supabase link --project-ref <ref> && npx supabase db push`
 3. **Authentication → Sign In / Providers → Email:** check that **Confirm email** is **on**.
 4. **Authentication → URL Configuration:**

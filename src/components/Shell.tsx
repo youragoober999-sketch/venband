@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { sessionStore } from '../lib/session';
 import { supabase, errorMessage } from '../lib/supabase';
-import { activeCallVersion, getActiveCall, joinCall, leaveCall, subscribeActiveCall } from '../lib/call';
+import { activeCallVersion, getActiveCall, joinCall, leaveCall, leftRecently, subscribeActiveCall } from '../lib/call';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
 import { has, P } from '../lib/permissions';
 import type { Channel, DmChannel, MessageRow, Server } from '../lib/types';
@@ -20,7 +20,17 @@ import { nav, openChannel, openServer, useDirectory, useMyServers, useScopePrese
 import { Avatar, Icon, Logo, initials } from './ui';
 import { ChatView } from './Chat';
 import { CallAudio, VoiceView } from './Voice';
-import { ChannelSettingsModal, CreateChannelModal, CreateJoinModal, InviteModal, NewDmModal, ProfileModal, UserSettingsModal } from './Modals';
+import {
+  ChannelSettingsModal,
+  CreateChannelModal,
+  CreateJoinModal,
+  GroupSettingsModal,
+  InviteModal,
+  NewDmModal,
+  NewGroupModal,
+  ProfileModal,
+  UserSettingsModal,
+} from './Modals';
 import { ServerSettingsModal } from './ServerSettings';
 
 export function useActiveCall() {
@@ -29,14 +39,14 @@ export function useActiveCall() {
 }
 
 // channel id -> where it lives, for notifications about channels not on screen
-const channelMeta = new Map<string, { type: Channel['type']; name: string; server_id: string | null }>();
+const channelMeta = new Map<string, { type: Channel['type']; name: string; server_id: string | null; is_group?: boolean }>();
 
 async function describeChannel(id: string) {
   const cached = channelMeta.get(id);
   if (cached) return cached;
-  const { data } = await supabase.from('channels').select('type, name, server_id').eq('id', id).maybeSingle();
-  if (data) channelMeta.set(id, data as { type: Channel['type']; name: string; server_id: string | null });
-  return (data as { type: Channel['type']; name: string; server_id: string | null } | null) ?? null;
+  const { data } = await supabase.from('channels').select('type, name, server_id, is_group').eq('id', id).maybeSingle();
+  if (data) channelMeta.set(id, data as { type: Channel['type']; name: string; server_id: string | null; is_group?: boolean });
+  return (data as { type: Channel['type']; name: string; server_id: string | null; is_group?: boolean } | null) ?? null;
 }
 
 /** New message somewhere → unread badge, and for DMs / @mentions a sound + desktop notification. */
@@ -65,7 +75,7 @@ function useMessageAlerts(servers: Server[]) {
     const who = getProfile(row.author_id)?.display_name ?? 'Someone';
     const server = serversRef.current.find((x) => x.id === meta.server_id);
     notify(
-      isDm ? who : `${who} in #${meta.name}${server ? ` · ${server.name}` : ''}`,
+      isDm ? (meta.is_group ? `${who} in ${meta.name}` : who) : `${who} in #${meta.name}${server ? ` · ${server.name}` : ''}`,
       text ? text.slice(0, 140) : 'New encrypted message',
       () => (isDm ? openChannel('@me', row.channel_id) : openChannel(meta.server_id!, row.channel_id)),
       row.channel_id,
@@ -165,13 +175,17 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
   const selected = nav.use((s) => s.channelByServer['@me']);
   const unread = unreadStore.use((s) => s);
   const [newDm, setNewDm] = useState(false);
+  const [newGroup, setNewGroup] = useState(false);
+  const [groupSettings, setGroupSettings] = useState(false);
   const current = dms.find((d) => d.channel.id === selected) ?? null;
   const call = useActiveCall();
   const presence = useScopePresence(current?.channel.id ?? null);
   const identity = sessionStore.use((s) => s.identity)!;
   const inCall = call?.channelId === current?.channel.id;
   const othersInCall = presence.filter((p) => p.voice_channel_id === current?.channel.id && p.user_id !== identity.userId);
-  const waiting = Boolean(inCall && call && call.remotePeers.length === 0);
+  const alone = Boolean(inCall && call && call.remotePeers.length === 0);
+  // ring only until someone picks up; after that, being alone means they left
+  const waiting = alone && !call?.everJoined;
   const [noAnswer, setNoAnswer] = useState(false);
   useEffect(() => {
     setNoAnswer(false);
@@ -198,9 +212,14 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
         <div className="sidebar-scroll">
           <div className="category">
             <span>Direct messages — {dms.length}</span>
-            <button className="icon-btn" onClick={() => setNewDm(true)} title="New DM">
-              <Icon name="plus" size={16} />
-            </button>
+            <span className="category-actions">
+              <button className="icon-btn" onClick={() => setNewGroup(true)} title="New group chat">
+                <Icon name="users" size={16} />
+              </button>
+              <button className="icon-btn" onClick={() => setNewDm(true)} title="New direct message">
+                <Icon name="plus" size={16} />
+              </button>
+            </span>
           </div>
           {dms.map((d) => (
             <button
@@ -208,8 +227,11 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
               className={`channel dm${selected === d.channel.id ? ' active' : ''}`}
               onClick={() => openChannel('@me', d.channel.id)}
             >
-              <Avatar profile={d.other} size={32} />
-              <span className="channel-name">{d.other?.display_name ?? 'Unknown user'}</span>
+              <ConvoAvatar dm={d} size={32} />
+              <span className="channel-name">
+                {d.title}
+                {d.channel.is_group && <small className="convo-sub">{d.members.length + 1} members</small>}
+              </span>
               {(unread.counts[d.channel.id] ?? 0) > 0 && <span className="badge inline">{unread.counts[d.channel.id]}</span>}
             </button>
           ))}
@@ -222,12 +244,21 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           <>
             {inCall && (
               <div className="dm-call">
+                {alone && !waiting && (
+                  <div className="calling-banner">
+                    <ConvoAvatar dm={current} size={28} />
+                    {current.channel.is_group ? 'Everyone left the call.' : `${current.title} left the call.`}
+                    <button className="btn small secondary" onClick={() => leaveCall()}>
+                      Hang up
+                    </button>
+                  </div>
+                )}
                 {waiting && (
                   <div className="calling-banner">
-                    <Avatar profile={current.other} size={28} />
+                    <ConvoAvatar dm={current} size={28} />
                     {noAnswer
-                      ? `${current.other?.display_name ?? 'They'} didn’t pick up. They’ll see you’re in the call when they open Venband.`
-                      : `Calling ${current.other?.display_name ?? ''}…`}
+                      ? 'Nobody picked up yet. They’ll see you’re in the call when they open Venband.'
+                      : `Calling ${current.title}…`}
                   </div>
                 )}
                 <VoiceView compact />
@@ -235,18 +266,25 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
             )}
             <ChatView
               channel={current.channel}
-              title={current.other?.display_name ?? 'Unknown user'}
+              title={current.title}
               canSend
               canManage={false}
               headerExtra={
-                !inCall && (
-                  <button
-                    className={`btn small ${othersInCall.length ? 'success' : 'secondary'}`}
-                    onClick={() => joinCall(identity, current.channel.id, current.channel.id, current.other?.display_name ?? 'Call')}
-                  >
-                    <Icon name="phone" size={16} /> {othersInCall.length ? 'Join call' : 'Call'}
-                  </button>
-                )
+                <>
+                  {!inCall && (
+                    <button
+                      className={`btn small ${othersInCall.length ? 'success' : 'secondary'}`}
+                      onClick={() => joinCall(identity, current.channel.id, current.channel.id, current.title)}
+                    >
+                      <Icon name="phone" size={16} /> {othersInCall.length ? 'Join call' : 'Call'}
+                    </button>
+                  )}
+                  {current.channel.is_group && (
+                    <button className="icon-btn" title="Group settings — add people, rename, leave" onClick={() => setGroupSettings(true)}>
+                      <Icon name="users" />
+                    </button>
+                  )}
+                </>
               }
             />
           </>
@@ -259,11 +297,16 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
               <button className="btn primary" onClick={() => setNewDm(true)}>
                 New direct message
               </button>
+              <button className="btn secondary" onClick={() => setNewGroup(true)}>
+                New group chat
+              </button>
             </div>
           </div>
         )}
       </main>
       {newDm && <NewDmModal onClose={() => setNewDm(false)} />}
+      {newGroup && <NewGroupModal onClose={() => setNewGroup(false)} />}
+      {groupSettings && current?.channel.is_group && <GroupSettingsModal dm={current} onClose={() => setGroupSettings(false)} />}
     </>
   );
 }
@@ -650,25 +693,28 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
   const [dismissedAt, setDismissedAt] = useState(0);
   const caller = presence.find((p) => p.voice_channel_id === dm.channel.id && p.user_id !== identity.userId);
   const ringing = caller && call?.channelId !== dm.channel.id;
-  const name = dm.other?.display_name ?? 'Someone';
+  const callerProfile = caller ? getProfile(caller.user_id) : null;
+  const name = dm.channel.is_group ? `${callerProfile?.display_name ?? 'Someone'} · ${dm.title}` : dm.title;
   const callerId = caller?.user_id;
   useEffect(() => {
     if (!callerId) setDismissedAt(0);
   }, [callerId]);
   const active = Boolean(ringing && !dismissedAt);
+  // we just hung up and they stayed: don't ring, just offer to rejoin
+  const quiet = leftRecently(dm.channel.id);
   useEffect(() => {
-    if (!active) return;
+    if (!active || quiet) return;
     startRing('incoming');
     notify(`${name} is calling you`, 'Click to open Venband and join the call.', () => openChannel('@me', dm.channel.id), `call-${dm.channel.id}`);
     return () => stopRing('incoming');
-  }, [active, name, dm.channel.id]);
+  }, [active, quiet, name, dm.channel.id]);
   if (!active) return null;
   return (
     <div className="toast" role="alert">
-      <Avatar profile={dm.other} size={40} />
+      <ConvoAvatar dm={dm} size={40} />
       <div className="toast-text">
         <b>{name}</b>
-        <span className="small muted">is calling you…</span>
+        <span className="small muted">{quiet ? 'is still in the call' : 'is calling you…'}</span>
       </div>
       <button className="round-btn hangup small" title="Dismiss" onClick={() => setDismissedAt(Date.now())}>
         <Icon name="phoneOff" size={18} />
@@ -730,5 +776,17 @@ function AppBanner() {
         <Icon name="x" size={16} />
       </button>
     </div>
+  );
+}
+
+/** Avatar for a conversation: the person for DMs, a stacked pair for groups. */
+function ConvoAvatar({ dm, size }: { dm: DmChannel; size: number }) {
+  if (!dm.channel.is_group) return <Avatar profile={dm.other} size={size} />;
+  const [a, b] = dm.members;
+  return (
+    <span className="group-avatar" style={{ width: size, height: size }}>
+      <Avatar profile={a} size={size * 0.68} />
+      {b && <Avatar profile={b} size={size * 0.68} />}
+    </span>
   );
 }
