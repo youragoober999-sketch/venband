@@ -215,34 +215,63 @@ export class Call {
     }
     // keep this call visible in the server / DM sidebar even if you navigate away
     this.releaseScope = acquireScope(this.scopeId);
+    this.tick = setInterval(() => {
+      this.reconcile();
+      if (++this.ticks % 2 === 0) this.broadcastState(); // heartbeat
+    }, 3000);
+    this.connect();
+    this.changed();
+  }
+
+  private retries = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Join the call's realtime channel. If the realtime server drops it (network
+   * blip, rate limit), reconnect on our own instead of silently staying
+   * invisible, which would leave the other person ringing.
+   */
+  private connect() {
+    if (this.closed) return;
     const rt = supabase.channel(`call:${this.channelId}`, {
       config: { private: true, presence: { key: this.session }, broadcast: { self: false } },
     });
     this.rt = rt;
     rt.on('presence', { event: 'sync' }, () => this.reconcile());
     rt.on('presence', { event: 'join' }, () => this.broadcastState()); // newcomers learn our state right away
-    this.tick = setInterval(() => {
-      this.reconcile();
-      if (++this.ticks % 2 === 0) this.broadcastState(); // heartbeat
-    }, 3000);
     rt.on('broadcast', { event: 'signal' }, ({ payload }) => this.onSignal(payload as Signal));
     rt.on('broadcast', { event: 'state' }, ({ payload }) => this.onState(payload as CallMeta));
     rt.subscribe((status) => {
+      if (this.rt !== rt || this.closed) return;
       if (status === 'SUBSCRIBED') {
+        this.retries = 0;
         this.status = 'connected';
+        if (this.error?.startsWith('Reconnecting') || this.error?.startsWith('Could not connect')) this.error = null;
         // the one Presence write for this call
         rt.track({ user_id: this.identity.userId, session: this.session });
         this.publishState();
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        this.error = 'Could not connect to the voice channel (check your permissions).';
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        this.retries++;
+        this.status = 'connecting';
+        this.error =
+          this.retries > 4
+            ? 'Could not connect to the voice channel. Still trying… (check your connection)'
+            : 'Reconnecting to the call…';
         this.changed();
+        if (this.retryTimer) clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => {
+          if (this.closed || this.rt !== rt) return;
+          this.rt = null; // so the CLOSED event from removing it is ignored
+          supabase.removeChannel(rt);
+          this.connect();
+        }, Math.min(10_000, 800 * 2 ** Math.min(this.retries, 4)));
       }
     });
-    this.changed();
   }
 
   leave() {
     if (this.closed) return;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
     this.closed = true;
     this.status = 'closed';
     for (const p of this.peers.values()) {
@@ -348,6 +377,9 @@ export class Call {
       senders: { cam: [], screen: [] },
     };
     this.peers.set(session, peer);
+    // someone else is here: the call was answered (stops ring-back right away)
+    this.everJoined = true;
+    stopRing('outgoing');
 
     if (this.mic?.getAudioTracks().length) {
       for (const t of this.mic.getTracks()) pc.addTrack(t, this.mic);

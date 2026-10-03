@@ -1114,3 +1114,16 @@ code.id { font-size: 11px; color: var(--muted); }
 /* dialogs and menus always sit above the full-screen settings page */
 .modal-backdrop { z-index: 100; }
 .toasts { z-index: 120; }
+
+/* DM / group call panel: tiles fill the panel's height in one row instead of overflowing */
+.voice-view.compact .tiles { overflow: hidden; padding: 10px 12px 4px; }
+.voice-view.compact .tile-grid,
+.voice-view.compact.expanded .tile-grid {
+  grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+  height: 100%; min-height: 0; align-content: stretch; justify-content: stretch;
+}
+.voice-view.compact .tile { aspect-ratio: auto; height: 100%; min-height: 0; max-height: none; }
+.voice-view.compact .tiles.has-focus .tile-grid { grid-auto-flow: row; grid-template-columns: 1fr; grid-auto-columns: auto; }
+.voice-view.compact .tiles.has-focus .tile:not(.big) { display: none; }
+.voice-view.compact .tiles.has-focus .tile.big { max-height: none; aspect-ratio: auto; }
+.voice-view.compact .call-controls { margin: 2px auto 10px; }

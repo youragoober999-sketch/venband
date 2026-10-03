@@ -19,7 +19,7 @@ export function CallAudio() {
     if (!call) {
       mixer.set([], false);
       const cur = callUi.get();
-      if (Object.keys(cur.hidden).length || Object.keys(cur.muted).length) callUi.set({ hidden: {}, muted: {} });
+      if (Object.keys(cur.hidden).length || Object.keys(cur.muted).length || cur.selfPreview) callUi.set({ hidden: {}, muted: {}, selfPreview: false });
       return;
     }
     const inputs: SinkInput[] = [];
@@ -168,6 +168,8 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
   const [isFull, setIsFull] = useState(false);
   const key = tile.kind === 'screen' ? streamKey(tile.userId) : voiceKey(tile.userId);
   const hidden = callUi.use((s) => Boolean(s.hidden[key])) && tile.kind === 'screen' && !tile.local;
+  const selfPreview = callUi.use((s) => s.selfPreview);
+  const ownScreenHidden = tile.local && tile.kind === 'screen' && !selfPreview;
   const locallyMuted = callUi.use((s) => Boolean(s.muted[key]));
   useEffect(() => {
     const on = () => setIsFull(document.fullscreenElement === box.current);
@@ -180,15 +182,17 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
     else box.current?.requestFullscreen().catch(() => {});
   };
   useEffect(() => {
-    if (ref.current && tile.video && !hidden) {
+    if (ref.current && tile.video && !hidden && !ownScreenHidden) {
       ref.current.srcObject = tile.video;
       ref.current.play().catch(() => {});
     }
-  }, [tile.video, hidden]);
+  }, [tile.video, hidden, ownScreenHidden]);
 
   function menu(e: React.MouseEvent) {
     const items: (MenuItem | false)[] = [{ type: 'header', label: tile.kind === 'screen' ? `${name}’s screen` : name }];
-    if (tile.video && !hidden) items.push({ label: isFull ? 'Exit full screen' : 'Full screen', icon: isFull ? 'minimize' : 'maximize', onClick: () => toggleFull() });
+    if (tile.video && !hidden && !ownScreenHidden) items.push({ label: isFull ? 'Exit full screen' : 'Full screen', icon: isFull ? 'minimize' : 'maximize', onClick: () => toggleFull() });
+    if (tile.local && tile.kind === 'screen')
+      items.push({ type: 'check', label: 'Show my stream preview', checked: selfPreview, onChange: (v) => callUi.set({ selfPreview: v }) });
     if (!tile.local) {
       items.push(
         { type: 'sep' },
@@ -239,12 +243,20 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
       ref={box}
       className={`tile${speaking ? ' speaking' : ''}${big ? ' big' : ''}${tile.kind === 'screen' ? ' screen' : ''}${isFull ? ' fullscreen' : ''}${hidden ? ' stopped' : ''}`}
       // screen shares: click = real full screen. cameras: click = spotlight, double-click = full screen
-      onClick={isFull || hidden ? undefined : tile.kind === 'screen' && tile.video ? () => toggleFull() : onClick}
+      onClick={isFull || hidden || ownScreenHidden ? undefined : tile.kind === 'screen' && tile.video ? () => toggleFull() : onClick}
       onDoubleClick={tile.video && tile.kind !== 'screen' ? toggleFull : undefined}
       onContextMenu={menu}
       title={tile.kind === 'screen' && !isFull && !hidden ? 'Click for full screen · right-click for volume' : undefined}
     >
-      {hidden ? (
+      {ownScreenHidden ? (
+        <div className="tile-stopped">
+          <Icon name="screen" size={28} />
+          <span>You’re sharing your screen</span>
+          <button className="btn small secondary" onClick={(e) => (e.stopPropagation(), callUi.set({ selfPreview: true }))}>
+            Show preview
+          </button>
+        </div>
+      ) : hidden ? (
         <div className="tile-stopped">
           <Icon name="eyeOff" size={28} />
           <span>You stopped watching</span>
@@ -264,13 +276,13 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
         {locallyMuted && <Icon name="volumeOff" size={14} />}
         {tile.deafened ? <Icon name="headphonesOff" size={14} /> : tile.muted ? <Icon name="micOff" size={14} /> : null}
       </div>
-      {tile.video && !hidden && (
+      {tile.video && !hidden && !ownScreenHidden && (
         <button className={`tile-full${tile.kind === 'screen' ? ' always' : ''}`} onClick={toggleFull} title={isFull ? 'Exit full screen (Esc)' : 'Full screen'}>
           <Icon name={isFull ? 'minimize' : 'maximize'} size={16} />
           {tile.kind === 'screen' && <span>{isFull ? 'Exit' : 'Full screen'}</span>}
         </button>
       )}
-      {!tile.local && (
+      {(!tile.local || tile.kind === 'screen') && (
         <button className="tile-more" title="Volume and more" onClick={(e) => (e.stopPropagation(), menu(e))}>
           <Icon name="more" size={16} />
         </button>

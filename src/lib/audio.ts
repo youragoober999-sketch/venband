@@ -11,7 +11,13 @@ export interface SinkInput {
 }
 
 /** Per-call, not saved: streams you stopped watching or muted locally. */
-export const callUi = createStore<{ hidden: Record<string, boolean>; muted: Record<string, boolean> }>({ hidden: {}, muted: {} });
+export const callUi = createStore<{ hidden: Record<string, boolean>; muted: Record<string, boolean>; selfPreview: boolean }>({
+  hidden: {},
+  muted: {},
+  // Showing your own screen share to yourself creates a "hall of mirrors"
+  // (and gets captured again) when you share your whole screen. Off by default.
+  selfPreview: false,
+});
 
 export function streamKey(userId: string) {
   return `stream:${userId}`;
