@@ -24,6 +24,16 @@
 - **Direct messages:** 1-on-1 DMs, including DM calls that ring the other person.
 - **Voice, video and screen sharing:** calls use WebRTC with mute, deafen, camera, screen share (with audio), speaking indicators and a focus view.
 - **Security fingerprints:** you can check another user's fingerprint to make sure nobody is intercepting your conversation, and you get a warning if someone's key changes.
+- **Friends:** friend requests, a private nickname and note for anyone, pinning, muting and blocking.
+- **Profiles:** banner, pronouns, custom status, online / idle / do-not-disturb / invisible, animated nameplates, server tags and badges, plus mutual servers, mutual friends and account age.
+- **Formatting:** Discord-style markdown (`**bold**`, `||spoilers||`, headings, quotes, lists, code), and `@user`, `@role`, `@everyone`, `@here` and `#channel` mentions with autocomplete.
+- **Embeds and GIFs:** YouTube, Spotify, Instagram and TikTok links become players (click-to-load by default, for privacy). GIF search through [Klipy](https://klipy.com), favourites that sync to every device, and "make a GIF" from your own pictures, right on your device.
+- **Translation:** pick your language when you sign up. Messages can be translated automatically or with a right-click. Translation runs on your device, so it doesn't break end-to-end encryption.
+- **Servers:** new servers get `#welcome` (with join messages) and `#chat`. Owners can set a description, a server tag, a banner colour and an AutoMod slur filter.
+- **Discovery:** verified servers and servers with 1,000+ members appear in the Discover tab.
+- **Settings:** account, profile, privacy, devices (see every logged-in device with its rough location and log it out), appearance with a theme marketplace and theme creator, voice & video (devices, noise suppression, screen share up to 1440p 60 fps), chat and language. Everything syncs to your account.
+- **Moderation (Venband staff):** search any user or server; apply badges; make an account limited, very limited or banned; put a server in review (frozen), pass or fail the review, verify it or ban it. Every action is written to an audit log.
+- **Quality of life:** right-click menus everywhere, per-person and per-stream volume up to 200%, stream attenuation, resizable panels, and real URLs (`/sign-in`, `/register`, `/channels/@me/<user>`, `/channels/<server>/<channel>`).
 
 ## How it runs (no PC required)
 
@@ -72,7 +82,7 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 
 1. Create a free project at <https://supabase.com/dashboard>.
 2. Load the database schema. Use **either** option:
-   - **Dashboard:** open **SQL Editor** and run each file in `supabase/migrations/` **in order**: paste the whole file, click **Run**, then do the next one (`20260928000000_venband_schema.sql`, `20260929000000_explicit_grants.sql`, `20260930000000_profile_self_heal.sql`, then `20261001000000_group_chats.sql`). Or simply run `supabase/repair.sql` after the first file — it contains all the later ones.
+   - **Dashboard:** open **SQL Editor** and run each file in `supabase/migrations/` **in order**: paste the whole file, click **Run**, then do the next one (`20260928000000_venband_schema.sql`, `20260929000000_explicit_grants.sql`, `20260930000000_profile_self_heal.sql`, `20261001000000_group_chats.sql`, then `20261002000000_platform.sql`). Or simply run `supabase/repair.sql` after the first file — it contains all the later ones.
    - **CLI:** `npx supabase login && npx supabase link --project-ref <ref> && npx supabase db push`
 3. **Authentication → Sign In / Providers → Email:** check that **Confirm email** is **on**.
 4. **Authentication → URL Configuration:**
@@ -81,7 +91,9 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 5. **Authentication → Emails → SMTP Settings:** turn on **custom SMTP** (for example Resend: host `smtp.resend.com`, port `465`, user `resend`, password = your API key). Supabase's built-in mailer is only for testing: it sends a handful of emails per hour, and only to your own team's addresses.
 6. **Authentication → Policies / Password:** set the minimum length to **32**. This is optional hardening: Venband always sends a 64-character derived key, so plain passwords can't be used against the API directly.
 7. **Realtime → Settings:** turn **off** "Allow public access" so only authorized private channels work.
-8. **Project Settings → API:** copy the **Project URL** and the **anon / publishable key**.
+8. **Authentication → Hooks → Before User Created:** choose **Postgres** and the function `public.before_user_created`. This limits sign-ups to 6 accounts per IP address (IPs are stored only as salted hashes). One account per email is always enforced by Supabase.
+9. **Make yourself the owner:** sign up with the username `sl` (or whichever account should run the platform; change the name in the SQL), then run `supabase/repair.sql` again. The first time it runs with that account present, it becomes the platform **owner** with every badge. After that, staff roles are only changed from **Settings → Moderation**.
+10. **Project Settings → API:** copy the **Project URL** and the **anon / publishable key**.
 
 ### 2. Publish the app (GitHub Pages)
 
@@ -90,8 +102,9 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 3. **Settings → Secrets and variables → Actions → Variables:** add
    - `VITE_SUPABASE_URL`: your Project URL
    - `VITE_SUPABASE_ANON_KEY`: your anon / publishable key
+   - `VITE_KLIPY_API_KEY` (optional): your Klipy key from <https://partner.klipy.com>, for GIF search
 
-   Both values are public by design; Row Level Security protects the data.
+   These values end up in the public web app by design; Row Level Security protects the data. Never commit them to the repository.
 4. Push to `main` (or run the **Deploy to GitHub Pages** workflow). Your app is live at `https://<user>.github.io/venband/`.
 
 **Optional:** if friends behind strict corporate or mobile networks can't connect to calls, add a TURN server with the variables `VITE_TURN_URL`, `VITE_TURN_USERNAME` and `VITE_TURN_CREDENTIAL`. A TURN server only relays already-encrypted media.
@@ -108,9 +121,10 @@ Run [`supabase/repair.sql`](supabase/repair.sql) in the Supabase **SQL Editor**.
 ### Deploy on Vercel instead (or as well)
 
 1. On <https://vercel.com/new>, import this GitHub repository. Vercel reads `vercel.json`, so the build settings are already correct.
-2. Under **Environment Variables**, add `VITE_SUPABASE_URL` (your Supabase project URL) and `VITE_SUPABASE_ANON_KEY` (the **anon** or **publishable** key). Never add the `service_role` or secret key: the app doesn't need it, and anything in a `VITE_` variable is visible to everyone.
+2. Under **Environment Variables**, add `VITE_SUPABASE_URL` (your Supabase project URL), `VITE_SUPABASE_ANON_KEY` (the **anon** or **publishable** key) and, for GIFs, `VITE_KLIPY_API_KEY`. Never add the `service_role` or secret key: the app doesn't need it, and anything in a `VITE_` variable is visible to everyone.
 3. Click **Deploy**. Then in Supabase → **Authentication → URL Configuration**, add your Vercel URL (for example `https://venband.vercel.app/`) to **Redirect URLs**, and make it the **Site URL** if it's your main address. Otherwise signup and password-reset emails will link to the wrong site.
-4. Optional: in Vercel → **Settings → Domains**, add your own domain or subdomain, e.g. `chat.yoursite.com`, and add that URL in Supabase too.
+4. On Vercel the Devices list also shows each device's city and state (from Vercel's own IP location headers, see `api/geo.js`). On GitHub Pages it shows the device without a location.
+5. Optional: in Vercel → **Settings → Domains**, add your own domain or subdomain, e.g. `chat.yoursite.com`, and add that URL in Supabase too.
 
 ## Local development
 
