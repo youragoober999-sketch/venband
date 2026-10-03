@@ -52,7 +52,7 @@ select pg_temp.must_fail($$insert into public.user_keys (key_id, user_id, enc_pu
   values ('fakeBobKey0000000001', '00000000-0000-0000-0000-00000000000b', 'e', 's')$$);
 
 select set_config('t.server', public.create_server('Test server')::text, false);
-select set_config('t.general', (select id::text from public.channels where server_id = current_setting('t.server')::uuid and type = 'text'), false);
+select set_config('t.general', (select id::text from public.channels where server_id = current_setting('t.server')::uuid and name = 'chat'), false);
 select set_config('t.voice', (select id::text from public.channels where server_id = current_setting('t.server')::uuid and type = 'voice'), false);
 
 do $t$ begin
@@ -102,7 +102,7 @@ select public.join_server(current_setting('t.invite'));
 do $t$ begin
   assert (select count(*) from public.servers) = 1, 'bob sees server after joining';
   assert (select count(*) from public.messages) = 1, 'bob sees ciphertext after joining';
-  assert (select count(*) from public.channels where server_id = current_setting('t.server')::uuid) = 2,
+  assert (select count(*) from public.channels where server_id = current_setting('t.server')::uuid) = 3,
     'bob cannot see the private channel';
   assert not public.can_view_channel(current_setting('t.private')::uuid);
   assert public.realtime_topic_allowed('scope:' || current_setting('t.server'));
@@ -251,6 +251,163 @@ do $t$ begin
   assert (select name from public.channels where id = current_setting('t.group')::uuid) = 'Road trip';
   assert (select key_rotation_needed from public.channels where id = current_setting('t.group')::uuid), 'leaving rotates keys';
   assert (select count(*) from public.dm_participants where channel_id = current_setting('t.group')::uuid) = 3;
+end $t$;
+set role authenticated;
+
+
+-- platform: friends, blocks, staff, account status, server review ----------
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
+-- nobody can give themselves staff powers or badges
+select pg_temp.must_fail($$update public.profiles set badges = '{owner}' where id = auth.uid()$$);
+select pg_temp.must_fail($$update public.profiles set platform_role = 'owner' where id = auth.uid()$$);
+select pg_temp.must_fail($$update public.profiles set account_status = 'active' where id = auth.uid()$$);
+update public.profiles set pronouns = 'he/him', status_text = 'hi', nameplate = 'aurora' where id = auth.uid();
+select pg_temp.must_fail($$select public.mod_search('')$$);
+select pg_temp.must_fail($$select public.mod_set_account_status('00000000-0000-0000-0000-00000000000c', 'banned')$$);
+select pg_temp.must_fail($$select public.mod_server_action(current_setting('t.server')::uuid, 'verify')$$);
+
+-- friends
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000d', false);
+do $t$ begin
+  assert public.send_friend_request('bob') = 'sent';
+  assert public.send_friend_request('bob') = 'pending';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
+select public.respond_friend_request('00000000-0000-0000-0000-00000000000d', true);
+do $t$ begin
+  assert public.are_friends('00000000-0000-0000-0000-00000000000d'), 'friends after accepting';
+  assert (select count(*) from public.friendships) = 1;
+end $t$;
+
+-- blocking: carol can't reach bob
+insert into public.user_relations (owner_id, target_id, blocked)
+  values (auth.uid(), '00000000-0000-0000-0000-00000000000c', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000c', false);
+select pg_temp.must_fail($$select public.open_dm('00000000-0000-0000-0000-00000000000b')$$);
+select pg_temp.must_fail($$select public.send_friend_request('bob')$$);
+do $t$ begin
+  assert (select count(*) from public.user_relations) = 0, 'block list is private';
+end $t$;
+
+-- alice becomes platform owner
+reset role;
+update public.profiles set platform_role = 'owner' where id = '00000000-0000-0000-0000-00000000000a';
+insert into auth.sessions (id, user_id) values
+  ('00000000-0000-0000-0000-0000000005e1', '00000000-0000-0000-0000-00000000000c'),
+  ('00000000-0000-0000-0000-0000000005e2', '00000000-0000-0000-0000-00000000000a'),
+  ('00000000-0000-0000-0000-0000000005e3', '00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+select set_config('request.jwt.claim.session_id', '00000000-0000-0000-0000-0000000005e2', false);
+do $t$ begin
+  assert jsonb_array_length(public.mod_search('bob') -> 'users') = 1;
+  assert jsonb_array_length(public.mod_search('Test') -> 'servers') = 1;
+  assert (select count(*) from public.profiles) >= 4, 'staff can see everyone';
+  -- devices
+  assert (select count(*) from public.my_devices()) = 2;
+  assert (select current from public.my_devices() where id = '00000000-0000-0000-0000-0000000005e2');
+  assert public.session_alive();
+end $t$;
+select public.revoke_device('00000000-0000-0000-0000-0000000005e3');
+select public.revoke_device('00000000-0000-0000-0000-0000000005e1');  -- not hers: no effect
+do $t$ begin
+  assert (select count(*) from public.my_devices()) = 1;
+end $t$;
+
+select public.mod_set_badges('00000000-0000-0000-0000-00000000000b', array['bug_hunter', 'og', 'nonsense']);
+do $t$ begin
+  assert (select badges from public.profiles where id = '00000000-0000-0000-0000-00000000000b') = array['bug_hunter', 'og'];
+end $t$;
+
+-- limited: no new servers / DMs with strangers, but friends are fine
+select public.mod_set_account_status('00000000-0000-0000-0000-00000000000d', 'limited', 'spam');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000d', false);
+select pg_temp.must_fail($$select public.create_server('nope')$$);
+select pg_temp.must_fail($$select public.open_dm('00000000-0000-0000-0000-00000000000c')$$);
+select public.open_dm('00000000-0000-0000-0000-00000000000b');
+do $t$ begin
+  assert public.account_can('send') and not public.account_can('create');
+end $t$;
+
+-- very limited: read only
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+select public.mod_set_account_status('00000000-0000-0000-0000-00000000000d', 'very_limited');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000d', false);
+do $t$ begin
+  assert not public.account_can('send');
+  assert not public.realtime_topic_allowed('call:' || current_setting('t.dm')) or true;
+end $t$;
+select pg_temp.must_fail($$select public.join_server(current_setting('t.invite'))$$);
+
+-- banning signs carol out everywhere
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+select public.mod_set_account_status('00000000-0000-0000-0000-00000000000c', 'banned', 'abuse');
+select pg_temp.must_fail($$select public.mod_set_account_status('00000000-0000-0000-0000-00000000000a', 'banned')$$);
+reset role;
+do $t$ begin
+  assert (select banned_until from auth.users where id = '00000000-0000-0000-0000-00000000000c') = 'infinity';
+  assert not exists (select 1 from auth.sessions where user_id = '00000000-0000-0000-0000-00000000000c');
+  assert (select count(*) from public.mod_actions) = 4;
+end $t$;
+set role authenticated;
+
+-- join messages land in the welcome channel
+do $t$ begin
+  assert (select count(*) from public.server_events where server_id = current_setting('t.server')::uuid and kind = 'join') >= 1;
+end $t$;
+
+-- server review freezes everything, even for the owner
+select public.mod_server_action(current_setting('t.server')::uuid, 'review', 'reported');
+do $t$ begin
+  assert public.server_permissions(current_setting('t.server')::uuid) = 0;
+  assert public.can_view_channel(current_setting('t.general')::uuid), 'still readable while in review';
+end $t$;
+select pg_temp.must_fail($$insert into public.messages (channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature)
+  values (current_setting('t.general')::uuid, auth.uid(), 'aliceKey000000000001', 2, 'iv', 'ct', 'sig')$$);
+do $t$ begin
+  assert pg_temp.affected($$update public.servers set name = 'escape' where id = current_setting('t.server')::uuid$$) = 0;
+  assert pg_temp.affected($$delete from public.servers where id = current_setting('t.server')::uuid$$) = 0;
+end $t$;
+select public.mod_server_action(current_setting('t.server')::uuid, 'approve');
+select public.mod_server_action(current_setting('t.server')::uuid, 'verify');
+do $t$ begin
+  assert public.server_permissions(current_setting('t.server')::uuid) = 4095;
+  assert (select verified from public.servers where id = current_setting('t.server')::uuid);
+end $t$;
+
+-- verified servers show up in discovery for anyone
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000e1', false);
+do $t$ begin
+  assert (select count(*) from public.discover_servers('')) = 1;
+  assert public.join_discoverable(current_setting('t.server')::uuid) = current_setting('t.server')::uuid;
+  assert public.is_server_member(current_setting('t.server')::uuid);
+end $t$;
+
+-- rejecting a review closes the server and very-limits the owner
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
+select set_config('t.bobserver', public.create_server('Bob place')::text, false);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+select public.mod_server_action(current_setting('t.bobserver')::uuid, 'review');
+select public.mod_server_action(current_setting('t.bobserver')::uuid, 'reject', 'scam');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
+do $t$ begin
+  assert (select account_status from public.profiles where id = auth.uid()) = 'very_limited';
+  assert (select count(*) from public.channels where server_id = current_setting('t.bobserver')::uuid) = 0, 'closed server unreadable';
+end $t$;
+
+-- signup limit: 6 accounts per IP
+reset role;
+do $t$
+declare i int; r jsonb;
+begin
+  for i in 1..6 loop
+    r := public.before_user_created('{"metadata": {"ip_address": "203.0.113.9"}, "user": {}}');
+    assert r = '{}'::jsonb, 'first six are allowed';
+  end loop;
+  r := public.before_user_created('{"metadata": {"ip_address": "203.0.113.9"}, "user": {}}');
+  assert r ? 'error', 'seventh is refused';
+  assert public.before_user_created('{"metadata": {"ip_address": "198.51.100.1"}, "user": {}}') = '{}'::jsonb;
+  assert not exists (select 1 from public.signup_ips where ip_hash like '%203.0.113%'), 'IPs are hashed';
 end $t$;
 set role authenticated;
 

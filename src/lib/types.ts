@@ -1,10 +1,36 @@
+export type PlatformRole = 'user' | 'moderator' | 'admin' | 'owner';
+export type AccountStatus = 'active' | 'limited' | 'very_limited' | 'banned';
+export type PresenceStatus = 'online' | 'idle' | 'dnd' | 'invisible';
+
 export interface Profile {
   id: string;
   username: string;
   display_name: string;
   avatar_color: string;
   about: string;
+  created_at?: string;
+  pronouns?: string;
+  status_text?: string;
+  status_emoji?: string;
+  presence?: PresenceStatus;
+  banner_color?: string | null;
+  banner_color2?: string | null;
+  accent_color?: string | null;
+  nameplate?: string;
+  tag_server_id?: string | null;
+  server_tag?: string | null;
+  badges?: string[];
+  platform_role?: PlatformRole;
+  account_status?: AccountStatus;
+  language?: string;
+  onboarded?: boolean;
 }
+
+/** Columns other people may read (keep in sync with directory.loadProfiles). */
+export const PROFILE_COLUMNS =
+  'id, username, display_name, avatar_color, about, created_at, pronouns, status_text, status_emoji, presence, banner_color, banner_color2, accent_color, nameplate, tag_server_id, server_tag, badges, platform_role, account_status';
+
+export type ServerStatus = 'active' | 'review' | 'closed' | 'banned';
 
 export interface Server {
   id: string;
@@ -12,6 +38,14 @@ export interface Server {
   owner_id: string;
   icon_color: string;
   created_at: string;
+  description?: string;
+  tag?: string | null;
+  banner_color?: string | null;
+  verified?: boolean;
+  status?: ServerStatus;
+  discoverable?: boolean;
+  welcome_channel_id?: string | null;
+  automod?: { slurs?: boolean };
 }
 
 export type ChannelType = 'text' | 'voice' | 'dm';

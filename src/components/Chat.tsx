@@ -2,16 +2,73 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type R
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { decryptBlob, encryptBlob, type Attachment, type MessagePayload } from '../lib/crypto';
-import { displayName, getProfile, trustState } from '../lib/directory';
+import { displayName, getProfile, loadProfiles, trustState } from '../lib/directory';
 import type { DecryptedMessage } from '../lib/keyring';
-import type { Channel, MessageRow } from '../lib/types';
-import { useMessages, type ServerData } from '../hooks/data';
+import type { Channel, MessageRow, Profile } from '../lib/types';
+import { openChannel, useMessages, type ServerData } from '../hooks/data';
 import { setViewingChannel } from '../lib/notify';
+import { socialStore } from '../lib/social';
+import { useSettings } from '../lib/settings';
+import { languageName, translate, translationSupported, type Translation } from '../lib/translate';
+import { containsSlur } from '../lib/automod';
 import { Avatar, Icon } from './ui';
-import { ProfileModal } from './Modals';
+import { Badges } from './Badges';
+import { copyText, openMenu, type Entry } from './ContextMenu';
+import { askConfirm } from './Dialogs';
+import { Embed, findEmbeds, isBareGif, Markdown, mentionsMe, type MentionContext } from './Markdown';
+import { GifPicker, toggleGifFavorite } from './GifPicker';
+import { openProfile, ServerTag, userMenu } from './People';
 
 const MAX_TEXT = 4000;
 const MAX_FILE = 25 * 1024 * 1024;
+
+interface JoinEvent {
+  id: string;
+  user_id: string;
+  created_at: string;
+}
+
+/** "X joined the server" events for the server's welcome channel. */
+function useJoinEvents(serverId: string | null) {
+  const [events, setEvents] = useState<JoinEvent[]>([]);
+  useEffect(() => {
+    setEvents([]);
+    if (!serverId) return;
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase
+        .from('server_events')
+        .select('id, user_id, created_at')
+        .eq('server_id', serverId)
+        .eq('kind', 'join')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      const rows = (data ?? []) as JoinEvent[];
+      await loadProfiles(rows.map((r) => r.user_id));
+      if (!cancelled) setEvents(rows.reverse());
+    };
+    load();
+    const ch = supabase
+      .channel(`dbs:${serverId}:events`, { config: { private: true } })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'server_events', filter: `server_id=eq.${serverId}` }, load)
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(ch);
+    };
+  }, [serverId]);
+  return events;
+}
+
+const JOIN_LINES = [
+  (n: ReactNode) => <>Everyone welcome {n}!</>,
+  (n: ReactNode) => <>{n} just landed.</>,
+  (n: ReactNode) => <>{n} joined the party.</>,
+  (n: ReactNode) => <>Glad you’re here, {n}.</>,
+  (n: ReactNode) => <>{n} just showed up. Say hi!</>,
+  (n: ReactNode) => <>Welcome, {n}. We hope you brought snacks.</>,
+  (n: ReactNode) => <>{n} hopped into the server.</>,
+];
 
 export function ChatView({
   channel,
@@ -20,6 +77,7 @@ export function ChatView({
   canManage,
   headerExtra,
   data,
+  dmMembers,
 }: {
   channel: Channel;
   title: string;
@@ -27,21 +85,29 @@ export function ChatView({
   canManage: boolean;
   headerExtra?: ReactNode;
   data?: ServerData;
+  /** other people in a DM / group (for @mentions) */
+  dmMembers?: Profile[];
 }) {
   const { messages, hasMore, loadOlder, keyStatus, upsertLocal, removeLocal } = useMessages(channel);
   const identity = sessionStore.use((s) => s.identity)!;
+  const me = sessionStore.use((s) => s.me)!;
+  const relations = socialStore.use((s) => s.relations);
+  const showJoins = useSettings((s) => s.chat.showJoins);
+  const isWelcome = Boolean(data?.server?.welcome_channel_id && data.server.welcome_channel_id === channel.id);
+  const joins = useJoinEvents(isWelcome && showJoins ? (data?.server?.id ?? null) : null);
   const [replyTo, setReplyTo] = useState<DecryptedMessage | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [profileOf, setProfileOf] = useState<string | null>(null);
   const typingAt = useTyping(channel.id);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const byId = useMemo(() => new Map(messages.map((m) => [m.row.id, m])), [messages]);
+  const automod = Boolean(data?.server?.automod?.slurs);
+  const myRoleIds = data?.rolesOf(me.id).map((r) => r.id) ?? [];
 
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, joins]);
 
   useEffect(() => {
     stick.current = true;
@@ -58,7 +124,21 @@ export function ChatView({
   const nameOf = (userId: string) => displayName(userId, data?.members.find((m) => m.user_id === userId)?.nickname);
   const colorOf = (userId: string) => data?.rolesOf(userId).find((r) => r.color !== '#99aab5')?.color;
 
-  async function send(text: string, files: File[]) {
+  const mentionCtx: MentionContext = {
+    userName: (id) => (getProfile(id) ? nameOf(id) : null),
+    roleOf: (id) => {
+      const r = data?.roles.find((x) => x.id === id);
+      return r ? { name: r.name, color: r.color } : null;
+    },
+    channelName: (id) => data?.channels.find((c) => c.id === id)?.name ?? null,
+    isMe: (id) => id === me.id,
+    myRoleIds,
+    onUser: (id) => openProfile(id, data?.server?.id),
+    onChannel: (id) => data?.server && openChannel(data.server.id, id),
+  };
+
+  async function sendPayload(text: string, files: File[]) {
+    if (automod && containsSlur(text)) throw new Error('AutoMod blocked this message: it contains a slur this server doesn’t allow.');
     const keyring = sessionStore.get().keyring!;
     await keyring.prepareSend(channel.id);
     const attachments: Attachment[] = [];
@@ -91,6 +171,7 @@ export function ChatView({
   }
 
   async function saveEdit(m: DecryptedMessage, text: string) {
+    if (automod && containsSlur(text)) throw new Error('AutoMod blocked this edit.');
     const keyring = sessionStore.get().keyring!;
     await keyring.prepareSend(channel.id);
     const env = await keyring.encrypt(channel.id, m.row.id, { ...m.payload!, text });
@@ -105,13 +186,38 @@ export function ChatView({
     setEditing(null);
   }
 
-  async function remove(m: DecryptedMessage) {
-    if (!confirm('Delete this message?')) return;
+  async function remove(m: DecryptedMessage, skipConfirm = false) {
+    if (!skipConfirm && !(await askConfirm({ title: 'Delete message', body: 'Delete this message for everyone?', confirm: 'Delete', danger: true }))) return;
     const { error } = await supabase.from('messages').delete().eq('id', m.row.id);
     if (error) return alert(errorMessage(error));
     for (const a of m.payload?.attachments ?? []) supabase.storage.from('attachments').remove([a.path]);
     removeLocal(m.row.id);
   }
+
+  // messages and join notices, in time order
+  const timeline = useMemo(() => {
+    const items: ({ kind: 'msg'; m: DecryptedMessage; at: string } | { kind: 'join'; e: JoinEvent; at: string })[] = messages.map((m) => ({
+      kind: 'msg' as const,
+      m,
+      at: m.row.created_at,
+    }));
+    const oldest = messages[0]?.row.created_at;
+    for (const e of joins) if (!hasMore || !oldest || e.created_at >= oldest) items.push({ kind: 'join', e, at: e.created_at });
+    return items.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  }, [messages, joins, hasMore]);
+
+  const mentionables = useMemo(() => {
+    const people: Profile[] = data
+      ? (data.members.map((m) => getProfile(m.user_id)).filter(Boolean) as Profile[])
+      : [me, ...(dmMembers ?? [])];
+    return {
+      people: people.map((p) => ({ id: p.id, label: nameOf(p.id), sub: p.username, profile: p })),
+      roles: (data?.roles ?? []).filter((r) => !r.is_default).map((r) => ({ id: r.id, label: r.name, color: r.color })),
+      channels: (data?.channels ?? []).filter((c) => c.type === 'text').map((c) => ({ id: c.id, label: c.name })),
+      everyone: Boolean(data),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, dmMembers, me]);
 
   return (
     <div className="chat">
@@ -121,7 +227,11 @@ export function ChatView({
         <span className="lock-hint" title="End-to-end encrypted: only people in this conversation can read it.">
           <Icon name="lock" size={13} />
         </span>
-        {channel.topic && <span className="topic">{channel.topic}</span>}
+        {channel.topic && (
+          <span className="topic">
+            <Markdown text={channel.topic} ctx={mentionCtx} />
+          </span>
+        )}
         <div className="chat-header-actions">{headerExtra}</div>
       </header>
       <div
@@ -140,33 +250,63 @@ export function ChatView({
         {!hasMore && (
           <div className="channel-intro">
             <div className="channel-intro-icon">
-              <Icon name={channel.type === 'dm' ? 'message' : 'hash'} size={36} />
+              <Icon name={isWelcome ? 'hand' : channel.type === 'dm' ? 'message' : 'hash'} size={36} />
             </div>
-            <h1>{channel.type === 'dm' ? title : `#${title}`}</h1>
+            <h1>{isWelcome ? `Welcome to ${data?.server?.name}` : channel.type === 'dm' ? title : `#${title}`}</h1>
             <p className="muted">
-              {channel.type === 'dm'
-                ? `This is the start of your conversation with ${title}.`
-                : `This is the start of #${title}.`}{' '}
+              {isWelcome
+                ? 'This is the beginning of the server. New members are announced here.'
+                : channel.type === 'dm'
+                  ? `This is the start of your conversation with ${title}.`
+                  : `This is the start of #${title}.`}{' '}
               Only the people in here can read it.
             </p>
           </div>
         )}
-        {messages.map((m, i) => {
-          const prev = messages[i - 1];
+        {timeline.map((item, i) => {
+          const prevItem = timeline[i - 1];
+          const newDay = !prevItem || new Date(prevItem.at).toDateString() !== new Date(item.at).toDateString();
+          const divider = newDay && (
+            <div className="day-divider">
+              <span>{new Date(item.at).toLocaleDateString(undefined, { dateStyle: 'long' })}</span>
+            </div>
+          );
+          if (item.kind === 'join') {
+            const line = JOIN_LINES[parseInt(item.e.id.slice(0, 4), 16) % JOIN_LINES.length];
+            return (
+              <Fragment key={item.e.id}>
+                {divider}
+                <div className="system-message">
+                  <span className="system-icon">
+                    <Icon name="userPlus" size={16} />
+                  </span>
+                  <span>
+                    {line(
+                      <button
+                        className="author"
+                        onClick={() => openProfile(item.e.user_id, data?.server?.id)}
+                        onContextMenu={(e) => openMenu(e, userMenu(item.e.user_id, { data }))}
+                      >
+                        {nameOf(item.e.user_id)}
+                      </button>,
+                    )}
+                  </span>
+                  <time dateTime={item.e.created_at}>{friendlyTime(new Date(item.e.created_at))}</time>
+                </div>
+              </Fragment>
+            );
+          }
+          const m = item.m;
+          const prev = prevItem?.kind === 'msg' ? prevItem.m : null;
           const grouped =
             prev &&
             prev.row.author_id === m.row.author_id &&
             !m.row.reply_to &&
             new Date(m.row.created_at).getTime() - new Date(prev.row.created_at).getTime() < 5 * 60_000;
-          const newDay = !prev || new Date(prev.row.created_at).toDateString() !== new Date(m.row.created_at).toDateString();
           const mine = m.row.author_id === identity.userId;
           return (
             <Fragment key={m.row.id}>
-              {newDay && (
-                <div className="day-divider">
-                  <span>{new Date(m.row.created_at).toLocaleDateString(undefined, { dateStyle: 'long' })}</span>
-                </div>
-              )}
+              {divider}
               <MessageItem
                 m={m}
                 grouped={Boolean(grouped) && !newDay}
@@ -178,12 +318,16 @@ export function ChatView({
                 editing={editing === m.row.id}
                 canEdit={mine && Boolean(m.payload)}
                 canDelete={mine || canManage}
+                blocked={!mine && Boolean(relations[m.row.author_id]?.blocked)}
+                automod={automod}
+                mentioned={!mine && Boolean(m.payload) && mentionsMe(m.payload!.text, me.id, myRoleIds, channel.type !== 'dm')}
+                ctx={mentionCtx}
+                data={data}
                 onReply={() => setReplyTo(m)}
                 onEdit={() => setEditing(m.row.id)}
                 onCancelEdit={() => setEditing(null)}
                 onSaveEdit={(t) => saveEdit(m, t)}
-                onDelete={() => remove(m)}
-                onProfile={() => setProfileOf(m.row.author_id)}
+                onDelete={(skip) => remove(m, skip)}
               />
             </Fragment>
           );
@@ -191,8 +335,7 @@ export function ChatView({
       </div>
       {keyStatus === 'waiting' && (
         <div className="key-wait">
-          <Icon name="lock" size={16} /> Waiting for another member to come online and share this channel’s encryption key
-          with you…
+          <Icon name="lock" size={16} /> Waiting for another member to come online and share this channel’s encryption key with you…
         </div>
       )}
       <div className="typing">{typing.length > 0 && `${typing.map((u) => nameOf(u)).join(', ')} ${typing.length > 1 ? 'are' : 'is'} typing…`}</div>
@@ -202,9 +345,9 @@ export function ChatView({
         disabled={!canSend || keyStatus !== 'ready'}
         replyTo={replyTo ? nameOf(replyTo.row.author_id) : null}
         onCancelReply={() => setReplyTo(null)}
-        onSend={send}
+        onSend={sendPayload}
+        mentionables={mentionables}
       />
-      {profileOf && <ProfileModal userId={profileOf} data={data} onClose={() => setProfileOf(null)} />}
     </div>
   );
 }
@@ -220,12 +363,16 @@ function MessageItem({
   editing,
   canEdit,
   canDelete,
+  blocked,
+  automod,
+  mentioned,
+  ctx,
+  data,
   onReply,
   onEdit,
   onCancelEdit,
   onSaveEdit,
   onDelete,
-  onProfile,
 }: {
   m: DecryptedMessage;
   grouped: boolean;
@@ -237,17 +384,87 @@ function MessageItem({
   editing: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  blocked: boolean;
+  automod: boolean;
+  mentioned: boolean;
+  ctx: MentionContext;
+  data?: ServerData;
   onReply: () => void;
   onEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: (t: string) => Promise<void>;
-  onDelete: () => void;
-  onProfile: () => void;
+  onDelete: (skipConfirm?: boolean) => void;
 }) {
   const time = new Date(m.row.created_at);
   const trust = trustState(m.row.author_id);
+  const author = getProfile(m.row.author_id);
+  const translateMode = useSettings((s) => s.translateMode);
+  const [reveal, setReveal] = useState(false);
+  const [translation, setTranslation] = useState<Translation | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [trError, setTrError] = useState<string | null>(null);
+  const text = m.payload?.text ?? '';
+  const flagged = automod && !mine && containsSlur(text);
+
+  useEffect(() => {
+    if (translateMode !== 'auto' || mine || !text || !translationSupported()) return;
+    let cancelled = false;
+    translate(m.row.id, text)
+      .then((t) => !cancelled && setTranslation(t))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [translateMode, mine, text, m.row.id]);
+
+  async function doTranslate() {
+    setTrError(null);
+    try {
+      const t = await translate(m.row.id, text);
+      if (!t) setTrError('This message is already in your language.');
+      setTranslation(t);
+      setShowOriginal(false);
+    } catch (e) {
+      setTrError(errorMessage(e));
+    }
+  }
+
+  const embeds = m.payload && !editing ? findEmbeds(text) : [];
+  const bareGif = isBareGif(text);
+  const shownText = translation && !showOriginal ? translation.text : text;
+
+  function menu(e: React.MouseEvent) {
+    const items: Entry[] = [
+      m.payload && { label: 'Reply', icon: 'reply', onClick: onReply },
+      canEdit && { label: 'Edit Message', icon: 'edit', onClick: onEdit },
+      m.payload && text && { label: 'Copy Text', icon: 'copy', onClick: () => copyText(text) },
+      m.payload &&
+        text &&
+        (translation
+          ? { label: showOriginal ? 'Show Translation' : 'Show Original', icon: 'translate', onClick: () => setShowOriginal((v) => !v) }
+          : { label: 'Translate', icon: 'translate', onClick: doTranslate }),
+      bareGif && { label: 'Favorite GIF', icon: 'star', onClick: () => toggleGifFavorite({ id: text, url: text.trim(), preview: text.trim(), width: 1, height: 1 }) },
+      { type: 'sep' },
+      canDelete && { label: 'Delete Message', icon: 'trash', danger: true, hint: 'shift-click skips', onClick: () => onDelete(e.shiftKey) },
+      { type: 'sep' },
+      { label: 'Copy Message ID', icon: 'copy', onClick: () => copyText(m.row.id) },
+    ];
+    openMenu(e, items);
+  }
+
+  if (blocked && !reveal) {
+    return (
+      <div className="message blocked-message">
+        <Icon name="block" size={14} /> Message from someone you blocked.
+        <button className="btn link" onClick={() => setReveal(true)}>
+          Show
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className={`message${grouped ? ' grouped' : ''}`}>
+    <div className={`message${grouped ? ' grouped' : ''}${mentioned ? ' mentioned' : ''}`} onContextMenu={menu}>
       {m.row.reply_to && (
         <div className="reply-ref">
           <Icon name="reply" size={14} />
@@ -264,17 +481,27 @@ function MessageItem({
         {grouped ? (
           <span className="hover-time">{time.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
         ) : (
-          <button className="avatar-btn" onClick={onProfile}>
-            <Avatar profile={getProfile(m.row.author_id)} size={40} />
+          <button
+            className="avatar-btn"
+            onClick={() => openProfile(m.row.author_id, data?.server?.id)}
+            onContextMenu={(e) => openMenu(e, userMenu(m.row.author_id, { data }))}
+          >
+            <Avatar profile={author} size={40} />
           </button>
         )}
         <div className="message-body">
           {!grouped && (
             <div className="message-meta">
-              <button className="author" style={{ color }} onClick={onProfile}>
+              <button
+                className="author"
+                style={{ color }}
+                onClick={() => openProfile(m.row.author_id, data?.server?.id)}
+                onContextMenu={(e) => openMenu(e, userMenu(m.row.author_id, { data }))}
+              >
                 {name}
               </button>
-              {mine && <span className="tag-soft accent">you</span>}
+              <Badges ids={author?.badges} max={4} size={15} />
+              <ServerTag tag={author?.server_tag} />
               {trust === 'changed' && (
                 <span className="trust-warn" title="This user's security key changed. Verify their fingerprint.">
                   <Icon name="warning" size={14} />
@@ -302,11 +529,47 @@ function MessageItem({
           )}
           {m.payload &&
             (editing ? (
-              <EditBox initial={m.payload.text} onCancel={onCancelEdit} onSave={onSaveEdit} />
+              <EditBox initial={text} onCancel={onCancelEdit} onSave={onSaveEdit} />
+            ) : flagged && !reveal ? (
+              <div className="undecryptable">
+                <Icon name="shield" size={14} /> Hidden by AutoMod.
+                <button className="btn link" onClick={() => setReveal(true)}>
+                  Show anyway
+                </button>
+              </div>
             ) : (
-              <div className="message-text">
-                <RichText text={m.payload.text} />
-                {m.row.edited_at && <span className="edited">(edited)</span>}
+              <>
+                {!bareGif && shownText && (
+                  <div className="message-text">
+                    <Markdown text={shownText} ctx={ctx} />
+                    {m.row.edited_at && <span className="edited">(edited)</span>}
+                  </div>
+                )}
+                {translation && (
+                  <div className="translated-note">
+                    <Icon name="translate" size={12} />
+                    {showOriginal ? 'Original' : `Translated from ${languageName(translation.from)}`} ·{' '}
+                    <button className="btn link" onClick={() => setShowOriginal((v) => !v)}>
+                      {showOriginal ? 'show translation' : 'show original'}
+                    </button>
+                  </div>
+                )}
+                {trError && <div className="translated-note">{trError}</div>}
+              </>
+            ))}
+          {!flagged &&
+            embeds.map((e) => (
+              <div key={e.src} className="embed-wrap">
+                <Embed e={e} />
+                {e.kind === 'gif' && (
+                  <button
+                    className="gif-star embed-star"
+                    title="Add to favorites"
+                    onClick={() => toggleGifFavorite({ id: e.src, url: e.src, preview: e.src, width: 1, height: 1 })}
+                  >
+                    <Icon name="star" size={16} />
+                  </button>
+                )}
               </div>
             ))}
           {m.payload?.attachments?.map((a) => <AttachmentView key={a.path} a={a} />)}
@@ -317,16 +580,24 @@ function MessageItem({
               <Icon name="reply" size={16} />
             </button>
           )}
+          {m.payload && text && !mine && (
+            <button className="icon-btn" onClick={doTranslate} title="Translate">
+              <Icon name="translate" size={16} />
+            </button>
+          )}
           {canEdit && (
             <button className="icon-btn" onClick={onEdit} title="Edit">
               <Icon name="edit" size={16} />
             </button>
           )}
           {canDelete && (
-            <button className="icon-btn danger-text" onClick={onDelete} title="Delete">
+            <button className="icon-btn danger-text" onClick={(e) => onDelete(e.shiftKey)} title="Delete (shift-click to skip confirmation)">
               <Icon name="trash" size={16} />
             </button>
           )}
+          <button className="icon-btn" onClick={menu} title="More">
+            <Icon name="more" size={16} />
+          </button>
         </div>
       </div>
     </div>
@@ -357,41 +628,6 @@ function EditBox({ initial, onSave, onCancel }: { initial: string; onSave: (t: s
       </span>
     </div>
   );
-}
-
-// Safe rendering: never uses innerHTML. Supports links, `code`, ```blocks```, **bold**, *italic*.
-function RichText({ text }: { text: string }) {
-  const parts: ReactNode[] = [];
-  const blocks = text.split(/```/);
-  blocks.forEach((block, i) => {
-    if (i % 2 === 1) {
-      parts.push(
-        <pre key={i}>
-          <code>{block.replace(/^\w*\n/, '')}</code>
-        </pre>,
-      );
-      return;
-    }
-    const re = /(https?:\/\/[^\s<]+[^\s<.,:;"')\]!?])|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*/g;
-    let last = 0;
-    let match: RegExpExecArray | null;
-    let k = 0;
-    while ((match = re.exec(block))) {
-      if (match.index > last) parts.push(block.slice(last, match.index));
-      if (match[1]) {
-        parts.push(
-          <a key={`${i}-${k++}`} href={match[1]} target="_blank" rel="noopener noreferrer nofollow">
-            {match[1]}
-          </a>,
-        );
-      } else if (match[2]) parts.push(<code key={`${i}-${k++}`}>{match[2]}</code>);
-      else if (match[3]) parts.push(<strong key={`${i}-${k++}`}>{match[3]}</strong>);
-      else if (match[4]) parts.push(<em key={`${i}-${k++}`}>{match[4]}</em>);
-      last = re.lastIndex;
-    }
-    if (last < block.length) parts.push(block.slice(last));
-  });
-  return <>{parts}</>;
 }
 
 function formatSize(n: number) {
@@ -460,6 +696,17 @@ function AttachmentView({ a }: { a: Attachment }) {
   );
 }
 
+// --------------------------------------------------------------- composer --
+
+interface Mentionables {
+  people: { id: string; label: string; sub: string; profile: Profile }[];
+  roles: { id: string; label: string; color: string }[];
+  channels: { id: string; label: string }[];
+  everyone: boolean;
+}
+
+type Suggestion = { key: string; insert: string; token: string; label: ReactNode; sub?: string };
+
 function Composer({
   channelId,
   placeholder,
@@ -467,6 +714,7 @@ function Composer({
   replyTo,
   onCancelReply,
   onSend,
+  mentionables,
 }: {
   channelId: string;
   placeholder: string;
@@ -474,31 +722,118 @@ function Composer({
   replyTo: string | null;
   onCancelReply: () => void;
   onSend: (text: string, files: File[]) => Promise<void>;
+  mentionables: Mentionables;
 }) {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gifs, setGifs] = useState(false);
+  const [caret, setCaret] = useState(0);
+  const [sel, setSel] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const lastTyping = useRef(0);
+  // "@Name" shown in the box -> "<@id>" sent
+  const tokens = useRef(new Map<string, string>());
+  // caret position to restore right after the next render (keeps fast typing in order)
+  const pendingCaret = useRef<number | null>(null);
   const sendTyping = useTypingSender(channelId);
 
   useEffect(() => {
     setText('');
     setFiles([]);
     setError(null);
+    tokens.current = new Map();
   }, [channelId]);
 
-  async function submit() {
-    const t = text.trim();
-    if ((!t && !files.length) || busy) return;
+  // grow with content
+  useLayoutEffect(() => {
+    const el = textarea.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+    if (pendingCaret.current !== null) {
+      el.focus();
+      el.setSelectionRange(pendingCaret.current, pendingCaret.current);
+      setCaret(pendingCaret.current);
+      pendingCaret.current = null;
+    }
+  }, [text]);
+
+  const query = useMemo(() => {
+    const before = text.slice(0, caret);
+    const m = before.match(/(^|\s)([@#])([^\s@#]{0,32})$/);
+    return m ? { trigger: m[2], q: m[3].toLowerCase(), start: caret - m[3].length - 1 } : null;
+  }, [text, caret]);
+
+  const suggestions: Suggestion[] = useMemo(() => {
+    if (!query) return [];
+    if (query.trigger === '#')
+      return mentionables.channels
+        .filter((c) => c.label.toLowerCase().includes(query.q))
+        .slice(0, 8)
+        .map((c) => ({ key: c.id, insert: `#${c.label}`, token: `<#${c.id}>`, label: <># {c.label}</> }));
+    const out: Suggestion[] = mentionables.people
+      .filter((p) => p.label.toLowerCase().includes(query.q) || p.sub.includes(query.q))
+      .slice(0, 8)
+      .map((p) => ({
+        key: p.id,
+        insert: `@${p.label}`,
+        token: `<@${p.id}>`,
+        label: (
+          <>
+            <Avatar profile={p.profile} size={22} /> {p.label}
+          </>
+        ),
+        sub: p.sub,
+      }));
+    for (const r of mentionables.roles.filter((r) => r.label.toLowerCase().includes(query.q)).slice(0, 5))
+      out.push({ key: r.id, insert: `@${r.label}`, token: `<@&${r.id}>`, label: <span style={{ color: r.color }}>@{r.label}</span>, sub: 'role' });
+    if (mentionables.everyone)
+      for (const w of ['everyone', 'here'])
+        if (w.startsWith(query.q))
+          out.push({ key: w, insert: `@${w}`, token: `@${w}`, label: `@${w}`, sub: w === 'everyone' ? 'Notify everyone in this channel' : 'Notify everyone online' });
+    return out;
+  }, [query, mentionables]);
+
+  useEffect(() => setSel(0), [query?.q, query?.trigger]);
+
+  function pick(s: Suggestion) {
+    if (!query) return;
+    const before = text.slice(0, query.start);
+    const after = text.slice(caret);
+    const next = `${before}${s.insert} ${after}`;
+    tokens.current.set(s.insert, s.token);
+    pendingCaret.current = before.length + s.insert.length + 1;
+    setText(next);
+  }
+
+  function encodeMentions(t: string): string {
+    let out = t;
+    // longest first so "@Sam Smith" wins over "@Sam"
+    for (const [shown, token] of [...tokens.current.entries()].sort((a, b) => b[0].length - a[0].length)) out = out.split(shown).join(token);
+    // typed @username without picking from the list
+    out = out.replace(/(^|\s)@([a-z0-9_.]{2,32})\b/g, (all, pre: string, u: string) => {
+      const p = mentionables.people.find((x) => x.sub === u);
+      return p ? `${pre}<@${p.id}>` : all;
+    });
+    return out;
+  }
+
+  async function submit(raw = text, extraFiles: File[] = []) {
+    const t = encodeMentions(raw.trim());
+    const all = [...files, ...extraFiles];
+    if ((!t && !all.length) || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await onSend(t, files);
-      setText('');
-      setFiles([]);
+      await onSend(t, all);
+      if (raw === text) {
+        setText('');
+        setFiles([]);
+        tokens.current = new Map();
+      }
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -529,6 +864,31 @@ function Composer({
         </div>
       )}
       {error && <div className="form-error">{error}</div>}
+      {suggestions.length > 0 && (
+        <div className="mention-pop" role="listbox">
+          <div className="mention-pop-title">{query?.trigger === '#' ? 'Channels' : 'Members & roles'}</div>
+          {suggestions.map((s, i) => (
+            <button
+              key={s.key}
+              role="option"
+              aria-selected={i === sel}
+              className={`mention-option${i === sel ? ' active' : ''}`}
+              onMouseDown={(e) => (e.preventDefault(), pick(s))}
+              onMouseEnter={() => setSel(i)}
+            >
+              <span className="mention-label">{s.label}</span>
+              {s.sub && <span className="small muted">{s.sub}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      {gifs && (
+        <GifPicker
+          onClose={() => setGifs(false)}
+          onPick={(url) => submit(url)}
+          onFile={(f) => submit('', [f])}
+        />
+      )}
       <div className={`composer${disabled ? ' disabled' : ''}`}>
         <button className="icon-btn" disabled={disabled} onClick={() => fileInput.current?.click()} title="Attach encrypted file">
           <Icon name="plus" />
@@ -555,16 +915,34 @@ function Composer({
           placeholder={placeholder}
           onChange={(e) => {
             setText(e.target.value);
+            setCaret(e.target.selectionStart ?? e.target.value.length);
             if (Date.now() - lastTyping.current > 3000) {
               lastTyping.current = Date.now();
               sendTyping();
             }
           }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
           onPaste={(e) => {
             const pasted = [...e.clipboardData.files];
             if (pasted.length) setFiles((f) => [...f, ...pasted.filter((x) => x.size <= MAX_FILE)].slice(0, 10));
           }}
           onKeyDown={(e) => {
+            if (suggestions.length) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSel((s) => (s + (e.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length);
+                return;
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                pick(suggestions[sel]);
+                return;
+              }
+              if (e.key === 'Escape') {
+                setCaret(-1);
+                return;
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               submit();
@@ -574,18 +952,20 @@ function Composer({
         {busy ? (
           <div className="spinner small" />
         ) : (
-          <EmojiButton
-            disabled={disabled}
-            onPick={(emoji) => {
-              const el = textarea.current;
-              const at = el?.selectionStart ?? text.length;
-              setText((t) => t.slice(0, at) + emoji + t.slice(el?.selectionEnd ?? at));
-              requestAnimationFrame(() => {
-                el?.focus();
-                el?.setSelectionRange(at + emoji.length, at + emoji.length);
-              });
-            }}
-          />
+          <>
+            <button type="button" className="icon-btn gif-btn" disabled={disabled} onClick={() => setGifs((g) => !g)} title="GIFs">
+              <Icon name="gif" />
+            </button>
+            <EmojiButton
+              disabled={disabled}
+              onPick={(emoji) => {
+                const el = textarea.current;
+                const at = el?.selectionStart ?? text.length;
+                pendingCaret.current = at + emoji.length;
+                setText((t) => t.slice(0, at) + emoji + t.slice(el?.selectionEnd ?? at));
+              }}
+            />
+          </>
         )}
       </div>
     </div>
@@ -604,7 +984,7 @@ function useTyping(channelId: string) {
     const ch = supabase.channel(`chan:${channelId}`, { config: { private: true, broadcast: { self: false } } });
     ch.on('broadcast', { event: 'typing' }, ({ payload }) => {
       const uid = (payload as { user_id?: string }).user_id;
-      if (uid && uid !== me) setTyping((t) => ({ ...t, [uid]: Date.now() }));
+      if (uid && uid !== me && !socialStore.get().relations[uid]?.blocked) setTyping((t) => ({ ...t, [uid]: Date.now() }));
     });
     ch.subscribe();
     typingChannels.set(channelId, ch);

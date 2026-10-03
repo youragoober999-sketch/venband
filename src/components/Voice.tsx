@@ -3,34 +3,38 @@ import { sessionStore } from '../lib/session';
 import { leaveCall, type RemotePeer } from '../lib/call';
 import { displayName, getProfile } from '../lib/directory';
 import { has, P } from '../lib/permissions';
+import { attenuationOf, callUi, mixer, streamKey, voiceKey, volumeOf, type SinkInput } from '../lib/audio';
+import { updateLayout, updateSettings, useSettings } from '../lib/settings';
 import type { ServerData } from '../hooks/data';
 import { useActiveCall } from './Shell';
 import { Avatar, Icon } from './ui';
+import { openMenu, type MenuItem } from './ContextMenu';
+import { Resizer } from './Resizer';
 
 /** Plays every remote audio stream while in a call (kept mounted app-wide). */
 export function CallAudio() {
   const call = useActiveCall();
-  if (!call) return null;
-  return (
-    <div hidden>
-      {call.remotePeers.flatMap((p) =>
-        [...p.streams.values()]
-          .filter((s) => s.getAudioTracks().length > 0)
-          .map((s) => <AudioSink key={`${p.session}-${s.id}`} stream={s} muted={call.deafened} />),
-      )}
-    </div>
-  );
-}
-
-function AudioSink({ stream, muted }: { stream: MediaStream; muted: boolean }) {
-  const ref = useRef<HTMLAudioElement>(null);
+  const hidden = callUi.use((s) => s.hidden);
   useEffect(() => {
-    if (ref.current) {
-      ref.current.srcObject = stream;
-      ref.current.play().catch(() => {});
+    if (!call) {
+      mixer.set([], false);
+      const cur = callUi.get();
+      if (Object.keys(cur.hidden).length || Object.keys(cur.muted).length) callUi.set({ hidden: {}, muted: {} });
+      return;
     }
-  }, [stream]);
-  return <audio ref={ref} autoPlay muted={muted} />;
+    const inputs: SinkInput[] = [];
+    for (const p of call.remotePeers) {
+      for (const s of p.streams.values()) {
+        if (!s.getAudioTracks().length) continue;
+        const isScreen = p.meta?.screen === s.id;
+        const key = isScreen ? streamKey(p.userId) : voiceKey(p.userId);
+        if (isScreen && hidden[key]) continue; // stopped watching: no audio either
+        inputs.push({ key, stream: s, kind: isScreen ? 'stream' : 'voice' });
+      }
+    }
+    mixer.set(inputs, call.deafened);
+  });
+  return null;
 }
 
 function useSpeaking(stream: MediaStream | null, enabled = true) {
@@ -94,6 +98,7 @@ export function VoiceView({ data, compact }: { data?: ServerData; compact?: bool
   const call = useActiveCall();
   const me = sessionStore.use((s) => s.me)!;
   const [focus, setFocus] = useState<string | null>(null);
+  const callHeight = useSettings((s) => s.layout.callHeight);
   if (!call) return null;
 
   const tiles: Tile[] = [
@@ -105,9 +110,13 @@ export function VoiceView({ data, compact }: { data?: ServerData; compact?: bool
   const sharing = tiles.some((t) => t.kind === 'screen');
   const canVideo = !data || has(data.myPermissions, P.VIDEO);
   const nameOf = (id: string) => displayName(id, data?.members.find((m) => m.user_id === id)?.nickname);
+  const expanded = compact && (focused || sharing);
 
   return (
-    <div className={`voice-view${compact ? ' compact' : ''}${compact && (focused || sharing) ? ' expanded' : ''}`}>
+    <div
+      className={`voice-view${compact ? ' compact' : ''}${expanded ? ' expanded' : ''}`}
+      style={compact ? { height: expanded ? Math.max(callHeight, 360) : callHeight } : undefined}
+    >
       {!compact && (
         <header className="chat-header">
           <Icon name="speaker" />
@@ -122,13 +131,7 @@ export function VoiceView({ data, compact }: { data?: ServerData; compact?: bool
         {/* One list: focusing a tile only restyles it, it never re-mounts the video */}
         <div className="tile-grid" data-count={tiles.length}>
           {tiles.map((t) => (
-            <VideoTile
-              key={t.key}
-              tile={t}
-              name={nameOf(t.userId)}
-              big={t.key === focus}
-              onClick={() => setFocus((f) => (f === t.key ? null : t.key))}
-            />
+            <VideoTile key={t.key} tile={t} name={nameOf(t.userId)} big={t.key === focus} onClick={() => setFocus((f) => (f === t.key ? null : t.key))} />
           ))}
         </div>
       </div>
@@ -149,8 +152,13 @@ export function VoiceView({ data, compact }: { data?: ServerData; compact?: bool
           <Icon name="phoneOff" />
         </button>
       </div>
+      {compact && <Resizer axis="y" value={callHeight} min={180} max={Math.round(window.innerHeight * 0.8)} onChange={(v) => updateLayout({ callHeight: v })} />}
     </div>
   );
+}
+
+function setVolume(key: string, v: number) {
+  updateSettings((s) => ({ volumes: { ...s.volumes, [key]: v } }));
 }
 
 function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onClick: () => void; big?: boolean }) {
@@ -158,6 +166,9 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
   const box = useRef<HTMLDivElement>(null);
   const speaking = useSpeaking(tile.audio, !tile.muted);
   const [isFull, setIsFull] = useState(false);
+  const key = tile.kind === 'screen' ? streamKey(tile.userId) : voiceKey(tile.userId);
+  const hidden = callUi.use((s) => Boolean(s.hidden[key])) && tile.kind === 'screen' && !tile.local;
+  const locallyMuted = callUi.use((s) => Boolean(s.muted[key]));
   useEffect(() => {
     const on = () => setIsFull(document.fullscreenElement === box.current);
     document.addEventListener('fullscreenchange', on);
@@ -169,21 +180,79 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
     else box.current?.requestFullscreen().catch(() => {});
   };
   useEffect(() => {
-    if (ref.current && tile.video) {
+    if (ref.current && tile.video && !hidden) {
       ref.current.srcObject = tile.video;
       ref.current.play().catch(() => {});
     }
-  }, [tile.video]);
+  }, [tile.video, hidden]);
+
+  function menu(e: React.MouseEvent) {
+    const items: (MenuItem | false)[] = [{ type: 'header', label: tile.kind === 'screen' ? `${name}’s screen` : name }];
+    if (tile.video && !hidden) items.push({ label: isFull ? 'Exit full screen' : 'Full screen', icon: isFull ? 'minimize' : 'maximize', onClick: () => toggleFull() });
+    if (!tile.local) {
+      items.push(
+        { type: 'sep' },
+        {
+          type: 'slider',
+          label: tile.kind === 'screen' ? 'Stream volume' : 'User volume',
+          value: volumeOf(key),
+          min: 0,
+          max: 200,
+          step: 5,
+          format: (v) => `${v}%`,
+          onChange: (v) => setVolume(key, v),
+        },
+      );
+      if (tile.kind === 'screen')
+        items.push({
+          type: 'slider',
+          label: 'Stream attenuation',
+          value: attenuationOf(key),
+          min: 0,
+          max: 100,
+          step: 5,
+          format: (v) => (v ? `−${v}% while people talk` : 'Off'),
+          onChange: (v) => setVolume(`att:${key}`, v),
+        });
+      items.push({
+        type: 'check',
+        label: tile.kind === 'screen' ? 'Mute stream' : 'Mute',
+        checked: locallyMuted,
+        onChange: (v) => callUi.set((s) => ({ muted: { ...s.muted, [key]: v } })),
+      });
+      if (tile.kind === 'screen')
+        items.push({
+          label: hidden ? 'Watch stream' : 'Stop watching',
+          icon: hidden ? 'eye' : 'eyeOff',
+          danger: !hidden,
+          onClick: () => {
+            if (document.fullscreenElement === box.current) document.exitFullscreen().catch(() => {});
+            callUi.set((s) => ({ hidden: { ...s.hidden, [key]: !hidden } }));
+          },
+        });
+    }
+    openMenu(e, items);
+  }
+
   return (
     <div
       ref={box}
-      className={`tile${speaking ? ' speaking' : ''}${big ? ' big' : ''}${tile.kind === 'screen' ? ' screen' : ''}${isFull ? ' fullscreen' : ''}`}
+      className={`tile${speaking ? ' speaking' : ''}${big ? ' big' : ''}${tile.kind === 'screen' ? ' screen' : ''}${isFull ? ' fullscreen' : ''}${hidden ? ' stopped' : ''}`}
       // screen shares: click = real full screen. cameras: click = spotlight, double-click = full screen
-      onClick={isFull ? undefined : tile.kind === 'screen' && tile.video ? () => toggleFull() : onClick}
+      onClick={isFull || hidden ? undefined : tile.kind === 'screen' && tile.video ? () => toggleFull() : onClick}
       onDoubleClick={tile.video && tile.kind !== 'screen' ? toggleFull : undefined}
-      title={tile.kind === 'screen' && !isFull ? 'Click for full screen' : undefined}
+      onContextMenu={menu}
+      title={tile.kind === 'screen' && !isFull && !hidden ? 'Click for full screen · right-click for volume' : undefined}
     >
-      {tile.video ? (
+      {hidden ? (
+        <div className="tile-stopped">
+          <Icon name="eyeOff" size={28} />
+          <span>You stopped watching</span>
+          <button className="btn small secondary" onClick={() => callUi.set((s) => ({ hidden: { ...s.hidden, [key]: false } }))}>
+            Watch stream
+          </button>
+        </div>
+      ) : tile.video ? (
         <video ref={ref} autoPlay playsInline muted className={tile.local && tile.kind === 'user' ? 'mirror' : ''} />
       ) : (
         <Avatar profile={getProfile(tile.userId)} size={big ? 96 : 72} speaking={speaking} />
@@ -192,12 +261,18 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
         {tile.kind === 'screen' && <span className="live-badge">LIVE</span>}
         {name}
         {tile.kind === 'screen' ? '’s screen' : ''}
+        {locallyMuted && <Icon name="volumeOff" size={14} />}
         {tile.deafened ? <Icon name="headphonesOff" size={14} /> : tile.muted ? <Icon name="micOff" size={14} /> : null}
       </div>
-      {tile.video && (
+      {tile.video && !hidden && (
         <button className={`tile-full${tile.kind === 'screen' ? ' always' : ''}`} onClick={toggleFull} title={isFull ? 'Exit full screen (Esc)' : 'Full screen'}>
           <Icon name={isFull ? 'minimize' : 'maximize'} size={16} />
           {tile.kind === 'screen' && <span>{isFull ? 'Exit' : 'Full screen'}</span>}
+        </button>
+      )}
+      {!tile.local && (
+        <button className="tile-more" title="Volume and more" onClick={(e) => (e.stopPropagation(), menu(e))}>
+          <Icon name="more" size={16} />
         </button>
       )}
     </div>

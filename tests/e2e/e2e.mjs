@@ -18,7 +18,7 @@ async function newUser(name) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 850 }, permissions: ['microphone', 'camera'] });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => log(`[${name} pageerror]`, e.message));
-  page.on('console', (m) => m.type() === 'error' && log(`[${name} console]`, m.text().slice(0, 200)));
+  page.on('console', async (m) => { if (m.type() !== 'error') return; const parts = await Promise.all(m.args().map((a) => a.jsonValue().catch(() => '?'))); log(`[${name} console]`, (process.env.E2E_VERBOSE ? parts.map(String).join(' ') : m.text()).slice(0, process.env.E2E_VERBOSE ? 4000 : 200)); });
   return { ctx, page, name, email: `${name}-${run}@example.com`, password: `Correct-Horse-${name}-42!` };
 }
 
@@ -78,13 +78,37 @@ async function login(u, remember = false) {
     if (remember) await page.getByRole('checkbox').check();
     await page.locator('.auth-card').getByRole('button', { name: 'Log in' }).click();
   }
-  await page.locator('.user-panel').waitFor({ timeout: 30000 });
+  await page.locator('.user-panel, .onboarding').first().waitFor({ timeout: 30000 });
+  if (await page.locator('.onboarding').count()) {
+    if (u.name === 'alice') {
+      // walk through first-run setup: language, profile, theme
+      await page.locator('.language-option', { hasText: 'English' }).click();
+      await page.getByRole('button', { name: /Next/ }).click();
+      await page.locator('.onboarding input').nth(1).fill('she/her');
+      await page.getByRole('button', { name: /Next/ }).click();
+      await page.locator('.onboarding-theme', { hasText: 'AMOLED' }).click();
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/1b-onboarding.png` });
+      await page.getByRole('button', { name: 'Let’s go' }).click();
+    } else {
+      await page.getByRole('button', { name: 'Skip for now' }).click();
+    }
+    await page.locator('.user-panel').waitFor({ timeout: 30000 });
+    log(u.name, 'finished onboarding');
+  }
   log(u.name, 'is in the app');
 }
+
+const ctxClick = async (page, target, item) => {
+  await target.click({ button: 'right' });
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: item }).click();
+};
 
 const alice = await newUser('alice');
 const bob = await newUser('bob');
 async function main() {
+const { execSync: sh } = await import('node:child_process');
+// every test run signs up from 127.0.0.1: reset the 6-accounts-per-IP counter
+try { sh(`psql ${DB} -Atc "delete from public.signup_ips"`); } catch { /* table may not exist on old schemas */ }
 
 // ---- unverified login is rejected
 await alice.page.goto(APP);
@@ -93,10 +117,15 @@ log('alice after verify link, page says:', (await alice.page.evaluate(() => docu
 await login(alice);
 
 // ---- create a server
-await alice.page.locator('.rail-item.add').click();
+await alice.page.locator('.rail-item[aria-label="Add a server"]').click();
 await alice.page.locator('.modal input').first().fill('Venband HQ');
 await alice.page.locator('.modal form').getByRole('button', { name: 'Create' }).click();
-await alice.page.getByText('This is the start of #general').waitFor({ timeout: 20000 });
+await alice.page.getByText('Welcome to Venband HQ').waitFor({ timeout: 20000 });
+await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+await alice.page.getByText('This is the start of #chat').waitFor({ timeout: 20000 });
+if (!/\/channels\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/.test(new URL(alice.page.url()).pathname)) throw new Error('unexpected URL ' + alice.page.url());
+log('✅ server URL is', new URL(alice.page.url()).pathname);
+const hqId = new URL(alice.page.url()).pathname.split('/')[2];
 await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
 await alice.page.locator('.composer textarea').fill('hello bob, this is **encrypted** 🔐');
 await alice.page.keyboard.press('Enter');
@@ -119,8 +148,15 @@ await login(bob);
 await bob.page.goto(invite);
 await bob.page.locator('.server-header').waitFor({ timeout: 20000 });
 log('bob joined server');
+await alice.page.locator('.channel .channel-name').getByText('welcome', { exact: true }).click();
+await alice.page.locator('.system-message', { hasText: 'Bob' }).waitFor({ timeout: 20000 });
+log('✅ join message shown in #welcome');
+await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+await bob.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
 await bob.page.getByText('hello bob, this is').waitFor({ timeout: 30000 });
 log('✅ bob decrypted alice message (key was distributed E2E)');
+await bob.page.locator('.message-text strong', { hasText: 'encrypted' }).waitFor();
+log('✅ markdown **bold** renders');
 await bob.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
 await bob.page.locator('.composer textarea').fill('hi alice! got it');
 await bob.page.keyboard.press('Enter');
@@ -162,28 +198,28 @@ const connected = await alice.page.evaluate(() => document.querySelector('.voice
 log('✅ voice call established, remote video visible to bob; status:', connected);
 await bob.page.waitForTimeout(2500);
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/5-voice.png` });
-await alice.page.locator('.channel .channel-name').getByText('general', { exact: true }).click();
+await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
 await alice.page.waitForTimeout(800);
 if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/6-chat.png` });
 
 // ---- kick bob -> key rotation, bob loses access
 await alice.page.locator('.voice-bar [title=Disconnect]').click();
-await alice.page.locator('.member', { hasText: 'Bob' }).click();
-alice.page.once('dialog', (d) => d.accept());
-await alice.page.getByRole('button', { name: 'Kick' }).click();
+await ctxClick(alice.page, alice.page.locator('.members .member', { hasText: 'Bob' }), /Kick Bob/);
+await alice.page.locator('.modal').getByRole('button', { name: 'Kick' }).click();
 await alice.page.waitForTimeout(1500);
 await alice.page.locator('.composer textarea:not([disabled])').waitFor();
 await alice.page.locator('.composer textarea').fill('secret after kick');
 await alice.page.keyboard.press('Enter');
 await alice.page.getByText('secret after kick').waitFor({ timeout: 20000 });
-const epochs = execSync(`psql ${DB} -Atc "select max(epoch) from public.channel_epochs e join public.channels c on c.id=e.channel_id where c.name='general'"`).toString().trim();
-log('✅ after kick, general channel is on key epoch', epochs);
+const epochs = execSync(`psql ${DB} -Atc "select max(epoch) from public.channel_epochs e join public.channels c on c.id=e.channel_id where c.name='chat'"`).toString().trim();
+if (Number(epochs) < 2) throw new Error('key was not rotated after kick');
+log('✅ after kick, #chat is on key epoch', epochs);
 
 // ---- kicked bob is sent home; DMs + DM call ringing
-await bob.page.getByText('It’s quiet in here').waitFor({ timeout: 20000 });
+await bob.page.locator('.friends').waitFor({ timeout: 20000 });
 log('✅ kicked bob was moved out of the server');
 await alice.page.locator('.rail-item.home').click();
-await alice.page.locator('.empty-actions').getByRole('button', { name: 'New direct message' }).click();
+await alice.page.getByTitle('New direct message').click();
 await alice.page.locator('.modal input').fill('bob_' + run);
 await alice.page.getByRole('button', { name: 'Open DM' }).click();
 await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
@@ -194,6 +230,9 @@ log('✅ unread badge shown for the new DM');
 await bob.page.locator('.channel.dm', { hasText: 'Alice' }).click({ timeout: 20000 });
 await bob.page.getByText('private DM for bob only').waitFor({ timeout: 20000 });
 log('✅ DM delivered and decrypted');
+const dmPath = new URL(bob.page.url()).pathname;
+if (!/^\/channels\/@me\/[0-9a-f-]{36}$/.test(dmPath)) throw new Error('unexpected DM URL ' + dmPath);
+log('✅ DM URL is', dmPath);
 // encrypted attachment (1x1 PNG)
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 await alice.page.locator('.composer input[type=file]').setInputFiles({ name: 'pixel.png', mimeType: 'image/png', buffer: png });
@@ -236,7 +275,7 @@ log('✅ deafen/mute toggling keeps both people in the call');
 await bob.page.locator('.voice-bar [title=Disconnect]').click();
 await alice.page.getByText('left the call').waitFor({ timeout: 8000 });
 if ((await alice.page.locator('.voice-view .tile').count()) !== 1) throw new Error('bob still shown in alice\'s call');
-await bob.page.getByText('is still in the call').waitFor({ timeout: 8000 });
+await bob.page.locator('.toast', { hasText: 'is in a call' }).waitFor({ timeout: 8000 });
 log('✅ hanging up is seen immediately; no ringing for the person who left');
 // and joining again from the toast works
 await bob.page.locator('.toast').getByTitle('Join call').click();
@@ -288,6 +327,7 @@ await alice.page.locator('.modal input[placeholder="@username"]').fill('bob_' + 
 await alice.page.locator('.modal').getByRole('button', { name: 'Add', exact: true }).click();
 await alice.page.locator('.modal .role-pill').waitFor();
 await alice.page.locator('.modal').getByRole('button', { name: /Create group/ }).click();
+await alice.page.getByText('This is the start of your conversation with Test crew').waitFor({ timeout: 20000 });
 await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
 await alice.page.locator('.composer textarea').fill('hello group');
 await alice.page.keyboard.press('Enter');
@@ -308,8 +348,114 @@ log('✅ leaving a group works and the group keeps working (keys rotated)');
 await alice.page.reload();
 await alice.page.locator('.user-panel').waitFor({ timeout: 20000 });
 await alice.page.locator('.rail-item:not(.home):not(.add)').first().click();
+await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
 await alice.page.getByText('secret after kick').waitFor({ timeout: 20000 });
 log('✅ refresh keeps you signed in and history still decrypts');
+
+// ---- friends
+await alice.page.locator('.rail-item.home').click();
+await alice.page.locator('.nav-item', { hasText: 'Friends' }).click();
+await alice.page.locator('.friends-tabs').getByRole('button', { name: 'Add Friend' }).click();
+await alice.page.locator('.add-friend-box input').fill('bob_' + run);
+await alice.page.getByRole('button', { name: 'Send Friend Request' }).click();
+await alice.page.getByText('Friend request sent').waitFor({ timeout: 10000 });
+await bob.page.locator('.rail-item.home').click();
+await bob.page.locator('.nav-item', { hasText: 'Friends' }).click();
+await bob.page.locator('.friends-tabs').getByRole('button', { name: /Pending/ }).click();
+await bob.page.locator('.friend-row', { hasText: 'Alice' }).getByTitle('Accept').click();
+await alice.page.locator('.friends-tabs').getByRole('button', { name: 'All', exact: true }).click();
+await alice.page.locator('.friend-row', { hasText: 'Bob' }).waitFor({ timeout: 20000 });
+log('✅ friend request sent and accepted');
+
+// ---- the browser menu is off; our own menus work
+const prevented = await alice.page.evaluate(() => {
+  const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+  document.querySelector('.friends-body').dispatchEvent(ev);
+  return ev.defaultPrevented;
+});
+if (!prevented) throw new Error('browser context menu not disabled');
+await alice.page.locator('.friend-row', { hasText: 'Bob' }).click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Copy User ID' }).waitFor();
+await alice.page.keyboard.press('Escape');
+log('✅ native right-click menu disabled; custom user menu shows');
+
+// ---- @mentions in a DM
+await alice.page.locator('.channel.dm', { hasText: 'Bob' }).first().click();
+await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
+await alice.page.locator('.composer textarea').fill('hey @bo');
+await alice.page.locator('.mention-option', { hasText: 'Bob' }).first().waitFor();
+await alice.page.keyboard.press('Enter');
+await alice.page.keyboard.type('look ||secret||');
+await alice.page.keyboard.press('Enter');
+await bob.page.locator('.channel.dm', { hasText: 'Alice' }).click();
+await bob.page.locator('.message .mention', { hasText: '@Bob' }).waitFor({ timeout: 20000 });
+await bob.page.locator('.message-text', { hasText: 'hey @Bob look' }).waitFor();
+await bob.page.locator('.message.mentioned .md-spoiler').waitFor();
+log('✅ @mention + spoiler delivered and highlighted');
+
+// ---- staff: alice becomes platform owner, gives bob badges, limits + restores him
+execSync(`psql ${DB} -Atc "update public.profiles set platform_role='owner' where username='alice_${run}'"`);
+await alice.page.reload();
+await alice.page.locator('.user-panel').waitFor({ timeout: 30000 });
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Moderation' }).click();
+await alice.page.locator('.mod-search input').fill('bob_' + run);
+const bobCard = alice.page.locator('.mod-card', { hasText: 'bob_' + run });
+await bobCard.waitFor({ timeout: 10000 });
+await bobCard.getByRole('button', { name: /Apply Badges/ }).click();
+await alice.page.locator('.badge-choice', { hasText: 'Bug Bounty Hunter' }).first().click();
+await alice.page.locator('.badge-choice', { hasText: 'OG' }).click();
+await alice.page.getByRole('button', { name: 'Save badges' }).click();
+await bobCard.locator('.badges .badge-wrap').nth(1).waitFor({ timeout: 10000 });
+log('✅ moderation: badges applied');
+await bobCard.getByRole('button', { name: 'Make Limited' }).click();
+await alice.page.locator('.modal input').fill('e2e test');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await bobCard.locator('.pill.limited').waitFor({ timeout: 10000 });
+await bob.page.locator('.app-banner.warn').waitFor({ timeout: 20000 });
+await bob.page.locator('.rail-item[aria-label="Add a server"]').click();
+await bob.page.locator('.modal form').getByRole('button', { name: 'Create' }).click();
+await bob.page.locator('.modal .form-error', { hasText: 'create servers' }).waitFor({ timeout: 10000 });
+await bob.page.keyboard.press('Escape');
+log('✅ limited account is stopped by the database (no new servers)');
+await bobCard.getByRole('button', { name: 'Restore' }).click();
+await alice.page.locator('.modal input').fill('done');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await bobCard.locator('.pill.active').waitFor({ timeout: 10000 });
+await bob.page.locator('.app-banner.warn').waitFor({ state: 'detached', timeout: 20000 });
+log('✅ moderation: limit + restore reach the user live');
+// verify the server so it appears in discovery
+await alice.page.locator('.tabs').getByRole('button', { name: /Servers/ }).click();
+await alice.page.locator('.mod-search input').fill(hqId);
+const hqCard = alice.page.locator('.mod-card', { hasText: hqId });
+await hqCard.getByRole('button', { name: /Verify/ }).click();
+await alice.page.locator('.modal input').fill('official');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await hqCard.locator('.verified-mark').waitFor({ timeout: 10000 });
+log('✅ moderation: server verified');
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/9-moderation.png` });
+// devices + themes
+await alice.page.locator('.sp-tab', { hasText: 'Devices' }).click();
+await alice.page.locator('.device-row').first().waitFor({ timeout: 10000 });
+log('✅ devices tab lists', await alice.page.locator('.device-row').count(), 'device(s)');
+await alice.page.locator('.sp-tab', { hasText: 'Appearance' }).click();
+await alice.page.locator('.theme-card', { hasText: 'Midnight' }).locator('.theme-pick').click();
+const bg = await alice.page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg-1').trim());
+if (bg !== '#070b14') throw new Error('theme not applied: ' + bg);
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/10-appearance.png` });
+await alice.page.locator('.theme-card', { hasText: 'Default' }).locator('.theme-pick').click();
+log('✅ themes apply instantly');
+await alice.page.locator('.sp-close').click();
+// discovery: bob finds the verified server and joins from there
+await bob.page.locator('.rail-item[aria-label="Discover servers"]').click();
+await bob.page.locator(`.discovery-card[data-server-id="${hqId}"]`).click({ timeout: 20000 });
+await bob.page.locator('.server-header', { hasText: 'Venband HQ' }).waitFor({ timeout: 20000 });
+log('✅ discovery: verified server listed and joinable');
+if (SHOTS) {
+  await bob.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+  await bob.page.waitForTimeout(1500);
+  await bob.page.screenshot({ path: `${SHOTS}/11-server-badges.png` });
+}
 
 // ---- logging out and back in works; unticking "stay signed in" asks for the password after refresh
 await alice.page.locator('.user-panel [title="User settings"]').click();
@@ -350,4 +496,4 @@ try {
 await browser.close();
 log('ALL E2E CHECKS PASSED');
 }
-main().catch(async (e) => { console.log('FAIL', e.message.split('\n')[0]); for (const u of [alice, bob]) { try { await u.page.screenshot({ path: `${SHOTS}/fail-${u.name}.png` }); console.log(u.name, 'text:', (await u.page.evaluate(() => document.body.innerText)).slice(0, 700).replace(/\n+/g, ' | ')); } catch {} } process.exit(1); });
+main().catch(async (e) => { console.log('FAIL', e.message.split('\n')[0]); for (const u of [alice, bob]) { try { if (SHOTS) await u.page.screenshot({ path: `${SHOTS}/fail-${u.name}.png` }); console.log(u.name, 'text:', (await u.page.evaluate(() => document.body.innerText)).slice(0, 700).replace(/\n+/g, ' | ')); } catch {} } process.exit(1); });

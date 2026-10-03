@@ -1,0 +1,1000 @@
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { supabase, errorMessage } from '../lib/supabase';
+import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
+import { fingerprint, passwordStrength } from '../lib/crypto';
+import { displayName, getProfile, putProfile } from '../lib/directory';
+import { closeSettings, uiStore, type SettingsTab } from '../lib/ui';
+import { DEFAULT_SETTINGS, updateChat, updateSettings, updateVoice, useSettings } from '../lib/settings';
+import { BUILT_IN_THEMES, sanitizeTheme, THEME_KEYS, type Theme } from '../lib/themes';
+import { describeAgent, listDevices, revokeDevice, type Device } from '../lib/devices';
+import { setRelation, socialStore } from '../lib/social';
+import { LANGUAGES, translationSupported } from '../lib/translate';
+import type { PresenceStatus, Profile, Server } from '../lib/types';
+import { Avatar, ColorPicker, Field, Icon } from './ui';
+import { Badges } from './Badges';
+import { accountAge, bannerStyle, NAMEPLATES, ServerTag } from './People';
+import { askConfirm } from './Dialogs';
+import { ModerationCenter } from './Moderation';
+import { Markdown } from './Markdown';
+
+const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean }[] = [
+  { id: 'account', label: 'My Account', icon: 'user', group: 'User Settings' },
+  { id: 'profile', label: 'Profiles', icon: 'edit', group: 'User Settings' },
+  { id: 'privacy', label: 'Privacy & Safety', icon: 'shield', group: 'User Settings' },
+  { id: 'devices', label: 'Devices', icon: 'monitor', group: 'User Settings' },
+  { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App Settings' },
+  { id: 'voice', label: 'Voice & Video', icon: 'mic', group: 'App Settings' },
+  { id: 'chat', label: 'Chat', icon: 'message', group: 'App Settings' },
+  { id: 'language', label: 'Language', icon: 'globe', group: 'App Settings' },
+  { id: 'moderation', label: 'Moderation', icon: 'gavel', group: 'Venband Staff', staff: true },
+];
+
+export function SettingsPage() {
+  const tab = uiStore.use((s) => s.settings);
+  const me = sessionStore.use((s) => s.me)!;
+  const staff = (me.platform_role ?? 'user') !== 'user';
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.modal-backdrop') && closeSettings();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  if (!tab) return null;
+  const groups = [...new Set(TABS.map((t) => t.group))];
+  return (
+    <div className="settings-page" role="dialog" aria-modal aria-label="Settings">
+      <nav className="sp-nav">
+        <div className="sp-nav-inner">
+          {groups.map((g) => {
+            const items = TABS.filter((t) => t.group === g && (!t.staff || staff));
+            if (!items.length) return null;
+            return (
+              <div key={g}>
+                <div className="sp-group">{g}</div>
+                {items.map((t) => (
+                  <button key={t.id} className={`sp-tab${tab === t.id ? ' active' : ''}`} onClick={() => uiStore.set({ settings: t.id })}>
+                    <Icon name={t.icon} size={16} /> {t.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+          <div className="sp-sep" />
+          <button className="sp-tab danger" onClick={() => (closeSettings(), signOut())}>
+            <Icon name="logout" size={16} /> Log Out
+          </button>
+        </div>
+      </nav>
+      <main className="sp-content">
+        <div className={`sp-inner${tab === 'moderation' ? ' wide' : ''}`}>
+          {tab === 'account' && <AccountTab />}
+          {tab === 'profile' && <ProfileTab />}
+          {tab === 'privacy' && <PrivacyTab />}
+          {tab === 'devices' && <DevicesTab />}
+          {tab === 'appearance' && <AppearanceTab />}
+          {tab === 'voice' && <VoiceTab />}
+          {tab === 'chat' && <ChatTab />}
+          {tab === 'language' && <LanguageTab />}
+          {tab === 'moderation' && staff && <ModerationCenter />}
+        </div>
+        <button className="sp-close" onClick={closeSettings} title="Close (Esc)">
+          <Icon name="x" size={18} />
+          <span>ESC</span>
+        </button>
+      </main>
+    </div>
+  );
+}
+
+function Section({ title, children, desc }: { title: string; desc?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="settings-section">
+      <h3>{title}</h3>
+      {desc && <p className="muted small">{desc}</p>}
+      {children}
+    </section>
+  );
+}
+
+function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="toggle-row">
+      <span>
+        <b>{label}</b>
+        {desc && <span className="small muted">{desc}</span>}
+      </span>
+      <input type="checkbox" className="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
+}
+
+// ---------------------------------------------------------------- account --
+
+function AccountTab() {
+  const me = sessionStore.use((s) => s.me)!;
+  const session = sessionStore.use((s) => s.session);
+  const identity = sessionStore.use((s) => s.identity)!;
+  const [fp, setFp] = useState('');
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [showEmail, setShowEmail] = useState(false);
+  useEffect(() => {
+    fingerprint(identity.encPublic, identity.signPublic).then(setFp);
+  }, [identity]);
+  const email = session?.user.email ?? '';
+  return (
+    <>
+      <h2>My Account</h2>
+      <div className="account-card">
+        <div className="account-banner" style={bannerStyle(me)} />
+        <div className="account-head">
+          <Avatar profile={me} size={80} />
+          <div>
+            <h3>
+              {me.display_name} <Badges ids={me.badges} size={18} />
+            </h3>
+            <span className="muted">@{me.username}</span>
+          </div>
+        </div>
+        <div className="account-rows">
+          <div className="account-row">
+            <div>
+              <div className="field-label">Username</div>
+              <div>{me.username}</div>
+            </div>
+          </div>
+          <div className="account-row">
+            <div>
+              <div className="field-label">Email</div>
+              <div>{showEmail ? email : email.replace(/^(.).*(@.*)$/, (_m, a: string, b: string) => `${a}${'•'.repeat(8)}${b}`)}</div>
+            </div>
+            <button className="btn link" onClick={() => setShowEmail((v) => !v)}>
+              {showEmail ? 'Hide' : 'Reveal'}
+            </button>
+          </div>
+          <div className="account-row">
+            <div>
+              <div className="field-label">Member since</div>
+              <div>{accountAge(me.created_at)}</div>
+            </div>
+          </div>
+          {me.account_status && me.account_status !== 'active' && (
+            <div className="account-row warn">
+              <div>
+                <div className="field-label">Account standing</div>
+                <div>{STATUS_TEXT[me.account_status]}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      {msg && <div className="notice">{msg}</div>}
+      <Section title="Password" desc="Changing it re-encrypts your keys on this device. Your messages stay readable.">
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!passwordStrength(next).ok) return setMsg('New password is too weak.');
+            setBusy(true);
+            try {
+              await changePassword(current, next);
+              setMsg('Password changed. Your keys were re-encrypted with the new password.');
+              setCurrent('');
+              setNext('');
+            } catch (err) {
+              setMsg(errorMessage(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <div className="row">
+            <Field label="Current password">
+              <input type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
+            </Field>
+            <Field label="New password" hint={next ? `Strength: ${passwordStrength(next).label}` : undefined}>
+              <input type="password" autoComplete="new-password" required value={next} onChange={(e) => setNext(e.target.value)} />
+            </Field>
+          </div>
+          <button className="btn primary" disabled={busy}>
+            {busy ? 'Re-encrypting keys…' : 'Change password'}
+          </button>
+        </form>
+      </Section>
+      <Section title="Encryption" desc="Friends can compare this with the fingerprint they see on your profile to be sure nobody is intercepting your messages.">
+        <code className="fingerprint">{fp}</code>
+        <ul className="security-list">
+          <li>Messages & files: AES-256-GCM, signed with ECDSA P-256, per-channel keys rotated when members leave.</li>
+          <li>Key exchange: ECDH P-256 (ECIES). The server only ever stores wrapped keys.</li>
+          <li>Password: Argon2id (64 MiB) on your device; only a derived login key is sent to the server.</li>
+          <li>Calls: peer-to-peer WebRTC (DTLS-SRTP) with signed session descriptions.</li>
+          <li>Translation runs on your device, so decrypted messages never leave it.</li>
+        </ul>
+      </Section>
+    </>
+  );
+}
+
+export const STATUS_TEXT: Record<string, string> = {
+  active: 'Good standing',
+  limited: 'Limited: you can chat and call, but can’t create servers, message people who aren’t your friends, or send friend requests.',
+  very_limited: 'Very limited: your account is read-only until Venband staff review it.',
+  banned: 'Banned',
+};
+
+// --------------------------------------------------------------- profile --
+
+const PRESENCE: { id: PresenceStatus; label: string }[] = [
+  { id: 'online', label: 'Online' },
+  { id: 'idle', label: 'Idle' },
+  { id: 'dnd', label: 'Do Not Disturb' },
+  { id: 'invisible', label: 'Invisible' },
+];
+
+function ProfileTab() {
+  const me = sessionStore.use((s) => s.me)!;
+  const [draft, setDraft] = useState<ProfilePatch>({});
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [tagServers, setTagServers] = useState<Server[]>([]);
+  const preview: Profile = { ...me, ...draft } as Profile;
+  const set = (p: ProfilePatch) => setDraft((d) => ({ ...d, ...p }));
+  const dirty = Object.keys(draft).length > 0;
+
+  useEffect(() => {
+    (async () => {
+      const { data: mem } = await supabase.from('server_members').select('server_id').eq('user_id', me.id);
+      const ids = (mem ?? []).map((m) => m.server_id);
+      if (!ids.length) return;
+      const { data } = await supabase.from('servers').select('*').in('id', ids).not('tag', 'is', null);
+      setTagServers((data ?? []) as Server[]);
+    })();
+  }, [me.id]);
+
+  async function save() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await updateMyProfile({ ...draft, ...(draft.display_name !== undefined ? { display_name: draft.display_name.trim() || me.username } : {}) });
+      setDraft({});
+      setMsg('Profile saved.');
+    } catch (e) {
+      setMsg(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setTag(serverId: string | null) {
+    const { error } = await supabase.rpc('set_server_tag', { p_server: serverId });
+    if (error) return setMsg(errorMessage(error));
+    const { data } = await supabase.rpc('my_profile');
+    if (data) {
+      putProfile(data as Profile);
+      sessionStore.set({ me: data as Profile });
+    }
+  }
+
+  return (
+    <>
+      <h2>Profiles</h2>
+      <div className="profile-editor">
+        <div className="profile-editor-form">
+          {msg && <div className="notice">{msg}</div>}
+          <Field label="Display name">
+            <input maxLength={32} value={preview.display_name} onChange={(e) => set({ display_name: e.target.value })} />
+          </Field>
+          <Field label="Pronouns">
+            <input maxLength={40} value={preview.pronouns ?? ''} placeholder="they/them" onChange={(e) => set({ pronouns: e.target.value })} />
+          </Field>
+          <div className="row">
+            <Field label="Status emoji">
+              <input maxLength={8} value={preview.status_emoji ?? ''} placeholder="🎧" onChange={(e) => set({ status_emoji: e.target.value })} />
+            </Field>
+            <Field label="Custom status">
+              <input maxLength={128} value={preview.status_text ?? ''} placeholder="Listening to the new album" onChange={(e) => set({ status_text: e.target.value })} />
+            </Field>
+          </div>
+          <Field label="Online status">
+            <select value={preview.presence ?? 'online'} onChange={(e) => set({ presence: e.target.value as PresenceStatus })}>
+              {PRESENCE.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="About me" hint={`${(preview.about ?? '').length}/190 · markdown works`}>
+            <textarea maxLength={190} rows={4} value={preview.about ?? ''} onChange={(e) => set({ about: e.target.value })} />
+          </Field>
+          <Field label="Avatar color">
+            <ColorPicker value={preview.avatar_color} onChange={(c) => set({ avatar_color: c })} />
+          </Field>
+          <Field label="Banner" aside={preview.banner_color2 ? <button className="btn link small" onClick={() => set({ banner_color2: null })}>Solid color</button> : <button className="btn link small" onClick={() => set({ banner_color2: '#000000' })}>Gradient</button>}>
+            <div className="banner-pickers">
+              <ColorPicker value={preview.banner_color ?? preview.avatar_color} onChange={(c) => set({ banner_color: c })} />
+              {preview.banner_color2 && <ColorPicker value={preview.banner_color2} onChange={(c) => set({ banner_color2: c })} />}
+            </div>
+          </Field>
+          <Field label="Nameplate" hint="An animated backdrop behind your name in member lists.">
+            <div className="nameplate-grid">
+              {NAMEPLATES.map((n) => (
+                <button key={n.id} type="button" className={`nameplate-option nameplate-${n.id}${(preview.nameplate ?? 'none') === n.id ? ' selected' : ''}`} onClick={() => set({ nameplate: n.id })}>
+                  {n.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Server tag" hint="Wear a tag from a server you’re in. Server owners set tags in Server Settings.">
+            <div className="tag-options">
+              <button type="button" className={`tag-option${!me.tag_server_id ? ' selected' : ''}`} onClick={() => setTag(null)}>
+                None
+              </button>
+              {tagServers.map((s) => (
+                <button key={s.id} type="button" className={`tag-option${me.tag_server_id === s.id ? ' selected' : ''}`} onClick={() => setTag(s.id)}>
+                  <ServerTag tag={s.tag} /> {s.name}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <div className={`save-bar${dirty ? ' show' : ''}`}>
+            <span>You have unsaved changes</span>
+            <button className="btn link" onClick={() => setDraft({})}>
+              Reset
+            </button>
+            <button className="btn primary small" disabled={busy} onClick={save}>
+              Save Changes
+            </button>
+          </div>
+        </div>
+        <div className="profile-editor-preview">
+          <div className="field-label">Preview</div>
+          <div className={`profile-card mini nameplate-${preview.nameplate ?? 'none'}`}>
+            <div className="profile-banner" style={bannerStyle(preview)} />
+            <div className="profile-head">
+              <div className="profile-avatar">
+                <Avatar profile={preview} size={72} online />
+              </div>
+            </div>
+            <div className="profile-body">
+              <h2>
+                {preview.display_name} <Badges ids={me.badges} size={16} />
+              </h2>
+              <div className="muted">
+                @{me.username}
+                {preview.pronouns ? ` · ${preview.pronouns}` : ''} <ServerTag tag={me.server_tag} />
+              </div>
+              {(preview.status_text || preview.status_emoji) && (
+                <div className="profile-status">
+                  {preview.status_emoji} {preview.status_text}
+                </div>
+              )}
+              {preview.about && (
+                <div className="profile-bio">
+                  <Markdown text={preview.about} />
+                </div>
+              )}
+            </div>
+          </div>
+          <div className={`member nameplate-row nameplate-${preview.nameplate ?? 'none'}`}>
+            <Avatar profile={preview} size={32} online />
+            <span className="member-name">{preview.display_name}</span>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// --------------------------------------------------------------- privacy --
+
+function PrivacyTab() {
+  const relations = socialStore.use((s) => s.relations);
+  const blocked = Object.values(relations).filter((r) => r.blocked);
+  return (
+    <>
+      <h2>Privacy & Safety</h2>
+      <Section title={`Blocked users — ${blocked.length}`} desc="Blocked people can’t message you, call you or send friend requests, and their messages are hidden.">
+        {blocked.map((r) => (
+          <div key={r.target_id} className="list-row">
+            <Avatar profile={getProfile(r.target_id)} size={32} />
+            <span className="grow">
+              {displayName(r.target_id)} <span className="muted small">@{getProfile(r.target_id)?.username}</span>
+            </span>
+            <button className="btn secondary small" onClick={() => setRelation(r.target_id, { blocked: false })}>
+              Unblock
+            </button>
+          </div>
+        ))}
+        {!blocked.length && <p className="muted small">You haven’t blocked anyone.</p>}
+      </Section>
+      <Section title="What the server can see">
+        <ul className="security-list">
+          <li>Your messages, files, calls and translations are end-to-end encrypted. Venband’s server can’t read them.</li>
+          <li>The server does know who is in which server or DM, and when messages were sent.</li>
+          <li>Links to YouTube, Spotify, Instagram and TikTok only load when you click them (unless you turn on auto-load in Chat), because loading them shows those sites your IP address.</li>
+        </ul>
+      </Section>
+    </>
+  );
+}
+
+// --------------------------------------------------------------- devices --
+
+function DevicesTab() {
+  const [devices, setDevices] = useState<Device[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = () =>
+    listDevices()
+      .then(setDevices)
+      .catch((e) => setError(errorMessage(e)));
+  useEffect(() => {
+    load();
+  }, []);
+  const others = (devices ?? []).filter((d) => !d.current);
+
+  async function revoke(d: Device) {
+    try {
+      await revokeDevice(d.id);
+      load();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+
+  return (
+    <>
+      <h2>Devices</h2>
+      <p className="muted">Here are all the devices currently logged in to your account. Log out any you don’t recognise, then change your password.</p>
+      {error && <div className="form-error">{error}</div>}
+      {!devices && !error && <div className="spinner" />}
+      {devices && (
+        <>
+          <Section title="Current device">
+            {devices.filter((d) => d.current).map((d) => (
+              <DeviceRow key={d.id} d={d} />
+            ))}
+          </Section>
+          <Section title={`Other devices — ${others.length}`}>
+            {others.map((d) => (
+              <DeviceRow key={d.id} d={d} onRevoke={() => revoke(d)} />
+            ))}
+            {!others.length && <p className="muted small">You’re not logged in anywhere else.</p>}
+            {others.length > 1 && (
+              <button
+                className="btn danger small"
+                onClick={async () => {
+                  if (!(await askConfirm({ title: 'Log out all known devices', body: 'Every other device will be logged out.', confirm: 'Log Out All', danger: true }))) return;
+                  for (const d of others) await revokeDevice(d.id).catch(() => {});
+                  load();
+                }}
+              >
+                Log out all other devices
+              </button>
+            )}
+          </Section>
+        </>
+      )}
+    </>
+  );
+}
+
+function DeviceRow({ d, onRevoke }: { d: Device; onRevoke?: () => void }) {
+  const ua = describeAgent(d.user_agent);
+  const place = [d.city, d.region, d.city || d.region ? '' : d.country].filter(Boolean).join(', ');
+  return (
+    <div className="device-row">
+      <span className="device-icon">
+        <Icon name={ua.mobile ? 'phoneDevice' : 'monitor'} size={22} />
+      </span>
+      <div className="grow">
+        <div className="device-title">
+          {ua.os} · {ua.browser}
+          {d.current && <span className="tag-soft accent">This device</span>}
+        </div>
+        <div className="small muted">
+          {place || 'Unknown location'}
+          {' · '}
+          {d.current ? 'Active now' : `Last active ${relative(d.last_active)}`}
+          {' · '}signed in {new Date(d.created_at).toLocaleDateString()}
+        </div>
+      </div>
+      {onRevoke && (
+        <button className="icon-btn" title="Log out this device" onClick={onRevoke}>
+          <Icon name="x" size={18} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function relative(iso: string) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 90) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
+
+// ------------------------------------------------------------ appearance --
+
+interface MarketTheme {
+  id: string;
+  author_id: string;
+  name: string;
+  description: string;
+  data: Theme;
+  installs: number;
+  created_at: string;
+}
+
+function ThemeSwatch({ t }: { t: Theme }) {
+  const v = t.vars;
+  return (
+    <div className="theme-swatch" style={{ background: t.wallpaper && t.wallpaper !== 'none' ? t.wallpaper : v['bg-0'] }}>
+      <div className="ts-rail" style={{ background: v['bg-1'] }} />
+      <div className="ts-side" style={{ background: v['bg-2'] }}>
+        <span style={{ background: v['bg-4'] }} />
+        <span style={{ background: v['bg-3'] }} />
+      </div>
+      <div className="ts-main" style={{ background: v['bg-3'] }}>
+        <span style={{ background: v.text }} />
+        <span style={{ background: v['text-2'] }} />
+        <span className="ts-accent" style={{ background: v.accent }} />
+      </div>
+    </div>
+  );
+}
+
+function AppearanceTab() {
+  const themeId = useSettings((s) => s.themeId);
+  const installed = useSettings((s) => s.installedThemes);
+  const reduceMotion = useSettings((s) => s.chat.reduceMotion);
+  const me = sessionStore.use((s) => s.me)!;
+  const [view, setView] = useState<'themes' | 'market' | 'create'>('themes');
+  const [market, setMarket] = useState<MarketTheme[] | null>(null);
+  const [q, setQ] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const loadMarket = async () => {
+    const { data, error } = await supabase.from('themes').select('*').order('installs', { ascending: false }).order('created_at', { ascending: false }).limit(100);
+    if (error) setMsg(errorMessage(error));
+    setMarket((data ?? []) as MarketTheme[]);
+  };
+  useEffect(() => {
+    if (view === 'market') loadMarket();
+  }, [view]);
+
+  const install = async (mt: MarketTheme) => {
+    const t = sanitizeTheme({ ...mt.data, id: `market-${mt.id}`, name: mt.name, description: mt.description, author: displayName(mt.author_id) });
+    if (!t) return setMsg('That theme is invalid.');
+    updateSettings((s) => ({ installedThemes: [...s.installedThemes.filter((x) => x.id !== t.id), t], themeId: t.id }));
+    await supabase.rpc('install_theme', { p_theme: mt.id });
+    setMsg(`Installed ${t.name}.`);
+  };
+
+  const filtered = (market ?? []).filter((t) => !q || `${t.name} ${t.description}`.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <>
+      <h2>Appearance</h2>
+      <div className="tabs">
+        <button className={view === 'themes' ? 'active' : ''} onClick={() => setView('themes')}>
+          My Themes
+        </button>
+        <button className={view === 'market' ? 'active' : ''} onClick={() => setView('market')}>
+          <Icon name="sparkles" size={14} /> Theme Marketplace
+        </button>
+        <button className={view === 'create' ? 'active' : ''} onClick={() => setView('create')}>
+          <Icon name="plus" size={14} /> Create a Theme
+        </button>
+      </div>
+      {msg && <div className="notice">{msg}</div>}
+      {view === 'themes' && (
+        <>
+          <div className="theme-grid">
+            {[...BUILT_IN_THEMES, ...installed].map((t) => (
+              <div key={t.id} className={`theme-card${themeId === t.id ? ' selected' : ''}`}>
+                <button className="theme-pick" onClick={() => updateSettings({ themeId: t.id })}>
+                  <ThemeSwatch t={t} />
+                  <div className="theme-name">
+                    {t.name}
+                    {themeId === t.id && <Icon name="check" size={14} />}
+                  </div>
+                  <div className="small muted">{t.author ? `by ${t.author}` : t.description}</div>
+                </button>
+                {!BUILT_IN_THEMES.some((b) => b.id === t.id) && (
+                  <button
+                    className="icon-btn theme-remove"
+                    title="Uninstall"
+                    onClick={() =>
+                      updateSettings((s) => ({ installedThemes: s.installedThemes.filter((x) => x.id !== t.id), themeId: s.themeId === t.id ? 'default' : s.themeId }))
+                    }
+                  >
+                    <Icon name="trash" size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <Section title="Motion">
+            <Toggle label="Reduce motion" desc="Turn off animations and transitions." checked={reduceMotion} onChange={(v) => updateChat({ reduceMotion: v })} />
+          </Section>
+        </>
+      )}
+      {view === 'market' && (
+        <>
+          <input className="search-input" placeholder="Search themes" value={q} onChange={(e) => setQ(e.target.value)} />
+          {!market && <div className="spinner" />}
+          <div className="theme-grid">
+            {filtered.map((mt) => {
+              const t = sanitizeTheme(mt.data);
+              if (!t) return null;
+              const have = installed.some((x) => x.id === `market-${mt.id}`);
+              return (
+                <div key={mt.id} className="theme-card">
+                  <ThemeSwatch t={t} />
+                  <div className="theme-name">{mt.name}</div>
+                  <div className="small muted">
+                    by {displayName(mt.author_id) === 'Unknown user' ? 'a Venband user' : displayName(mt.author_id)} · {mt.installs} installs
+                  </div>
+                  {mt.description && <div className="small">{mt.description}</div>}
+                  <div className="theme-actions">
+                    <button className="btn primary small" disabled={have} onClick={() => install(mt)}>
+                      {have ? 'Installed' : 'Install'}
+                    </button>
+                    {(mt.author_id === me.id || me.platform_role !== 'user') && (
+                      <button
+                        className="btn danger small"
+                        onClick={async () => {
+                          if (!(await askConfirm({ title: 'Remove theme', body: `Remove “${mt.name}” from the marketplace?`, confirm: 'Remove', danger: true }))) return;
+                          const { error } = await supabase.from('themes').delete().eq('id', mt.id);
+                          if (error) setMsg(errorMessage(error));
+                          loadMarket();
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {market && !filtered.length && <p className="muted">No themes yet. Be the first: create one and publish it.</p>}
+        </>
+      )}
+      {view === 'create' && <ThemeCreator onDone={(m) => (setMsg(m), setView('themes'))} />}
+    </>
+  );
+}
+
+const EDITABLE: { key: (typeof THEME_KEYS)[number]; label: string }[] = [
+  { key: 'bg-0', label: 'Background' },
+  { key: 'bg-1', label: 'Server rail' },
+  { key: 'bg-2', label: 'Sidebars' },
+  { key: 'bg-3', label: 'Chat' },
+  { key: 'bg-4', label: 'Inputs & hover' },
+  { key: 'text', label: 'Text' },
+  { key: 'text-2', label: 'Secondary text' },
+  { key: 'muted', label: 'Muted text' },
+  { key: 'accent', label: 'Accent' },
+  { key: 'on-accent', label: 'Text on accent' },
+  { key: 'link', label: 'Links' },
+  { key: 'danger', label: 'Danger' },
+];
+
+const WALLPAPERS = [
+  'none',
+  'radial-gradient(1200px 800px at 15% 10%, #3b3f58 0%, transparent 60%), radial-gradient(900px 700px at 85% 90%, #2a3d44 0%, transparent 60%), linear-gradient(160deg, #07070a, #0d0e14)',
+  'linear-gradient(135deg, #1f1c2c, #3a2f5b, #12101a)',
+  'linear-gradient(160deg, #0f2027, #203a43, #2c5364)',
+  'radial-gradient(900px 600px at 80% 10%, #5b2a3d 0%, transparent 60%), linear-gradient(180deg, #0a0608, #120a10)',
+  'linear-gradient(135deg, #0b3a2c, #06221a 60%, #000000)',
+];
+
+function ThemeCreator({ onDone }: { onDone: (msg: string) => void }) {
+  const me = sessionStore.use((s) => s.me)!;
+  const [name, setName] = useState('My theme');
+  const [description, setDescription] = useState('');
+  const [vars, setVars] = useState<Record<string, string>>({ ...BUILT_IN_THEMES[0].vars });
+  const [glass, setGlass] = useState(false);
+  const [wallpaper, setWallpaper] = useState('none');
+  const [error, setError] = useState<string | null>(null);
+  const theme = useMemo(
+    () => sanitizeTheme({ id: `custom-${Date.now()}`, name, description, vars, glass, wallpaper: wallpaper === 'none' ? undefined : wallpaper, author: me.display_name }),
+    [name, description, vars, glass, wallpaper, me.display_name],
+  );
+  const preview = useRef<Theme | null>(null);
+  preview.current = theme;
+
+  const startFrom = (t: Theme) => {
+    setVars({ ...t.vars });
+    setGlass(Boolean(t.glass));
+    setWallpaper(t.wallpaper ?? 'none');
+  };
+
+  return (
+    <div className="theme-creator">
+      <div className="theme-creator-form">
+        {error && <div className="form-error">{error}</div>}
+        <Field label="Start from">
+          <div className="tag-options">
+            {BUILT_IN_THEMES.map((t) => (
+              <button key={t.id} type="button" className="tag-option" onClick={() => startFrom(t)}>
+                {t.name}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <div className="row">
+          <Field label="Name">
+            <input maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label="Description">
+            <input maxLength={140} value={description} onChange={(e) => setDescription(e.target.value)} />
+          </Field>
+        </div>
+        <div className="color-grid">
+          {EDITABLE.map((e) => (
+            <label key={e.key} className="color-cell">
+              <input type="color" value={(vars[e.key] ?? '#000000').slice(0, 7)} onChange={(ev) => setVars((v) => ({ ...v, [e.key]: ev.target.value }))} />
+              <span>{e.label}</span>
+            </label>
+          ))}
+        </div>
+        <Toggle label="Frosted glass" desc="See-through panels over the wallpaper." checked={glass} onChange={setGlass} />
+        <Field label="Wallpaper">
+          <div className="wallpaper-grid">
+            {WALLPAPERS.map((w) => (
+              <button key={w} type="button" className={`wallpaper-option${wallpaper === w ? ' selected' : ''}`} style={{ background: w === 'none' ? vars['bg-0'] : w }} onClick={() => setWallpaper(w)}>
+                {w === 'none' && 'None'}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <div className="modal-actions">
+          <button
+            className="btn secondary"
+            onClick={() => {
+              if (!theme) return setError('Pick valid colors.');
+              updateSettings((s) => ({ installedThemes: [...s.installedThemes, theme], themeId: theme.id }));
+              onDone(`Saved “${theme.name}” to My Themes.`);
+            }}
+          >
+            Save to my themes
+          </button>
+          <button
+            className="btn primary"
+            onClick={async () => {
+              if (!theme) return setError('Pick valid colors.');
+              const { error } = await supabase.from('themes').insert({ author_id: me.id, name: theme.name, description: theme.description, data: theme });
+              if (error) return setError(errorMessage(error));
+              updateSettings((s) => ({ installedThemes: [...s.installedThemes, theme], themeId: theme.id }));
+              onDone(`Published “${theme.name}” to the marketplace.`);
+            }}
+          >
+            Publish to marketplace
+          </button>
+        </div>
+      </div>
+      <div className="theme-creator-preview">
+        <div className="field-label">Preview</div>
+        {theme && <ThemeSwatch t={theme} />}
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ voice/video --
+
+function VoiceTab() {
+  const v = useSettings((s) => s.voice);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [testing, setTesting] = useState(false);
+  const [level, setLevel] = useState(0);
+  const list = () => navigator.mediaDevices?.enumerateDevices().then(setDevices).catch(() => {});
+  useEffect(() => {
+    list();
+    navigator.mediaDevices?.addEventListener('devicechange', list);
+    return () => navigator.mediaDevices?.removeEventListener('devicechange', list);
+  }, []);
+  const named = devices.some((d) => d.label);
+
+  // mic test meter
+  useEffect(() => {
+    if (!testing) return;
+    let stop = false;
+    let stream: MediaStream | null = null;
+    let ctx: AudioContext | null = null;
+    (async () => {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: v.inputId ? { ideal: v.inputId } : undefined, noiseSuppression: v.noiseSuppression, echoCancellation: v.echoCancellation, autoGainControl: v.autoGain },
+      });
+      list();
+      ctx = new AudioContext();
+      const an = ctx.createAnalyser();
+      an.fftSize = 512;
+      const g = ctx.createGain();
+      g.gain.value = v.inputVolume / 100;
+      ctx.createMediaStreamSource(stream).connect(g).connect(an);
+      const buf = new Uint8Array(an.fftSize);
+      const loop = () => {
+        if (stop) return;
+        an.getByteTimeDomainData(buf);
+        let peak = 0;
+        for (const x of buf) peak = Math.max(peak, Math.abs(x - 128));
+        setLevel(Math.min(1, peak / 100));
+        requestAnimationFrame(loop);
+      };
+      loop();
+    })().catch(() => setTesting(false));
+    return () => {
+      stop = true;
+      stream?.getTracks().forEach((t) => t.stop());
+      ctx?.close();
+      setLevel(0);
+    };
+  }, [testing, v.inputId, v.inputVolume, v.noiseSuppression, v.echoCancellation, v.autoGain]);
+
+  const select = (kind: MediaDeviceKind, value: string, onChange: (id: string) => void) => (
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Default</option>
+      {devices
+        .filter((d) => d.kind === kind && d.deviceId && d.deviceId !== 'default')
+        .map((d, i) => (
+          <option key={d.deviceId} value={d.deviceId}>
+            {d.label || `${kind === 'audioinput' ? 'Microphone' : kind === 'audiooutput' ? 'Speaker' : 'Camera'} ${i + 1}`}
+          </option>
+        ))}
+    </select>
+  );
+
+  return (
+    <>
+      <h2>Voice & Video</h2>
+      {!named && (
+        <div className="notice">
+          Your browser hides device names until you allow microphone access.{' '}
+          <button className="btn link" onClick={() => setTesting(true)}>
+            Allow and show names
+          </button>
+        </div>
+      )}
+      <Section title="Devices">
+        <div className="row">
+          <Field label="Input device">{select('audioinput', v.inputId, (id) => updateVoice({ inputId: id }))}</Field>
+          <Field label="Output device" hint={'setSinkId' in AudioContext.prototype ? undefined : 'Your browser always uses the system output.'}>
+            {select('audiooutput', v.outputId, (id) => updateVoice({ outputId: id }))}
+          </Field>
+        </div>
+        <Field label="Camera">{select('videoinput', v.cameraId, (id) => updateVoice({ cameraId: id }))}</Field>
+        <Field label={`Input volume — ${v.inputVolume}%`}>
+          <input type="range" min={0} max={200} step={5} value={v.inputVolume} onChange={(e) => updateVoice({ inputVolume: Number(e.target.value) })} />
+        </Field>
+        <div className="mic-test">
+          <button className="btn secondary small" onClick={() => setTesting((t) => !t)}>
+            {testing ? 'Stop test' : 'Let’s check'}
+          </button>
+          <div className="mic-meter">
+            <span style={{ width: `${Math.round(level * 100)}%` }} />
+          </div>
+        </div>
+        <p className="small muted">Changes apply the next time you join a call.</p>
+      </Section>
+      <Section title="Voice processing">
+        <Toggle label="Noise suppression" desc="Filters out background noise like fans and keyboards." checked={v.noiseSuppression} onChange={(x) => updateVoice({ noiseSuppression: x })} />
+        <Toggle label="Echo cancellation" desc="Stops others hearing themselves through your speakers." checked={v.echoCancellation} onChange={(x) => updateVoice({ echoCancellation: x })} />
+        <Toggle label="Automatic gain control" desc="Keeps your volume steady." checked={v.autoGain} onChange={(x) => updateVoice({ autoGain: x })} />
+      </Section>
+      <Section title="Screen share quality" desc="Higher quality needs a faster connection, for you and for everyone watching.">
+        <div className="row">
+          <Field label="Resolution">
+            <div className="seg">
+              {([720, 1080, 1440] as const).map((r) => (
+                <button key={r} className={v.streamRes === r ? 'active' : ''} onClick={() => updateVoice({ streamRes: r })}>
+                  {r}p
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Frame rate">
+            <div className="seg">
+              {([15, 30, 60] as const).map((f) => (
+                <button key={f} className={v.streamFps === f ? 'active' : ''} onClick={() => updateVoice({ streamFps: f })}>
+                  {f} fps
+                </button>
+              ))}
+            </div>
+          </Field>
+        </div>
+      </Section>
+      <button className="btn link" onClick={() => updateSettings({ voice: DEFAULT_SETTINGS.voice })}>
+        Reset voice settings
+      </button>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ chat --
+
+function ChatTab() {
+  const c = useSettings((s) => s.chat);
+  return (
+    <>
+      <h2>Chat</h2>
+      <Section title="Embeds and media">
+        <Toggle
+          label="Load embeds automatically"
+          desc="Show YouTube, Spotify, Instagram and TikTok players right away. Off means you click to load each one (more private)."
+          checked={c.autoEmbeds}
+          onChange={(v) => updateChat({ autoEmbeds: v })}
+        />
+        <Toggle label="Autoplay GIFs" checked={c.gifAutoplay} onChange={(v) => updateChat({ gifAutoplay: v })} />
+      </Section>
+      <Section title="Servers">
+        <Toggle label="Show join messages" desc="“Someone just joined” notices in welcome channels." checked={c.showJoins} onChange={(v) => updateChat({ showJoins: v })} />
+      </Section>
+      <Section title="Formatting cheat sheet">
+        <div className="md-cheats">
+          {['**bold**', '*italic*', '__underline__', '~~strike~~', '||spoiler||', '`code`', '# Big heading', '-# small text', '> quote', '- list item', '[link](https://venband.com)', '@everyone'].map((x) => (
+            <div key={x} className="md-cheat">
+              <code>{x}</code>
+              <span>
+                <Markdown text={x} />
+              </span>
+            </div>
+          ))}
+        </div>
+      </Section>
+    </>
+  );
+}
+
+// -------------------------------------------------------------- language --
+
+function LanguageTab() {
+  const language = useSettings((s) => s.language);
+  const mode = useSettings((s) => s.translateMode);
+  const me = sessionStore.use((s) => s.me)!;
+  const supported = translationSupported();
+  return (
+    <>
+      <h2>Language</h2>
+      <Section title="Your language" desc="Messages in other languages can be translated into this one.">
+        <select
+          value={language || navigator.language.split('-')[0]}
+          onChange={(e) => {
+            updateSettings({ language: e.target.value });
+            updateMyProfile({ language: e.target.value }).catch(() => {});
+            void me;
+          }}
+        >
+          {LANGUAGES.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.native} — {l.name}
+            </option>
+          ))}
+        </select>
+      </Section>
+      <Section title="Translation" desc="Translation happens on your device, so encrypted messages stay private.">
+        {!supported && <div className="notice small">Your browser doesn’t have built-in translation yet. Use a recent Chrome or Edge (version 138 or newer).</div>}
+        <div className="radio-cards">
+          {(
+            [
+              ['auto', 'Automatic', 'Translate messages in other languages as they arrive.'],
+              ['manual', 'Manual', 'Right-click a message and choose Translate.'],
+              ['off', 'Off', 'Never translate.'],
+            ] as const
+          ).map(([id, label, desc]) => (
+            <label key={id} className={`radio-card${mode === id ? ' selected' : ''}`}>
+              <input type="radio" checked={mode === id} onChange={() => updateSettings({ translateMode: id })} />
+              <b>{label}</b>
+              <span className="small muted">{desc}</span>
+            </label>
+          ))}
+        </div>
+      </Section>
+    </>
+  );
+}

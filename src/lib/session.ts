@@ -18,6 +18,9 @@ import { initTrust, loadProfiles, getProfile, putProfile } from './directory';
 import { setPresenceUser } from './presence';
 import { leaveCall } from './call';
 import type { Profile } from './types';
+import { loadSettings, resetSettingsStore } from './settings';
+import { startSocial, stopSocial } from './social';
+import { registerDevice, stopWatchingSession, watchSession } from './devices';
 
 export type AuthStatus =
   | 'loading'
@@ -70,6 +73,13 @@ async function enterApp(session: Session, identity: Identity) {
     me,
     setupError: null,
     pendingVault: null,
+  });
+  // background extras: never block entering the app
+  loadSettings(userId).catch(() => {});
+  startSocial(userId);
+  registerDevice(session).catch(() => {});
+  watchSession(() => {
+    signOut('This device was logged out from another device.');
   });
 }
 
@@ -173,6 +183,8 @@ async function onSession(session: Session | null) {
 /** Turn Supabase / network errors into something a person can act on. */
 export function friendlyError(e: unknown): string {
   const msg = errorMessage(e);
+  if (/user is banned|banned/i.test(msg)) return 'This account has been banned from Venband.';
+  if (/too many accounts/i.test(msg)) return 'Too many accounts have been created from your network. Use an existing account instead.';
   if (/invalid login credentials/i.test(msg))
     return 'That email and password don’t match an account. Check for typos, or make a new account.';
   if (/already registered|already exists/i.test(msg)) return 'There’s already an account with that email. Try logging in instead.';
@@ -338,9 +350,12 @@ export async function completePasswordReset(newPassword: string) {
 
 let signingOut = false;
 
-export async function signOut() {
+export async function signOut(notice = 'You’re logged out. See you soon.') {
   signingOut = true;
   leaveCall();
+  stopSocial();
+  stopWatchingSession();
+  resetSettingsStore();
   await forgetIdentities();
   // 'local': only this browser. The default ('global') also logs out every
   // other device, which looks like a random logout there.
@@ -352,11 +367,19 @@ export async function signOut() {
     identity: null,
     keyring: null,
     me: null,
-    notice: 'You’re logged out. See you soon.',
+    notice,
   });
 }
 
-export async function updateMyProfile(patch: Partial<Pick<Profile, 'display_name' | 'avatar_color' | 'about'>>) {
+export type ProfilePatch = Partial<
+  Pick<
+    Profile,
+    | 'display_name' | 'avatar_color' | 'about' | 'pronouns' | 'status_text' | 'status_emoji' | 'presence'
+    | 'banner_color' | 'banner_color2' | 'accent_color' | 'nameplate' | 'language' | 'onboarded'
+  >
+>;
+
+export async function updateMyProfile(patch: ProfilePatch) {
   const me = sessionStore.get().me;
   if (!me) return;
   const { data, error } = await supabase.from('profiles').update(patch).eq('id', me.id).select().single();
