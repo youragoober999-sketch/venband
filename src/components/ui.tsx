@@ -1,13 +1,12 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { Profile } from '../lib/types';
+import { LOGO_PATH, LOGO_VIEWBOX } from './logoPath';
 
-/** Venband glyph: two nested "v" strokes, like a sound echo. Uses currentColor. */
+/** Venband glyph (official mark). Uses currentColor. */
 export function LogoGlyph({ size = 22 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden className="logo-glyph">
-      <path d="M3.5 5.5 12 19.5l8.5-14" />
-      <path d="M8.6 5.5 12 11.4l3.4-5.9" />
+    <svg width={size} height={(size * 609) / 696} viewBox={LOGO_VIEWBOX} aria-hidden className="logo-glyph">
+      <path fill="currentColor" fillRule="evenodd" d={LOGO_PATH} />
     </svg>
   );
 }
