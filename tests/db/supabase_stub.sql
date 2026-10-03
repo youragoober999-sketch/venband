@@ -13,7 +13,15 @@ create schema realtime;
 create schema storage;
 grant usage on schema public, auth, realtime, storage, extensions to anon, authenticated;
 
-create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb);
+create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb,
+                         banned_until timestamptz);
+create table auth.sessions (id uuid primary key, user_id uuid not null references auth.users (id) on delete cascade,
+                            created_at timestamptz default now(), updated_at timestamptz, refreshed_at timestamp,
+                            user_agent text, ip inet);
+create function auth.jwt() returns jsonb language sql stable as
+  $$ select jsonb_build_object('sub', current_setting('request.jwt.claim.sub', true),
+                               'session_id', nullif(current_setting('request.jwt.claim.session_id', true), '')) $$;
+grant execute on function auth.jwt() to anon, authenticated;
 create function auth.uid() returns uuid language sql stable as
   $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 grant execute on function auth.uid() to anon, authenticated;

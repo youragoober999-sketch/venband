@@ -1,13 +1,12 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { Profile } from '../lib/types';
+import { LOGO_PATH, LOGO_VIEWBOX } from './logoPath';
 
-/** Venband glyph: two nested "v" strokes, like a sound echo. Uses currentColor. */
+/** Venband glyph (official mark). Uses currentColor. */
 export function LogoGlyph({ size = 22 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden className="logo-glyph">
-      <path d="M3.5 5.5 12 19.5l8.5-14" />
-      <path d="M8.6 5.5 12 11.4l3.4-5.9" />
+    <svg width={size} height={(size * 609) / 696} viewBox={LOGO_VIEWBOX} aria-hidden className="logo-glyph">
+      <path fill="currentColor" fillRule="evenodd" d={LOGO_PATH} />
     </svg>
   );
 }
@@ -43,12 +42,14 @@ export function Avatar({
   online,
   speaking,
 }: {
-  profile: Pick<Profile, 'display_name' | 'avatar_color'> | null | undefined;
+  profile: (Pick<Profile, 'display_name' | 'avatar_color'> & { presence?: Profile['presence'] }) | null | undefined;
   size?: number;
   online?: boolean;
   speaking?: boolean;
 }) {
   const name = profile?.display_name ?? '?';
+  // online + their chosen status (idle / do not disturb); invisible looks offline
+  const status = online === undefined ? null : !online || profile?.presence === 'invisible' ? 'offline' : (profile?.presence ?? 'online');
   return (
     <div
       className={`avatar${speaking ? ' speaking' : ''}`}
@@ -56,7 +57,7 @@ export function Avatar({
       aria-hidden
     >
       {initials(name)}
-      {online !== undefined && <span className={`status-dot ${online ? 'online' : 'offline'}`} />}
+      {status && <span className={`status-dot ${status}`} />}
     </div>
   );
 }
@@ -127,6 +128,44 @@ const ICONS: Record<string, string> = {
   smile: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01',
   maximize: 'M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3',
   minimize: 'M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3',
+  scissors: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+  clipboard: 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M9 2h6v4H9z',
+  pin: 'M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3z',
+  bellOff: 'M13.7 21a2 2 0 0 1-3.4 0M18.6 13A17 17 0 0 1 18 8M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.3-5M2 2l20 20',
+  bell: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0',
+  block: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM4.9 4.9l14.2 14.2',
+  userPlus: 'M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM20 8v6M23 11h-6',
+  userMinus: 'M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 11h-6',
+  user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  at: 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.9 7.9',
+  globe: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM2 12h20M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10A15 15 0 0 1 12 2z',
+  translate: 'M5 8l6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6',
+  star: 'M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z',
+  eye: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  eyeOff: 'M17.9 17.9A10 10 0 0 1 12 20c-7 0-11-8-11-8a18 18 0 0 1 5.1-5.9M9.9 4.2A9 9 0 0 1 12 4c7 0 11 8 11 8a18 18 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2M1 1l22 22',
+  volume: 'M11 5 6 9H2v6h4l5 4V5zM15.5 8.5a5 5 0 0 1 0 7',
+  volumeOff: 'M11 5 6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6',
+  more: 'M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM19 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM5 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',
+  image: 'M3 3h18v18H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21',
+  gif: 'M3 5h18v14H3zM10 10H8v4h2v-1.5M13 10v4M16 14v-4h2M16 12h1.5',
+  monitor: 'M2 3h20v14H2zM8 21h8M12 17v4',
+  phoneDevice: 'M7 2h10v20H7zM11 18h2',
+  palette: 'M12 22a10 10 0 1 1 10-10c0 2.8-2.2 4-4 4h-2a2 2 0 0 0-1.5 3.3A1.7 1.7 0 0 1 12 22zM7.5 11a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM10.5 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM15.5 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM17.5 11a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',
+  flag: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7',
+  gavel: 'm14 13-8.5 8.5a2.1 2.1 0 0 1-3-3L11 10M16 16l6-6M8 8l6-6M9 7l8 8M21 11l-8-8',
+  search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3',
+  home: 'M3 10 12 3l9 7v11h-6v-7H9v7H3z',
+  sparkles: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9zM5 2l.6 1.4L7 4l-1.4.6L5 6l-.6-1.4L3 4l1.4-.6z',
+  key: 'M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zM15.5 7.5l3 3L22 7l-3-3',
+  sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
+  logo: '',
+  wave: 'M2 12h2M6 8v8M10 5v14M14 8v8M18 10v4M22 12h0',
+  hand: 'M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-3a2 2 0 0 0-4 0',
+  upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',
+  external: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3',
+  play: 'M6 3l14 9-14 9z',
+  calendar: 'M3 4h18v18H3zM16 2v4M8 2v4M3 10h18',
   compass: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM16.2 7.8l-2.1 6.4-6.4 2.1 2.1-6.4z',
 };
 

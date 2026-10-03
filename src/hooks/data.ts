@@ -12,17 +12,31 @@ import { getProfile } from '../lib/directory';
 
 // ------------------------------------------------------------- navigation --
 
-export const nav = createStore<{ serverId: string | null; channelByServer: Record<string, string> }>({
+export const nav = createStore<{ serverId: string | null; channelByServer: Record<string, string>; discover: boolean }>({
   serverId: null,
   channelByServer: {},
+  discover: false,
 });
 
 export function openServer(serverId: string | null) {
-  nav.set({ serverId });
+  nav.set({ serverId, discover: false });
 }
 
 export function openChannel(serverKey: string, channelId: string) {
-  nav.set((s) => ({ serverId: serverKey === '@me' ? null : serverKey, channelByServer: { ...s.channelByServer, [serverKey]: channelId } }));
+  nav.set((s) => ({
+    serverId: serverKey === '@me' ? null : serverKey,
+    discover: false,
+    channelByServer: { ...s.channelByServer, [serverKey]: channelId },
+  }));
+}
+
+/** Home with nothing selected = the Friends page. */
+export function openFriends() {
+  openChannel('@me', '');
+}
+
+export function openDiscover() {
+  nav.set({ serverId: null, discover: true });
 }
 
 export function useDirectory() {

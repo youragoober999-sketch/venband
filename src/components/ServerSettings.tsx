@@ -47,6 +47,12 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
   const me = sessionStore.use((s) => s.me)!;
   const [name, setName] = useState(server.name);
   const [color, setColor] = useState(server.icon_color);
+  const [description, setDescription] = useState(server.description ?? '');
+  const [tag, setTag] = useState(server.tag ?? '');
+  const [banner, setBanner] = useState(server.banner_color ?? server.icon_color);
+  const [discoverable, setDiscoverable] = useState(server.discoverable ?? true);
+  const [welcome, setWelcome] = useState(server.welcome_channel_id ?? '');
+  const [slurs, setSlurs] = useState(Boolean(server.automod?.slurs));
   const [msg, setMsg] = useState<string | null>(null);
   const [newOwner, setNewOwner] = useState('');
   const isOwner = server.owner_id === me.id;
@@ -60,10 +66,55 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
       <Field label="Icon color">
         <ColorPicker value={color} onChange={setColor} />
       </Field>
+      <Field label="Description" hint="Shown in Server Discovery.">
+        <textarea maxLength={300} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </Field>
+      <div className="row">
+        <Field label="Server tag" hint="2–4 letters or numbers members can wear next to their name.">
+          <input maxLength={4} value={tag} placeholder="VNB" onChange={(e) => setTag(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())} />
+        </Field>
+        <Field label="Welcome channel" hint="Join messages are posted here.">
+          <select value={welcome} onChange={(e) => setWelcome(e.target.value)}>
+            <option value="">No join messages</option>
+            {data.channels
+              .filter((c) => c.type === 'text')
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  #{c.name}
+                </option>
+              ))}
+          </select>
+        </Field>
+      </div>
+      <Field label="Banner color">
+        <ColorPicker value={banner} onChange={setBanner} />
+      </Field>
+      <label className="checkbox">
+        <input type="checkbox" checked={discoverable} onChange={(e) => setDiscoverable(e.target.checked)} />
+        Show in Server Discovery once it has 1,000+ members (verified servers always appear)
+      </label>
+      <h3>AutoMod</h3>
+      <label className="checkbox">
+        <input type="checkbox" checked={slurs} onChange={(e) => setSlurs(e.target.checked)} />
+        Block slurs. Messages are end-to-end encrypted, so every member’s app enforces this: senders are stopped and matching messages are hidden.
+      </label>
       <button
         className="btn primary"
         onClick={async () => {
-          const { error } = await supabase.from('servers').update({ name: name.trim(), icon_color: color }).eq('id', server.id);
+          if (tag && tag.length < 2) return setMsg('Tags need 2–4 letters or numbers.');
+          const { error } = await supabase
+            .from('servers')
+            .update({
+              name: name.trim(),
+              icon_color: color,
+              description: description.trim(),
+              tag: tag || null,
+              banner_color: banner,
+              discoverable,
+              welcome_channel_id: welcome || null,
+              automod: { ...(server.automod ?? {}), slurs },
+            })
+            .eq('id', server.id);
           setMsg(error ? errorMessage(error) : 'Saved.');
           data.reload();
         }}

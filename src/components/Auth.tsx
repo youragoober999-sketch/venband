@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { currentPath, go, parseRoute, useRoute } from '../lib/router';
 import { supabase } from '../lib/supabase';
 import { passwordStrength } from '../lib/crypto';
 import {
@@ -53,9 +54,38 @@ function AuthLayout({ children, nav }: { children: ReactNode; nav?: NavActions }
 
 export function AuthScreen() {
   const hasNotice = sessionStore.use((s) => Boolean(s.notice));
-  const [mode, setMode] = useState<Mode | 'home'>(() =>
-    hasNotice || new URLSearchParams(window.location.search).has('invite') ? 'login' : 'home',
-  );
+  const route = useRoute();
+  const [mode, setModeState] = useState<Mode | 'home'>(() => {
+    const r = parseRoute();
+    if (r.kind === 'register') return 'signup';
+    if (r.kind === 'sign-in' || r.kind === 'home' || r.kind === 'server' || r.kind === 'discover') return 'login';
+    return hasNotice || new URLSearchParams(window.location.search).has('invite') ? 'login' : 'home';
+  });
+  // keep /sign-in and /register in the address bar
+  const setMode = (m: Mode | 'home') => {
+    setModeState(m);
+    if (m === 'login') go('sign-in', { keepQuery: true });
+    else if (m === 'signup') go('register', { keepQuery: true });
+    else if (m === 'home') go('');
+  };
+  useEffect(() => {
+    const r = parseRoute(route);
+    if (r.kind === 'register') setModeState((m) => (m === 'signup' || m === 'verify' ? m : 'signup'));
+    else if (r.kind === 'sign-in') setModeState((m) => (m === 'login' || m === 'forgot' || m === 'forgot-sent' || m === 'verify' ? m : 'login'));
+    else if (r.kind === 'root') setModeState('home');
+  }, [route]);
+  useEffect(() => {
+    const r = parseRoute();
+    // deep link while logged out: show the login form at /sign-in
+    if (r.kind === 'home' || r.kind === 'server' || r.kind === 'discover') {
+      try {
+        sessionStorage.setItem('venband:return-to', currentPath());
+      } catch {
+        /* ignore */
+      }
+      go('sign-in', { replace: true, keepQuery: true });
+    }
+  }, []);
   const [email, setEmail] = useState('');
   const nav: NavActions = {
     onLogin: () => setMode('login'),

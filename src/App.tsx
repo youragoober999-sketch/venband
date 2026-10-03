@@ -4,10 +4,13 @@ import { initSession, sessionStore } from './lib/session';
 import { AuthScreen, IdentityResetScreen, RecoveryScreen, SetupErrorScreen, UnlockScreen } from './components/Auth';
 import { Shell } from './components/Shell';
 import { Logo } from './components/ui';
+import { Onboarding } from './components/Onboarding';
+import { ContextMenuHost } from './components/ContextMenu';
 
 export default function App() {
   const status = sessionStore.use((s) => s.status);
   const hasProfile = sessionStore.use((s) => Boolean(s.me));
+  const needsOnboarding = sessionStore.use((s) => s.me?.onboarded === false);
   useEffect(() => {
     if (configured) initSession();
   }, []);
@@ -22,7 +25,12 @@ export default function App() {
         </div>
       );
     case 'signed-out':
-      return <AuthScreen />;
+      return (
+        <>
+          <AuthScreen />
+          <ContextMenuHost />
+        </>
+      );
     case 'locked':
       return <UnlockScreen />;
     case 'recovery':
@@ -32,7 +40,8 @@ export default function App() {
     case 'setup-error':
       return <SetupErrorScreen />;
     case 'ready':
-      return hasProfile ? <Shell /> : <SetupErrorScreen />;
+      if (!hasProfile) return <SetupErrorScreen />;
+      return needsOnboarding ? <Onboarding /> : <Shell />;
   }
 }
 

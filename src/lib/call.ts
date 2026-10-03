@@ -12,6 +12,7 @@ import { sdpSignaturePayload, sign, verify, type Identity } from './crypto';
 import { getCurrentKey, observeKey } from './directory';
 import { acquireScope, setVoiceState } from './presence';
 import { stopRing } from './notify';
+import { getSettings } from './settings';
 
 interface CallMeta {
   user_id: string;
@@ -68,6 +69,23 @@ function iceServers(): RTCIceServer[] {
     });
   }
   return servers;
+}
+
+/** Give screen shares enough bandwidth for the chosen quality (up to 1440p60). */
+function tuneScreen(sender: RTCRtpSender): RTCRtpSender {
+  if (sender.track?.kind !== 'video') return sender;
+  const { streamRes, streamFps } = getSettings().voice;
+  const maxBitrate = { 720: 2_500_000, 1080: 6_000_000, 1440: 10_000_000 }[streamRes] * (streamFps >= 60 ? 1.5 : 1);
+  setTimeout(() => {
+    const params = sender.getParameters();
+    if (!params.encodings?.length) params.encodings = [{}];
+    params.encodings[0].maxBitrate = maxBitrate;
+    params.encodings[0].maxFramerate = streamFps;
+    (params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference =
+      streamFps >= 60 ? 'maintain-framerate' : 'maintain-resolution';
+    sender.setParameters(params).catch(() => {});
+  }, 0);
+  return sender;
 }
 
 export class Call {
@@ -163,11 +181,33 @@ export class Call {
     this.changed();
   }
 
+  /** raw microphone (before the input-volume gain) and its audio graph */
+  private rawMic: MediaStream | null = null;
+  private micCtx: AudioContext | null = null;
+
+  private async openMic(): Promise<MediaStream> {
+    const v = getSettings().voice;
+    const audio: MediaTrackConstraints = {
+      echoCancellation: v.echoCancellation,
+      noiseSuppression: v.noiseSuppression,
+      autoGainControl: v.autoGain,
+      ...(v.inputId ? { deviceId: { ideal: v.inputId } } : {}),
+    };
+    const raw = await navigator.mediaDevices.getUserMedia({ audio });
+    if (v.inputVolume === 100 || typeof AudioContext === 'undefined') return raw;
+    // input volume: mic -> gain -> the track that is sent
+    this.rawMic = raw;
+    this.micCtx = new AudioContext();
+    const gain = this.micCtx.createGain();
+    gain.gain.value = Math.max(0, Math.min(2, v.inputVolume / 100));
+    const dest = this.micCtx.createMediaStreamDestination();
+    this.micCtx.createMediaStreamSource(raw).connect(gain).connect(dest);
+    return dest.stream;
+  }
+
   async join() {
     try {
-      this.mic = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
+      this.mic = await this.openMic();
     } catch {
       this.error = 'Microphone unavailable — joined listen-only.';
       this.mic = new MediaStream();
@@ -212,7 +252,8 @@ export class Call {
     if (this.stateTimer) clearTimeout(this.stateTimer);
     for (const p of this.peers.values()) p.pc.close();
     this.peers.clear();
-    for (const s of [this.mic, this.cam, this.screen]) s?.getTracks().forEach((t) => t.stop());
+    for (const s of [this.mic, this.rawMic, this.cam, this.screen]) s?.getTracks().forEach((t) => t.stop());
+    this.micCtx?.close().catch(() => {});
     // leaving the channel removes our presence; no extra untrack() write needed
     if (this.rt) supabase.removeChannel(this.rt);
     setVoiceState({ scope: null, voice_channel_id: null, muted: false, deafened: false, video: false, screen: false });
@@ -314,7 +355,7 @@ export class Call {
       pc.addTransceiver('audio', { direction: 'recvonly' }); // listen-only still negotiates
     }
     if (this.cam) for (const t of this.cam.getTracks()) peer.senders.cam.push(pc.addTrack(t, this.cam));
-    if (this.screen) for (const t of this.screen.getTracks()) peer.senders.screen.push(pc.addTrack(t, this.screen));
+    if (this.screen) for (const t of this.screen.getTracks()) peer.senders.screen.push(tuneScreen(pc.addTrack(t, this.screen)));
 
     pc.onnegotiationneeded = async () => {
       try {
@@ -472,7 +513,10 @@ export class Call {
       return;
     }
     try {
-      this.cam = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } } });
+      const camId = getSettings().voice.cameraId;
+      this.cam = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, ...(camId ? { deviceId: { ideal: camId } } : {}) },
+      });
     } catch {
       this.error = 'Camera unavailable.';
       this.changed();
@@ -490,13 +534,20 @@ export class Call {
       return;
     }
     try {
-      this.screen = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
+      const { streamRes, streamFps } = getSettings().voice;
+      const width = { 720: 1280, 1080: 1920, 1440: 2560 }[streamRes];
+      this.screen = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: streamFps, max: streamFps }, width: { ideal: width, max: width }, height: { ideal: streamRes, max: streamRes } },
+        audio: true,
+      });
+      const track = this.screen.getVideoTracks()[0];
+      if (track) track.contentHint = streamFps >= 60 ? 'motion' : 'detail';
     } catch {
       return; // user cancelled
     }
     this.screen.getVideoTracks()[0]?.addEventListener('ended', () => this.stopScreen());
     for (const p of this.peers.values()) {
-      for (const t of this.screen.getTracks()) p.senders.screen.push(p.pc.addTrack(t, this.screen));
+      for (const t of this.screen.getTracks()) p.senders.screen.push(tuneScreen(p.pc.addTrack(t, this.screen)));
     }
     this.publishState();
   }

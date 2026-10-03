@@ -1,7 +1,7 @@
 // Caches for profiles and public identity keys, plus trust-on-first-use
 // tracking of other users' keys.
 import { supabase } from './supabase';
-import type { Profile, UserKey } from './types';
+import { PROFILE_COLUMNS, type Profile, type UserKey } from './types';
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -37,8 +37,8 @@ export async function loadProfiles(ids: Iterable<string>, force = false): Promis
   const waits = [...new Set(ids)].map((id) => pendingProfiles.get(id)).filter(Boolean) as Promise<void>[];
   if (missing.length) {
     const p = (async () => {
-      const { data } = await supabase.from('profiles').select('id, username, display_name, avatar_color, about').in('id', missing);
-      for (const row of data ?? []) profiles.set(row.id, row as Profile);
+      const { data } = await supabase.from('profiles').select(PROFILE_COLUMNS).in('id', missing);
+      for (const row of (data ?? []) as unknown as Profile[]) profiles.set(row.id, row);
       missing.forEach((id) => pendingProfiles.delete(id));
       emit();
     })();
@@ -48,8 +48,15 @@ export async function loadProfiles(ids: Iterable<string>, force = false): Promis
   await Promise.all(waits);
 }
 
+let personalNickname: (id: string) => string | null = () => null;
+/** Lets the friends module supply private nicknames you gave people. */
+export function setPersonalNicknames(fn: (id: string) => string | null) {
+  personalNickname = fn;
+}
+
+/** Server nickname > your private nickname for them > their display name. */
 export function displayName(id: string, nickname?: string | null): string {
-  return nickname || profiles.get(id)?.display_name || 'Unknown user';
+  return nickname || personalNickname(id) || profiles.get(id)?.display_name || 'Unknown user';
 }
 
 // ---------------------------------------------------------------------- keys
