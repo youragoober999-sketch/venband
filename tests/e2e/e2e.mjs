@@ -466,6 +466,28 @@ await alice.page.locator('.channel .channel-name').getByText('chat', { exact: tr
 await alice.page.locator('.message-text', { hasText: 'bob is back and can talk' }).waitFor({ timeout: 20000 });
 log('✅ a newcomer can send immediately (new key shared with everyone) and others read it');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/11-server-badges.png` });
+// ---- phone layout
+await bob.page.setViewportSize({ width: 390, height: 844 });
+await bob.page.waitForTimeout(400);
+if (await bob.page.locator('.sidebar').isVisible() && (await bob.page.locator('.sidebar').boundingBox()).x >= 0) throw new Error('channel list should be tucked away on phones');
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/m1-chat.png` });
+await bob.page.locator('.topbar-menu').click();
+await bob.page.waitForTimeout(450);
+if ((await bob.page.locator('.sidebar').boundingBox()).x < 0) throw new Error('menu did not open the channel list');
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/m2-drawer.png` });
+await bob.page.locator('.sidebar .channel', { hasText: 'welcome' }).click();
+await bob.page.waitForTimeout(450);
+if ((await bob.page.locator('.sidebar').boundingBox()).x >= 0) throw new Error('picking a channel should close the menu');
+await bob.page.locator('.chat-header [title="Member list"]').click();
+await bob.page.waitForTimeout(450);
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/m3-members.png` });
+await bob.page.locator('.drawer-scrim').click({ position: { x: 20, y: 300 } });
+await bob.page.locator('.user-panel [title="User settings"]').click();
+await bob.page.waitForTimeout(400);
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/m4-settings.png` });
+await bob.page.locator('.sp-close').click();
+await bob.page.setViewportSize({ width: 1400, height: 850 });
+log('✅ phone layout: slide-in channel list and member list, settings fit');
 
 // ---- logging out and back in works; unticking "stay signed in" asks for the password after refresh
 await alice.page.locator('.user-panel [title="User settings"]').click();

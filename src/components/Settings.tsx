@@ -204,7 +204,9 @@ function AccountTab() {
       <Section title="Encryption" desc="Friends can compare this with the fingerprint they see on your profile to be sure nobody is intercepting your messages.">
         <code className="fingerprint">{fp}</code>
         <ul className="security-list">
-          <li>Messages & files: AES-256-GCM, signed with ECDSA P-256, per-channel keys rotated when members leave.</li>
+          <li>Messages: every message is encrypted with its own AES-256-GCM key, never reused (derived with HKDF-SHA256 from the channel key and a fresh random salt), and signed with ECDSA P-256.</li>
+          <li>Files: each file gets its own random AES-256-GCM key.</li>
+          <li>Channel keys are replaced whenever someone leaves or is removed, so they can’t read anything new.</li>
           <li>Key exchange: ECDH P-256 (ECIES). The server only ever stores wrapped keys.</li>
           <li>Password: Argon2id (64 MiB) on your device; only a derived login key is sent to the server.</li>
           <li>Calls: peer-to-peer WebRTC (DTLS-SRTP) with signed session descriptions.</li>

@@ -91,6 +91,9 @@ export function useMyServers(onMessage?: (row: MessageRow) => void) {
   const [servers, setServers] = useState<Server[]>([]);
   const [dms, setDms] = useState<DmChannel[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const dmsRef = useRef<DmChannel[]>([]);
+  dmsRef.current = dms;
+  const checkedChannels = useRef(new Set<string>());
 
   const load = useCallback(async () => {
     if (!me) return;
@@ -140,7 +143,23 @@ export function useMyServers(onMessage?: (row: MessageRow) => void) {
         ]
       : [],
     load,
-    (table, row) => table === 'messages' && onMessage?.(row as unknown as MessageRow),
+    (table, row) => {
+      if (table !== 'messages') return;
+      const m = row as unknown as MessageRow;
+      onMessage?.(m);
+      // a message from a DM / group we don't list yet (missed realtime update): refresh
+      if (!dmsRef.current.some((d) => d.channel.id === m.channel_id) && !checkedChannels.current.has(m.channel_id)) {
+        checkedChannels.current.add(m.channel_id);
+        supabase
+          .from('channels')
+          .select('type')
+          .eq('id', m.channel_id)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (data?.type === 'dm') load();
+          });
+      }
+    },
   );
 
   return { servers, dms, loaded, reload: load };

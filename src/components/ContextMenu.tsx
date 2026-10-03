@@ -101,7 +101,51 @@ export function ContextMenuHost() {
       else closeMenu();
     };
     window.addEventListener('contextmenu', onContext);
-    return () => window.removeEventListener('contextmenu', onContext);
+
+    // Touch screens: press and hold = right-click (iPhones never send one).
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let start: { x: number; y: number; target: EventTarget | null } | null = null;
+    let nativeFired = false;
+    const cancel = () => {
+      clearTimeout(timer);
+      start = null;
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return cancel();
+      const t = e.touches[0];
+      start = { x: t.clientX, y: t.clientY, target: e.target };
+      nativeFired = false;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!start || nativeFired) return;
+        const el = start.target as Element | null;
+        if (!el || el.closest('input, textarea, [contenteditable]')) return;
+        el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: start.x, clientY: start.y }));
+        navigator.vibrate?.(12);
+        start = null;
+      }, 480);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (start && t && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) cancel();
+    };
+    const onNative = () => {
+      nativeFired = true; // Android sends its own long-press contextmenu
+    };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', cancel);
+    window.addEventListener('touchcancel', cancel);
+    window.addEventListener('contextmenu', onNative, true);
+    return () => {
+      window.removeEventListener('contextmenu', onContext);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', cancel);
+      window.removeEventListener('touchcancel', cancel);
+      window.removeEventListener('contextmenu', onNative, true);
+      clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {

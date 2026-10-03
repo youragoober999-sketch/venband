@@ -57,7 +57,9 @@ every channel: random AES-256-GCM key per "epoch"
    ├─ wrapped for each member with ECIES (ephemeral ECDH + HKDF + AES-GCM), signed by the sender
    └─ rotated automatically when anyone loses access (kick / ban / leave / role removed)
 
-message = AES-256-GCM(epoch key, JSON) + ECDSA signature by the author
+message = AES-256-GCM(message key, JSON) + ECDSA signature by the author
+          message key = HKDF-SHA256(epoch key, fresh random 128-bit salt, message context):
+          a new key for every message and every edit, never reused
           (bound to message id, channel, author, key and epoch: no forgery, replay or re-attribution)
 files   = AES-256-GCM with a fresh random key; that key travels inside the encrypted message
 calls   = WebRTC DTLS-SRTP peer-to-peer; every SDP offer/answer is signed with the sender's

@@ -20,7 +20,7 @@ import {
 import { go, linkTo, parseRoute, useRoute } from '../lib/router';
 import { socialStore } from '../lib/social';
 import { updateLayout, useSettings } from '../lib/settings';
-import { openSettings } from '../lib/ui';
+import { isPhone, openSettings, setDrawer, uiStore } from '../lib/ui';
 import {
   nav,
   openChannel,
@@ -224,7 +224,23 @@ export function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId]);
   const [modal, setModal] = useState<null | 'create-join'>(null);
+  const drawer = uiStore.use((s) => s.drawer);
+  const switcher = uiStore.use((s) => s.switcher);
   useDirectory();
+  // phone layout: going somewhere closes the slide-in panels
+  const navState = nav.use((s) => s);
+  useEffect(() => setDrawer(null), [navState]);
+  // Ctrl/Cmd+K: jump anywhere
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        uiStore.set((s) => ({ switcher: !s.switcher }));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   useRouterSync(servers, dms, loaded);
   useMyProfileFeed(me.id);
 
@@ -250,19 +266,24 @@ export function Shell() {
   }, []);
 
   return (
-    <div className="shell">
+    <div className={`shell${drawer ? ` drawer-${drawer}` : ''}`}>
       <AppBanner />
-      <ServerRail servers={servers} dms={dms} current={serverId} discover={discover} onAdd={() => setModal('create-join')} reload={reload} />
-      {discover ? (
-        <>
-          <DiscoverySidebar />
-          <DiscoveryView />
-        </>
-      ) : serverId ? (
-        <ServerView key={serverId} serverId={serverId} />
-      ) : (
-        <HomeView dms={dms} />
-      )}
+      <TopBar servers={servers} dms={dms} />
+      <div className="shell-body">
+        <ServerRail servers={servers} dms={dms} current={serverId} discover={discover} onAdd={() => setModal('create-join')} reload={reload} />
+        {discover ? (
+          <>
+            <DiscoverySidebar />
+            <DiscoveryView />
+          </>
+        ) : serverId ? (
+          <ServerView key={serverId} serverId={serverId} />
+        ) : (
+          <HomeView dms={dms} />
+        )}
+        <div className="drawer-scrim" onClick={() => setDrawer(null)} />
+      </div>
+      {switcher && <QuickSwitcher servers={servers} dms={dms} onClose={() => uiStore.set({ switcher: false })} />}
       <CallAudio />
       <div className="toasts">
         {dms.slice(0, 25).map((d) => (
@@ -360,12 +381,15 @@ function ServerRail({
           </button>
         );
       })}
-      <button className="rail-item add" onClick={onAdd} data-tip="Add a server" aria-label="Add a server">
-        <Icon name="plus" size={24} />
-      </button>
-      <button className={`rail-item add${discover ? ' active' : ''}`} onClick={openDiscover} data-tip="Discover" aria-label="Discover servers">
-        <Icon name="compass" size={24} />
-      </button>
+      <div className="rail-bottom">
+        <div className="rail-sep" />
+        <button className="rail-item add" onClick={onAdd} data-tip="Add a server" aria-label="Add a server">
+          <Icon name="plus" size={24} />
+        </button>
+        <button className={`rail-item add${discover ? ' active' : ''}`} onClick={openDiscover} data-tip="Discover" aria-label="Discover servers">
+          <Icon name="compass" size={24} />
+        </button>
+      </div>
     </nav>
   );
 }
@@ -391,7 +415,7 @@ function DiscoverySidebar() {
           <Icon name="compass" size={18} /> <span className="channel-name">Servers</span>
         </div>
       </div>
-      <UserPanel />
+      <CallDock />
     </Sidebar>
   );
 }
@@ -510,7 +534,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           })}
           {!dms.length && <p className="empty-hint">No conversations yet. Start one with the + button.</p>}
         </div>
-        <UserPanel />
+        <CallDock />
       </Sidebar>
       <main className="main">
         {current ? (
@@ -630,7 +654,7 @@ function ServerView({ serverId }: { serverId: string }) {
       <Sidebar>
         <ServerHeader data={data} />
         <ChannelList data={data} selected={channel?.id ?? null} presence={presence} />
-        <UserPanel />
+        <CallDock />
       </Sidebar>
       <main className="main">
         {status !== 'active' && (
@@ -653,7 +677,11 @@ function ServerView({ serverId }: { serverId: string }) {
             canManage={has(data.myPermissions, P.MANAGE_MESSAGES)}
             data={data}
             headerExtra={
-              <button className={`icon-btn${showMembers ? ' on' : ''}`} onClick={() => setShowMembers((v) => !v)} title="Member list">
+              <button
+                className={`icon-btn${showMembers ? ' on' : ''}`}
+                onClick={() => (isPhone() ? setDrawer('members') : setShowMembers((v) => !v))}
+                title="Member list"
+              >
                 <Icon name="users" />
               </button>
             }
@@ -665,7 +693,7 @@ function ServerView({ serverId }: { serverId: string }) {
           </div>
         )}
       </main>
-      {showMembers && channel?.type === 'text' && (
+      {(showMembers || isPhone()) && channel?.type === 'text' && (
         <MemberList data={data} online={new Set(presence.map((p) => p.user_id))} width={membersWidth} />
       )}
       <ProfileHost data={data} />
@@ -951,13 +979,45 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
 
 const PRESENCE_LABEL: Record<PresenceStatus, string> = { online: 'Online', idle: 'Idle', dnd: 'Do Not Disturb', invisible: 'Invisible' };
 
-export function UserPanel() {
+/** In-call controls at the bottom of the channel list. */
+function CallDock() {
+  const call = useActiveCall();
+  if (!call) return null;
+  return (
+    <div className="call-dock">
+      <div className="voice-bar">
+        <div className="voice-bar-info">
+          <span className={`voice-status ${call.status}`}>
+            <span className="live-dot" /> {call.status === 'connected' ? 'In a call' : 'Connecting…'}
+          </span>
+          <button className="voice-channel-link" onClick={() => openCallChannel(call.scopeId, call.channelId)}>
+            {call.channelName}
+          </button>
+        </div>
+        <button className="icon-btn" onClick={() => call.toggleCamera()} title={call.cam ? 'Turn off camera' : 'Turn on camera'}>
+          <Icon name={call.cam ? 'video' : 'videoOff'} size={18} />
+        </button>
+        <button className={`icon-btn${call.screen ? ' on' : ''}`} onClick={() => call.toggleScreen()} title="Share screen">
+          <Icon name="screen" size={18} />
+        </button>
+        <button className="icon-btn danger" onClick={() => leaveCall()} title="Disconnect">
+          <Icon name="phoneOff" size={18} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Top bar: menu (phones), where you are, quick switcher, and you. */
+function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
   const me = sessionStore.use((s) => s.me)!;
   const call = useActiveCall();
-
-  async function setPresence(presence: PresenceStatus) {
-    updateMyProfile({ presence }).catch((e) => alert(errorMessage(e)));
-  }
+  const serverId = nav.use((s) => s.serverId);
+  const discover = nav.use((s) => s.discover);
+  const dmId = nav.use((s) => s.channelByServer['@me']);
+  const server = servers.find((x) => x.id === serverId);
+  const dm = !serverId && !discover ? dms.find((d) => d.channel.id === dmId) : null;
+  const where = discover ? 'Discover' : server ? server.name : dm ? (dm.other ? displayName(dm.other.id) : dm.title) : 'Friends';
 
   function statusMenu(e: React.MouseEvent) {
     openMenu(e, [
@@ -966,7 +1026,7 @@ export function UserPanel() {
         type: 'check' as const,
         label: PRESENCE_LABEL[p],
         checked: (me.presence ?? 'online') === p,
-        onChange: () => setPresence(p),
+        onChange: () => updateMyProfile({ presence: p }).catch((err) => alert(errorMessage(err))),
       })),
       { type: 'sep' },
       {
@@ -979,41 +1039,26 @@ export function UserPanel() {
         },
       },
       { label: 'View Profile', icon: 'user', onClick: () => openProfile(me.id) },
+      { label: 'Settings', icon: 'settings', onClick: () => openSettings('account') },
       { label: 'Copy User ID', icon: 'copy', onClick: () => copyText(me.id) },
     ]);
   }
 
   return (
-    <div className="user-panel-wrap">
-      {call && (
-        <div className="voice-bar">
-          <div className="voice-bar-info">
-            <span className={`voice-status ${call.status}`}>
-              <span className="live-dot" /> {call.status === 'connected' ? 'In a call' : 'Connecting…'}
-            </span>
-            <button className="voice-channel-link" onClick={() => openCallChannel(call.scopeId, call.channelId)}>
-              {call.channelName}
-            </button>
-          </div>
-          <button className="icon-btn" onClick={() => call.toggleCamera()} title={call.cam ? 'Turn off camera' : 'Turn on camera'}>
-            <Icon name={call.cam ? 'video' : 'videoOff'} size={18} />
-          </button>
-          <button className={`icon-btn${call.screen ? ' on' : ''}`} onClick={() => call.toggleScreen()} title="Share screen">
-            <Icon name="screen" size={18} />
-          </button>
-          <button className="icon-btn danger" onClick={() => leaveCall()} title="Disconnect">
-            <Icon name="phoneOff" size={18} />
-          </button>
-        </div>
-      )}
+    <header className="topbar">
+      <button className="icon-btn topbar-menu" onClick={() => setDrawer(uiStore.get().drawer === 'nav' ? null : 'nav')} aria-label="Open menu">
+        <Icon name="menu" size={22} />
+      </button>
+      <div className="topbar-where">
+        {server?.verified && <VerifiedMark size={14} />}
+        <span>{where}</span>
+      </div>
+      <button className="topbar-search" onClick={() => uiStore.set({ switcher: true })}>
+        <Icon name="search" size={15} />
+        <span>Search or jump to…</span>
+        <kbd>Ctrl K</kbd>
+      </button>
       <div className="user-panel">
-        <button className="user-panel-me" onClick={statusMenu} onContextMenu={statusMenu} title="Set status">
-          <Avatar profile={me} size={34} online />
-          <div className="user-panel-names">
-            <span className="name">{me.display_name}</span>
-            <span className="tag">{me.status_text ? `${me.status_emoji ?? ''} ${me.status_text}` : PRESENCE_LABEL[me.presence ?? 'online']}</span>
-          </div>
-        </button>
         <button className={`icon-btn${call?.muted ? ' danger-text' : ''}`} onClick={() => call?.toggleMute()} disabled={!call} title={call?.muted ? 'Unmute' : 'Mute'}>
           <Icon name={call?.muted ? 'micOff' : 'mic'} size={18} />
         </button>
@@ -1023,6 +1068,87 @@ export function UserPanel() {
         <button className="icon-btn" onClick={() => openSettings('account')} title="User settings">
           <Icon name="settings" size={18} />
         </button>
+        <button className="user-chip" onClick={statusMenu} onContextMenu={statusMenu} title="Set status">
+          <Avatar profile={me} size={28} online />
+          <span className="user-chip-names">
+            <span className="name">{me.display_name}</span>
+            <span className="tag">{me.status_text ? `${me.status_emoji ?? ''} ${me.status_text}` : PRESENCE_LABEL[me.presence ?? 'online']}</span>
+          </span>
+        </button>
+      </div>
+    </header>
+  );
+}
+
+/** Ctrl+K: jump to any conversation, server or friend. */
+function QuickSwitcher({ servers, dms, onClose }: { servers: Server[]; dms: DmChannel[]; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState(0);
+  const friends = socialStore.use((s) => s.friends);
+  const items = useMemo(() => {
+    const out: { key: string; label: string; sub: string; icon: React.ReactNode; go: () => void }[] = [];
+    for (const d of dms)
+      out.push({
+        key: d.channel.id,
+        label: d.other ? displayName(d.other.id) : d.title,
+        sub: d.channel.is_group ? 'Group' : 'Direct message',
+        icon: <ConvoAvatar dm={d} size={24} />,
+        go: () => openChannel('@me', d.channel.id),
+      });
+    for (const sv of servers)
+      out.push({
+        key: sv.id,
+        label: sv.name,
+        sub: 'Server',
+        icon: (
+          <span className="server-icon-sm" style={{ background: sv.icon_color, width: 24, height: 24 }}>
+            {initials(sv.name)}
+          </span>
+        ),
+        go: () => openServer(sv.id),
+      });
+    for (const f of Object.values(friends).filter((x) => x.accepted && !dms.some((d) => d.other?.id === x.other)))
+      out.push({
+        key: f.other,
+        label: displayName(f.other),
+        sub: 'Friend',
+        icon: <Avatar profile={getProfile(f.other)} size={24} />,
+        go: () => startDm(f.other).catch((e) => alert(errorMessage(e))),
+      });
+    const needle = q.trim().toLowerCase();
+    return needle ? out.filter((i) => i.label.toLowerCase().includes(needle) || getProfile(i.key)?.username?.includes(needle)) : out;
+  }, [dms, servers, friends, q]);
+  useEffect(() => setSel(0), [q]);
+  const pick = (i: number) => {
+    items[i]?.go();
+    onClose();
+  };
+  return (
+    <div className="modal-backdrop switcher-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="switcher" role="dialog" aria-label="Quick switcher">
+        <input
+          autoFocus
+          placeholder="Where would you like to go?"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onClose();
+            if (e.key === 'ArrowDown') (e.preventDefault(), setSel((v) => Math.min(items.length - 1, v + 1)));
+            if (e.key === 'ArrowUp') (e.preventDefault(), setSel((v) => Math.max(0, v - 1)));
+            if (e.key === 'Enter') pick(sel);
+          }}
+        />
+        <div className="switcher-list">
+          {items.slice(0, 30).map((it, i) => (
+            <button key={it.key} className={`switcher-item${i === sel ? ' active' : ''}`} onMouseEnter={() => setSel(i)} onClick={() => pick(i)}>
+              {it.icon}
+              <span className="grow">{it.label}</span>
+              <span className="small muted">{it.sub}</span>
+            </button>
+          ))}
+          {!items.length && <p className="muted small switcher-empty">Nothing matches “{q}”.</p>}
+        </div>
+        <div className="switcher-hint small muted">↑↓ to move · Enter to go · Esc to close</div>
       </div>
     </div>
   );
