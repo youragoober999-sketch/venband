@@ -11,7 +11,8 @@ export type SettingsTab =
   | 'chat'
   | 'language'
   | 'notifications'
-  | 'moderation';
+  | 'moderation'
+  | 'reports';
 
 export const uiStore = createStore<{
   settings: SettingsTab | null;

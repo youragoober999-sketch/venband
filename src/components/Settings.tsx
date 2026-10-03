@@ -14,10 +14,10 @@ import { Avatar, ColorPicker, Field, Icon } from './ui';
 import { Badges } from './Badges';
 import { accountAge, bannerStyle, NAMEPLATES, ServerTag } from './People';
 import { askConfirm } from './Dialogs';
-import { ModerationCenter } from './Moderation';
+import { ModerationCenter, ReportCentre } from './Moderation';
 import { Markdown } from './Markdown';
 
-const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean }[] = [
+const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; admin?: boolean }[] = [
   { id: 'account', label: 'My Account', icon: 'user', group: 'User Settings' },
   { id: 'profile', label: 'Profiles', icon: 'edit', group: 'User Settings' },
   { id: 'privacy', label: 'Privacy & Safety', icon: 'shield', group: 'User Settings' },
@@ -27,12 +27,14 @@ const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff
   { id: 'chat', label: 'Chat', icon: 'message', group: 'App Settings' },
   { id: 'language', label: 'Language', icon: 'globe', group: 'App Settings' },
   { id: 'moderation', label: 'Moderation', icon: 'gavel', group: 'Venband Staff', staff: true },
+  { id: 'reports', label: 'Report Centre', icon: 'flag', group: 'Venband Staff', staff: true, admin: true },
 ];
 
 export function SettingsPage() {
   const tab = uiStore.use((s) => s.settings);
   const me = sessionStore.use((s) => s.me)!;
   const staff = (me.platform_role ?? 'user') !== 'user';
+  const admin = me.platform_role === 'admin' || me.platform_role === 'owner';
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.modal-backdrop') && closeSettings();
     window.addEventListener('keydown', onKey);
@@ -45,7 +47,7 @@ export function SettingsPage() {
       <nav className="sp-nav">
         <div className="sp-nav-inner">
           {groups.map((g) => {
-            const items = TABS.filter((t) => t.group === g && (!t.staff || staff));
+            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.admin || admin));
             if (!items.length) return null;
             return (
               <div key={g}>
@@ -65,7 +67,7 @@ export function SettingsPage() {
         </div>
       </nav>
       <main className="sp-content">
-        <div className={`sp-inner${tab === 'moderation' ? ' wide' : ''}`}>
+        <div className={`sp-inner${tab === 'moderation' || tab === 'reports' ? ' wide' : ''}`}>
           {tab === 'account' && <AccountTab />}
           {tab === 'profile' && <ProfileTab />}
           {tab === 'privacy' && <PrivacyTab />}
@@ -75,6 +77,7 @@ export function SettingsPage() {
           {tab === 'chat' && <ChatTab />}
           {tab === 'language' && <LanguageTab />}
           {tab === 'moderation' && staff && <ModerationCenter />}
+          {tab === 'reports' && admin && <ReportCentre />}
         </div>
         <button className="sp-close" onClick={closeSettings} title="Close (Esc)">
           <Icon name="x" size={18} />

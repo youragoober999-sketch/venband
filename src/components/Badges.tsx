@@ -10,6 +10,7 @@ export interface BadgeDef {
 
 // Order = display order.
 export const BADGES: BadgeDef[] = [
+  { id: 'founder', label: 'Venband Founder', color: '#ff375f', path: 'M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.7.7-1.9 0-2.6a1.9 1.9 0 0 0-3 .4zM12 15l-3-3a22 22 0 0 1 2-4A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22.4 22.4 0 0 1-4 2zM9 12H4s.6-3 2-4c1.6-1.1 5 0 5 0M12 15v5s3-.6 4-2c1.1-1.6 0-5 0-5' },
   { id: 'owner', label: 'Venband Owner', color: '#ffd60a', path: 'M3 18h18l-2-11-5 4-2-6-2 6-5-4zM5 21h14' },
   { id: 'admin', label: 'Venband Administrator', color: '#ff453a', path: 'M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5zM12 7l1.4 3 3.1.3-2.4 2 .8 3.1L12 13.8 9.1 15.4l.8-3.1-2.4-2 3.1-.3z' },
   { id: 'moderator', label: 'Venband Moderator', color: '#0a84ff', path: 'M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5zM8.5 12l2.5 2.5 4.5-5' },

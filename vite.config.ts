@@ -29,7 +29,7 @@ function csp(env: Record<string, string>): Plugin {
           "default-src 'self'",
           "script-src 'self' 'wasm-unsafe-eval'",
           "style-src 'self' 'unsafe-inline'",
-          `img-src 'self' blob: data: ${gifs}`,
+          `img-src 'self' blob: data: ${gifs}${supa ? ` ${supa.origin}` : ''}`,
           `media-src 'self' blob: ${gifs}`,
           `connect-src ${connect.join(' ')}`,
           "font-src 'self'",

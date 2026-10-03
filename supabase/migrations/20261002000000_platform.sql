@@ -497,6 +497,7 @@ create trigger server_members_tag_clear after delete on public.server_members
   for each row execute function public.clear_server_tag_on_leave();
 
 -- ---------------------------------------------------------- discovery ----
+drop function if exists public.discover_servers(text);
 create or replace function public.discover_servers(p_query text default '')
 returns table (id uuid, name text, description text, icon_color text, banner_color text,
                tag text, verified boolean, members integer, joined boolean)

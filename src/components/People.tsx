@@ -13,6 +13,7 @@ import { Avatar, Icon, Modal } from './ui';
 import { Badges } from './Badges';
 import { copyText, type Entry } from './ContextMenu';
 import { askConfirm, askText } from './Dialogs';
+import { reportUser } from '../lib/reports';
 import { Markdown } from './Markdown';
 import { startDm } from './Modals';
 
@@ -166,6 +167,26 @@ export function userMenu(userId: string, opts: { data?: ServerData; onProfile?: 
         if (reason === null) return;
         const { error } = await supabase.from('bans').insert({ server_id: data.server!.id, user_id: userId, banned_by: me.id, reason });
         if (error) report(error);
+      },
+    },
+    !self && {
+      label: 'Report User',
+      icon: 'flag',
+      danger: true,
+      onClick: async () => {
+        const reason = await askText({ title: `Report ${name}`, label: 'What happened?', placeholder: 'Harassment, scams, threats…', maxLength: 1000 });
+        if (!reason?.trim()) return;
+        const includeDms = await askConfirm({
+          title: 'Include your DMs as evidence?',
+          body: `Messages are end-to-end encrypted, so Venband staff can only see what you share. Include your most recent messages with ${name}? Only staff reviewing the report can read them.`,
+          confirm: 'Include DMs',
+        });
+        try {
+          const n = await reportUser(userId, reason.trim(), includeDms);
+          alert(`Thanks. Your report is under review${n ? ` (with ${n} messages as evidence)` : ''}.`);
+        } catch (e) {
+          report(e);
+        }
       },
     },
     { type: 'sep' },

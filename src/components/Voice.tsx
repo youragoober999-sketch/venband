@@ -94,7 +94,7 @@ function tilesFor(peer: RemotePeer): Tile[] {
   return tiles;
 }
 
-export function VoiceView({ data, compact }: { data?: ServerData; compact?: boolean }) {
+export function VoiceView({ data, compact, headerExtra }: { data?: ServerData; compact?: boolean; headerExtra?: React.ReactNode }) {
   const call = useActiveCall();
   const me = sessionStore.use((s) => s.me)!;
   const [focus, setFocus] = useState<string | null>(null);
@@ -124,6 +124,7 @@ export function VoiceView({ data, compact }: { data?: ServerData; compact?: bool
           <span className="lock-hint" title="Calls go directly between participants and are encrypted end to end.">
             <Icon name="lock" size={13} />
           </span>
+          {headerExtra && <div className="chat-header-actions">{headerExtra}</div>}
         </header>
       )}
       {call.error && <div className="call-error">{call.error}</div>}

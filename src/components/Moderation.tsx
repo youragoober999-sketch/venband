@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
-import { putProfile } from '../lib/directory';
+import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
 import { uiStore } from '../lib/ui';
 import type { AccountStatus, PlatformRole, Profile, ServerStatus } from '../lib/types';
 import { Avatar, Icon, Modal } from './ui';
 import { BADGES, BadgeIcon, Badges, VerifiedMark } from './Badges';
 import { askConfirm, askText } from './Dialogs';
+import { Markdown } from './Markdown';
 import { startDm } from './Modals';
 import { openProfile } from './People';
 
@@ -346,7 +347,7 @@ export function ModerationCenter() {
 
 function BadgeEditor({ user, myRank, onClose, onSave }: { user: ModUser; myRank: number; onClose: () => void; onSave: (ids: string[]) => void }) {
   const [ids, setIds] = useState<string[]>(user.badges);
-  const locked = (id: string) => (id === 'owner' ? myRank < 3 : ['admin', 'moderator', 'staff'].includes(id) ? myRank < 2 : false);
+  const locked = (id: string) => (id === 'owner' || id === 'founder' ? myRank < 3 : ['admin', 'moderator', 'staff'].includes(id) ? myRank < 2 : false);
   return (
     <Modal title={`Badges for @${user.username}`} onClose={onClose}>
       <div className="badge-editor">
@@ -372,5 +373,157 @@ function BadgeEditor({ user, myRank, onClose, onSave }: { user: ModUser; myRank:
         </button>
       </div>
     </Modal>
+  );
+}
+
+// ------------------------------------------------------------ report centre --
+
+interface ReportRow {
+  id: string;
+  reporter_id: string | null;
+  kind: 'message' | 'user';
+  target_user: string | null;
+  message_id: string | null;
+  channel_id: string | null;
+  server_id: string | null;
+  reason: string;
+  evidence: { id: string; author_id: string; author: string; text: string; at: string; reported?: boolean }[];
+  status: 'under_review' | 'actioned' | 'dismissed';
+  handled_by: string | null;
+  handled_note: string;
+  created_at: string;
+}
+
+export function ReportCentre() {
+  const [status, setStatus] = useState<ReportRow['status']>('under_review');
+  const [rows, setRows] = useState<ReportRow[] | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+
+  async function load() {
+    const { data, error } = await supabase.from('reports').select('*').eq('status', status).order('created_at', { ascending: status !== 'under_review' }).limit(100);
+    if (error) return setMsg({ ok: false, text: errorMessage(error) });
+    const list = (data ?? []) as ReportRow[];
+    await loadProfiles(list.flatMap((r) => [r.reporter_id, r.target_user, r.handled_by].filter(Boolean) as string[]));
+    setRows(list);
+    const { count } = await supabase.from('reports').select('id', { count: 'exact', head: true }).eq('status', 'under_review');
+    setCounts({ under_review: count ?? 0 });
+  }
+  useEffect(() => {
+    setRows(null);
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+  async function resolve(r: ReportRow, next: ReportRow['status'], accountAction?: 'banned' | 'limited' | 'very_limited') {
+    const note = await askText({
+      title: accountAction ? `${accountAction === 'banned' ? 'Ban' : 'Restrict'} ${displayName(r.target_user ?? '')}` : next === 'dismissed' ? 'Dismiss report' : 'Close report',
+      label: 'Note for the staff log (optional)',
+      maxLength: 1000,
+    });
+    if (note === null) return;
+    if (accountAction && r.target_user) {
+      const { error } = await supabase.rpc('mod_set_account_status', { p_user: r.target_user, p_status: accountAction, p_reason: `Report: ${r.reason}\n${note}` });
+      if (error) return setMsg({ ok: false, text: errorMessage(error) });
+    }
+    const { error } = await supabase.rpc('handle_report', { p_report: r.id, p_status: next, p_note: note });
+    if (error) return setMsg({ ok: false, text: errorMessage(error) });
+    setMsg({ ok: true, text: next === 'dismissed' ? 'Report dismissed.' : accountAction ? 'Done: account updated and report closed.' : 'Report closed.' });
+    load();
+  }
+
+  return (
+    <div className="mod-center">
+      <div className="mod-head">
+        <h2>
+          <Icon name="flag" /> Report Centre
+        </h2>
+      </div>
+      <p className="muted small">
+        Messages are end-to-end encrypted, so you only see what the reporter shared: the reported message with a few around it, or their recent DMs
+        with the person they reported.
+      </p>
+      <div className="tabs">
+        <button className={status === 'under_review' ? 'active' : ''} onClick={() => setStatus('under_review')}>
+          Under review{counts.under_review ? ` · ${counts.under_review}` : ''}
+        </button>
+        <button className={status === 'actioned' ? 'active' : ''} onClick={() => setStatus('actioned')}>
+          Actioned
+        </button>
+        <button className={status === 'dismissed' ? 'active' : ''} onClick={() => setStatus('dismissed')}>
+          Dismissed
+        </button>
+      </div>
+      {msg && <div className={msg.ok ? 'notice' : 'form-error'}>{msg.text}</div>}
+      {!rows && <div className="spinner" />}
+      <div className="mod-list">
+        {(rows ?? []).map((r) => (
+          <div key={r.id} className="mod-card report-card">
+            <div className="mod-card-head">
+              <span className={`pill ${r.kind === 'message' ? 'review' : 'limited'}`}>{r.kind === 'message' ? 'Message' : 'User'}</span>
+              <div className="grow small">
+                <b>{displayName(r.reporter_id ?? '')}</b> reported <b className="link-like" onClick={() => r.target_user && openProfile(r.target_user)}>{displayName(r.target_user ?? '')}</b>
+                <span className="muted"> · @{getProfile(r.target_user ?? '')?.username} · {new Date(r.created_at).toLocaleString()}</span>
+              </div>
+            </div>
+            <div className="report-reason">“{r.reason}”</div>
+            {r.evidence.length > 0 ? (
+              <div className="report-evidence">
+                {r.evidence.map((e) => (
+                  <div key={e.id} className={`evidence-msg${e.reported ? ' reported' : ''}${e.author_id === r.target_user ? ' target' : ''}`}>
+                    <div className="evidence-meta">
+                      <b>{e.author}</b> <span className="muted">{new Date(e.at).toLocaleString()}</span>
+                      {e.reported && <span className="pill banned">reported</span>}
+                    </div>
+                    <div className="evidence-text">
+                      <Markdown text={e.text} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="small muted">No messages were shared with this report.</p>
+            )}
+            {r.status !== 'under_review' && (
+              <p className="small muted">
+                {r.status === 'actioned' ? 'Actioned' : 'Dismissed'} by @{getProfile(r.handled_by ?? '')?.username ?? 'staff'}
+                {r.handled_note ? ` — “${r.handled_note}”` : ''}
+              </p>
+            )}
+            <div className="mod-actions">
+              {r.target_user && (
+                <button className="btn secondary small" onClick={() => startDm(r.target_user!).then(() => uiStore.set({ settings: null })).catch((e) => setMsg({ ok: false, text: errorMessage(e) }))}>
+                  <Icon name="message" size={14} /> DM them
+                </button>
+              )}
+              {r.status === 'under_review' ? (
+                <>
+                  <button className="btn danger small" onClick={() => resolve(r, 'actioned', 'banned')}>
+                    <Icon name="gavel" size={14} /> Ban Account
+                  </button>
+                  <button className="btn secondary small" onClick={() => resolve(r, 'actioned', 'very_limited')}>
+                    Make Very Limited
+                  </button>
+                  <button className="btn secondary small" onClick={() => resolve(r, 'actioned', 'limited')}>
+                    Make Limited
+                  </button>
+                  <button className="btn secondary small" onClick={() => resolve(r, 'actioned')}>
+                    Close (handled)
+                  </button>
+                  <button className="btn link small" onClick={() => resolve(r, 'dismissed')}>
+                    Dismiss
+                  </button>
+                </>
+              ) : (
+                <button className="btn link small" onClick={() => resolve(r, 'under_review')}>
+                  Reopen
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {rows && !rows.length && <p className="muted">Nothing here. 🎉</p>}
+      </div>
+    </div>
   );
 }

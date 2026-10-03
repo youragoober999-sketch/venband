@@ -145,37 +145,78 @@ export function InviteModal({ serverId, serverName, onClose }: { serverId: strin
 
 // --------------------------------------------------------------- channels --
 
-export function CreateChannelModal({ data, onClose }: { data: ServerData; onClose: () => void }) {
-  const [type, setType] = useState<'text' | 'voice'>('text');
+/** Every category in a server: ones that hold channels plus empty ones the server saved. */
+export function serverCategories(data: ServerData): string[] {
+  const out: string[] = [];
+  for (const c of data.channels) if (c.category && !out.includes(c.category)) out.push(c.category);
+  for (const c of data.server?.categories ?? []) if (!out.includes(c)) out.push(c);
+  return out;
+}
+
+export async function createCategory(data: ServerData, name: string) {
+  const clean = name.trim().slice(0, 100);
+  if (!clean) return;
+  const current = data.server?.categories ?? [];
+  if (serverCategories(data).includes(clean)) return;
+  const { error } = await supabase.from('servers').update({ categories: [...current, clean] }).eq('id', data.server!.id);
+  if (error) throw error;
+  data.reload();
+}
+
+export function CreateChannelModal({
+  data,
+  onClose,
+  initialCategory,
+  initialType = 'text',
+}: {
+  data: ServerData;
+  onClose: () => void;
+  initialCategory?: string;
+  initialType?: 'text' | 'voice';
+}) {
+  const categories = serverCategories(data);
+  const [type, setType] = useState<'text' | 'voice'>(initialType);
   const [name, setName] = useState('');
-  const [category, setCategory] = useState(type === 'text' ? 'Text Channels' : 'Voice Channels');
+  const [category, setCategory] = useState(initialCategory ?? categories.find((c) => /text/i.test(c)) ?? categories[0] ?? '');
+  const [newCategory, setNewCategory] = useState('');
   const [isPrivate, setPrivate] = useState(false);
   const [roles, setRoles] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const categories = [...new Set(data.channels.map((c) => c.category))];
+  const [busy, setBusy] = useState(false);
+  const NEW = '__new__';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     const clean = type === 'text' ? name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') : name.trim();
     if (!clean) return setError('Name required');
-    const { data: ch, error } = await supabase
-      .from('channels')
-      .insert({
-        server_id: data.server!.id,
-        type,
-        name: clean,
-        category,
-        is_private: isPrivate,
-        position: data.channels.length,
-      })
-      .select()
-      .single();
-    if (error) return setError(errorMessage(error));
-    if (isPrivate && roles.length) {
-      await supabase.from('channel_role_access').insert(roles.map((role_id) => ({ channel_id: ch.id, role_id })));
+    const cat = category === NEW ? newCategory.trim().slice(0, 100) : category;
+    if (category === NEW && !cat) return setError('Name the new category');
+    setBusy(true);
+    // choose the id here and don't ask for the row back: the "can you see this
+    // channel" check can't see a row inserted by the same statement yet
+    const id = crypto.randomUUID();
+    const { error } = await supabase.from('channels').insert({
+      id,
+      server_id: data.server!.id,
+      type,
+      name: clean,
+      category: cat,
+      is_private: isPrivate,
+      position: data.channels.length,
+    });
+    if (error) {
+      setBusy(false);
+      return setError(errorMessage(error));
     }
-    if (type === 'text') await sessionStore.get().keyring!.ensure(ch.id);
-    openChannel(data.server!.id, ch.id);
+    if (isPrivate && roles.length) {
+      await supabase.from('channel_role_access').insert(roles.map((role_id) => ({ channel_id: id, role_id })));
+    }
+    if (category === NEW && cat && !(data.server?.categories ?? []).includes(cat)) {
+      await supabase.from('servers').update({ categories: [...(data.server?.categories ?? []), cat] }).eq('id', data.server!.id);
+    }
+    await sessionStore.get().keyring!.ensure(id).catch(() => {});
+    data.reload();
+    openChannel(data.server!.id, id);
     onClose();
   }
 
@@ -186,18 +227,11 @@ export function CreateChannelModal({ data, onClose }: { data: ServerData; onClos
         <div className="type-picker">
           {(['text', 'voice'] as const).map((t) => (
             <label key={t} className={`type-option${type === t ? ' selected' : ''}`}>
-              <input
-                type="radio"
-                checked={type === t}
-                onChange={() => {
-                  setType(t);
-                  setCategory(t === 'text' ? 'Text Channels' : 'Voice Channels');
-                }}
-              />
+              <input type="radio" checked={type === t} onChange={() => setType(t)} />
               <Icon name={t === 'text' ? 'hash' : 'speaker'} />
               <div>
                 <b>{t === 'text' ? 'Text' : 'Voice'}</b>
-                <div className="small muted">{t === 'text' ? 'Encrypted messages, files and replies' : 'Encrypted voice, video and screen share'}</div>
+                <div className="small muted">{t === 'text' ? 'Encrypted messages, files and replies' : 'Encrypted voice, video, screen share and a side chat'}</div>
               </div>
             </label>
           ))}
@@ -206,15 +240,25 @@ export function CreateChannelModal({ data, onClose }: { data: ServerData; onClos
           <input required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder={type === 'text' ? 'new-channel' : 'Lounge'} />
         </Field>
         <Field label="Category">
-          <input list="categories" value={category} onChange={(e) => setCategory(e.target.value)} maxLength={100} />
-          <datalist id="categories">
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">No category</option>
             {categories.map((c) => (
-              <option key={c} value={c} />
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
-          </datalist>
+            <option value={NEW}>+ New category…</option>
+          </select>
         </Field>
+        {category === NEW && (
+          <Field label="New category name">
+            <input autoFocus maxLength={100} value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="Gaming" />
+          </Field>
+        )}
         <PrivateToggle data={data} isPrivate={isPrivate} setPrivate={setPrivate} roles={roles} setRoles={setRoles} />
-        <button className="btn primary full">Create Channel</button>
+        <button className="btn primary full" disabled={busy}>
+          {busy ? 'Creating…' : 'Create Channel'}
+        </button>
       </form>
     </Modal>
   );
@@ -306,7 +350,14 @@ export function ChannelSettingsModal({ channel, data, onClose }: { channel: Chan
         )}
         <div className="row">
           <Field label="Category">
-            <input maxLength={100} value={category} onChange={(e) => setCategory(e.target.value)} />
+            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">No category</option>
+              {serverCategories(data).map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Position">
             <input type="number" value={position} onChange={(e) => setPosition(Number(e.target.value))} />

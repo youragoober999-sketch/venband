@@ -32,6 +32,8 @@
 - **Servers:** new servers get `#welcome` (with join messages) and `#chat`. Owners can set a description, a server tag, a banner colour and an AutoMod slur filter.
 - **Discovery:** verified servers and servers with 1,000+ members appear in the Discover tab.
 - **Settings:** account, profile, privacy, devices (see every logged-in device with its rough location and log it out), appearance with a theme marketplace and theme creator, voice & video (devices, noise suppression, screen share up to 1440p 60 fps), chat and language. Everything syncs to your account.
+- **Reports:** anyone can report a message or a person. Because messages are end-to-end encrypted, the report carries the messages the reporter chose to share. Administrators and the owner review them in **Settings → Report Centre** and can ban or limit the account right there.
+- **Message requests:** DMs from people you share no server or friendship with wait in Message Requests until you accept them.
 - **Moderation (Venband staff):** search any user or server; apply badges; make an account limited, very limited or banned; put a server in review (frozen), pass or fail the review, verify it or ban it. Every action is written to an audit log.
 - **Quality of life:** right-click menus everywhere, per-person and per-stream volume up to 200%, stream attenuation, resizable panels, and real URLs (`/sign-in`, `/register`, `/channels/@me/<user>`, `/channels/<server>/<channel>`).
 
@@ -105,6 +107,7 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
    - `VITE_SUPABASE_URL`: your Project URL
    - `VITE_SUPABASE_ANON_KEY`: your anon / publishable key
    - `VITE_KLIPY_API_KEY` (optional): your Klipy key from <https://partner.klipy.com>, for GIF search
+   - Donations (optional, any of): `VITE_DONATE_PAYPAL` (your PayPal.me name), `VITE_DONATE_CASHAPP` (your $cashtag), `VITE_DONATE_KOFI`, `VITE_DONATE_BMC` (Buy Me a Coffee name). The Donate tab sends people to those pages; Venband never handles card details.
 
    These values end up in the public web app by design; Row Level Security protects the data. Never commit them to the repository.
 4. Push to `main` (or run the **Deploy to GitHub Pages** workflow). Your app is live at `https://<user>.github.io/venband/`.
