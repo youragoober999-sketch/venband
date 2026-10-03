@@ -216,6 +216,17 @@ export class Keyring {
       await this.loadChannel(channelId);
       await this.createEpoch(channelId);
       await this.distribute(channelId);
+      return;
+    }
+    // Nobody who holds the current key is online to share it with us (e.g.
+    // we just joined). Don't wait: start a new key, share it with every
+    // member, and talk. Older messages unlock once a member shares them.
+    if (!this.hasKey(channelId, this.latestEpoch(channelId))) {
+      await this.loadChannel(channelId);
+      if (!this.hasKey(channelId, this.latestEpoch(channelId))) {
+        await this.createEpoch(channelId);
+        await this.distribute(channelId);
+      }
     }
   }
 

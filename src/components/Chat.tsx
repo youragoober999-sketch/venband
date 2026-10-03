@@ -333,16 +333,11 @@ export function ChatView({
           );
         })}
       </div>
-      {keyStatus === 'waiting' && (
-        <div className="key-wait">
-          <Icon name="lock" size={16} /> Waiting for another member to come online and share this channel’s encryption key with you…
-        </div>
-      )}
       <div className="typing">{typing.length > 0 && `${typing.map((u) => nameOf(u)).join(', ')} ${typing.length > 1 ? 'are' : 'is'} typing…`}</div>
       <Composer
         channelId={channel.id}
         placeholder={canSend ? `Message ${channel.type === 'dm' ? '@' + title : '#' + title}` : 'You do not have permission to send messages here'}
-        disabled={!canSend || keyStatus !== 'ready'}
+        disabled={!canSend || keyStatus === 'loading'}
         replyTo={replyTo ? nameOf(replyTo.row.author_id) : null}
         onCancelReply={() => setReplyTo(null)}
         onSend={sendPayload}
@@ -519,7 +514,7 @@ function MessageItem({
           )}
           {m.error === 'missing-key' && (
             <div className="undecryptable">
-              <Icon name="lock" size={14} /> Encrypted message — waiting for the key.
+              <Icon name="lock" size={14} /> Sent before you had this channel’s key. It unlocks when a member who has it comes online.
             </div>
           )}
           {m.error === 'invalid' && (

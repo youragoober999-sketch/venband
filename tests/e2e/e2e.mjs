@@ -451,11 +451,18 @@ await bob.page.locator('.rail-item[aria-label="Discover servers"]').click();
 await bob.page.locator(`.discovery-card[data-server-id="${hqId}"]`).click({ timeout: 20000 });
 await bob.page.locator('.server-header', { hasText: 'Venband HQ' }).waitFor({ timeout: 20000 });
 log('✅ discovery: verified server listed and joinable');
-if (SHOTS) {
-  await bob.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
-  await bob.page.waitForTimeout(1500);
-  await bob.page.screenshot({ path: `${SHOTS}/11-server-badges.png` });
-}
+// bob rejoined without anyone sharing the current key with him: he can still talk right away
+await bob.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+await bob.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
+if (await bob.page.locator('.key-wait').count()) throw new Error('still shows the waiting-for-key banner');
+await bob.page.locator('.composer textarea').fill('bob is back and can talk');
+await bob.page.keyboard.press('Enter');
+await bob.page.locator('.message-text', { hasText: 'bob is back and can talk' }).waitFor({ timeout: 20000 });
+await alice.page.locator('.rail-item:not(.home):not(.add)').first().click();
+await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+await alice.page.locator('.message-text', { hasText: 'bob is back and can talk' }).waitFor({ timeout: 20000 });
+log('✅ a newcomer can send immediately (new key shared with everyone) and others read it');
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/11-server-badges.png` });
 
 // ---- logging out and back in works; unticking "stay signed in" asks for the password after refresh
 await alice.page.locator('.user-panel [title="User settings"]').click();
