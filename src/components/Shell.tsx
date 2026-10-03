@@ -185,7 +185,9 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
   const othersInCall = presence.filter((p) => p.voice_channel_id === current?.channel.id && p.user_id !== identity.userId);
   const alone = Boolean(inCall && call && call.remotePeers.length === 0);
   // ring only until someone picks up; after that, being alone means they left
-  const waiting = alone && !call?.everJoined;
+  // Ring-back only while nobody else is in the call. Someone answering a call
+  // that's already going (or joining before the media connects) hears nothing.
+  const waiting = alone && !call?.everJoined && othersInCall.length === 0;
   const [noAnswer, setNoAnswer] = useState(false);
   useEffect(() => {
     setNoAnswer(false);
@@ -317,7 +319,7 @@ function ServerView({ serverId }: { serverId: string }) {
   const data = useServerData(serverId);
   const keyring = sessionStore.use((s) => s.keyring)!;
   const selected = nav.use((s) => s.channelByServer[serverId]);
-  const presence = useScopePresence(serverId);
+  const presence = useScopePresence(serverId, { online: true }); // shows you as online in this server
   const [showMembers, setShowMembers] = useState(true);
   const channel = data.channels.find((c) => c.id === selected) ?? data.channels.find((c) => c.type === 'text') ?? null;
 
@@ -692,7 +694,9 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
   const call = useActiveCall();
   const [dismissedAt, setDismissedAt] = useState(0);
   const caller = presence.find((p) => p.voice_channel_id === dm.channel.id && p.user_id !== identity.userId);
-  const ringing = caller && call?.channelId !== dm.channel.id;
+  // already in this call — here, or in another tab / on another device → don't ring
+  const meAlreadyIn = presence.some((p) => p.voice_channel_id === dm.channel.id && p.user_id === identity.userId);
+  const ringing = caller && call?.channelId !== dm.channel.id && !meAlreadyIn;
   const callerProfile = caller ? getProfile(caller.user_id) : null;
   const name = dm.channel.is_group ? `${callerProfile?.display_name ?? 'Someone'} · ${dm.title}` : dm.title;
   const callerId = caller?.user_id;
