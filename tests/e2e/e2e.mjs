@@ -393,6 +393,48 @@ await bob.page.locator('.message', { hasText: 'version two' }).click({ button: '
 await bob.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Mark Unread' }).click();
 await bob.page.locator('.unread-divider').waitFor({ timeout: 10000 });
 log('✅ mark unread shows the New divider');
+
+// ---- search: decrypts and matches on the device, with filters
+await alice.page.keyboard.press('Control+k');
+await alice.page.locator('.switcher input').fill('version two');
+await alice.page.locator('.switcher-item', { hasText: 'Search messages for' }).click();
+const hit = alice.page.locator('.search-hit', { hasText: 'version two' }).first();
+await hit.waitFor({ timeout: 20000 });
+await alice.page.locator('.search-head input').fill('from:bob_' + run + ' got');
+await alice.page.locator('.search-head input').press('Enter');
+await alice.page.locator('.search-hit', { hasText: 'hi alice! got it' }).waitFor({ timeout: 20000 });
+await alice.page.locator('.search-head input').fill('has:poll pizza');
+await alice.page.locator('.search-head input').press('Enter');
+await alice.page.locator('.search-hit', { hasText: 'Alice' }).first().waitFor({ timeout: 20000 });
+await alice.page.locator('.search-head input').fill('version two');
+await alice.page.locator('.search-head input').press('Enter');
+await alice.page.locator('.search-hit', { hasText: 'version two' }).first().click();
+await alice.page.locator('.message.flash', { hasText: 'version two' }).waitFor({ timeout: 10000 });
+log('✅ search: message contents (decrypted on device), from:/has: filters, click jumps to the message');
+
+// ---- command palette runs commands
+await alice.page.keyboard.press('Control+k');
+await alice.page.locator('.switcher input').fill('>saved');
+await alice.page.keyboard.press('Enter');
+await alice.page.locator('.saved-item', { hasText: 'version two' }).waitFor({ timeout: 15000 });
+log('✅ command palette commands; Saved Messages view lists saved messages');
+await alice.page.locator('.saved-item').getByRole('button', { name: 'Go to message' }).click();
+await alice.page.locator('.message', { hasText: 'version two' }).first().waitFor({ timeout: 10000 });
+
+// ---- DM organisation: pin + folder + mute
+const bobRowDm = alice.page.locator('.channel.dm', { hasText: 'Bob' }).first();
+await bobRowDm.click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'New folder…' }).click();
+await alice.page.locator('.modal input').fill('Besties');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await alice.page.locator('.dm-folder-head', { hasText: 'Besties' }).waitFor({ timeout: 5000 });
+await alice.page.locator('.dm-folder', { hasText: 'Besties' }).locator('.channel.dm', { hasText: 'Bob' }).waitFor();
+await alice.page.locator('.channel.dm', { hasText: 'Bob' }).first().click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'For 1 hour' }).click();
+await alice.page.locator('.channel.dm.muted-convo', { hasText: 'Bob' }).waitFor({ timeout: 5000 });
+await alice.page.locator('.channel.dm', { hasText: 'Bob' }).first().click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: /^Unmute/ }).click();
+log('✅ DMs: folders, timed mute');
 await bob.page.locator('.rail-item.home').click();
 await bob.page.evaluate(() => { history.replaceState(null, '', location.pathname); });
 // bob also has a second tab open (same login)

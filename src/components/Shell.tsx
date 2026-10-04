@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { sessionStore, updateMyProfile } from '../lib/session';
 import { supabase, errorMessage } from '../lib/supabase';
 import { activeCallVersion, getActiveCall, joinCall, leaveCall, leftRecently, subscribeActiveCall } from '../lib/call';
@@ -13,6 +13,7 @@ import {
   notificationPermission,
   notify,
   playMessageSound,
+  setUnread,
   startRing,
   stopRing,
   unreadStore,
@@ -20,8 +21,8 @@ import {
 import { currentPath, go, linkTo, parseRoute, useRoute } from '../lib/router';
 import { socialStore } from '../lib/social';
 import { RING_MS, ringFor, subscribeRings } from '../lib/presence';
-import { updateLayout, useSettings } from '../lib/settings';
-import { isPhone, openSettings, setDrawer, uiStore } from '../lib/ui';
+import { getSettings, updateLayout, updateSettings, useSettings } from '../lib/settings';
+import { isPhone, openSearch, openSettings, setDrawer, uiStore } from '../lib/ui';
 import {
   nav,
   openChannel,
@@ -46,6 +47,7 @@ import { Badges, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
 import { DiscoveryView, DonateView, FriendsView, MessageRequestsView, RequestBanner } from './Friends';
 import { Resizer } from './Resizer';
+import { SavedView, SearchPanel } from './Search';
 import { mentionsMe } from './Markdown';
 
 export function useActiveCall() {
@@ -98,6 +100,7 @@ function useMessageAlerts(servers: Server[]) {
     }
     const mention = !isDm && mentionsMe(text, me.id, myRolesByServer.get(meta.server_id ?? '') ?? []);
     addUnread(row.channel_id, meta.server_id, mention);
+    if ((getSettings().dms.mutedUntil[row.channel_id] ?? 0) > Date.now()) return;
     if ((!isDm && !mention) || rel?.muted || me.presence === 'dnd' || meta.request_to === me.id) return;
     playMessageSound();
     await loadProfiles([row.author_id]);
@@ -240,6 +243,7 @@ export function Shell() {
   const [modal, setModal] = useState<null | 'create-join'>(null);
   const drawer = uiStore.use((s) => s.drawer);
   const switcher = uiStore.use((s) => s.switcher);
+  const search = uiStore.use((s) => s.search);
   useDirectory();
   // phone layout: going somewhere closes the slide-in panels
   const navState = nav.use((s) => s);
@@ -297,7 +301,8 @@ export function Shell() {
         )}
         <div className="drawer-scrim" onClick={() => setDrawer(null)} />
       </div>
-      {switcher && <QuickSwitcher servers={servers} dms={dms} onClose={() => uiStore.set({ switcher: false })} />}
+      {switcher && <QuickSwitcher servers={servers} dms={dms} onClose={() => uiStore.set({ switcher: false })} onCreateServer={() => setModal('create-join')} />}
+      {search && <SearchPanel servers={servers} />}
       <CallAudio />
       <div className="toasts">
         {dms
@@ -452,7 +457,11 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
   const [newGroup, setNewGroup] = useState(false);
   const [groupSettings, setGroupSettings] = useState(false);
   const [filter, setFilter] = useState('');
-  const [homeTab, setHomeTab] = useState<'friends' | 'requests' | 'donate'>('friends');
+  const homeTab = uiStore.use((s) => s.homeTab);
+  const setHomeTab = (t: typeof homeTab) => uiStore.set({ homeTab: t });
+  const dmPrefs = useSettings((s) => s.dms);
+  const [showArchived, setShowArchived] = useState(false);
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
   const myId = sessionStore.use((s) => s.me?.id);
   const requests = dms.filter((d) => d.channel.request_to === myId);
   const current = dms.find((d) => d.channel.id === selected) ?? null;
@@ -482,29 +491,107 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
     };
   }, [waiting]);
 
-  const pinnedFirst = useMemo(() => {
-    const pin = (d: DmChannel) => Boolean(d.other && relations[d.other.id]?.pinned);
-    return [...dms]
-      .filter((d) => d.channel.request_to !== myId)
-      .filter((d) => !filter || d.title.toLowerCase().includes(filter.toLowerCase()))
-      .sort((a, b) => Number(pin(b)) - Number(pin(a)));
-  }, [dms, relations, filter, myId]);
+  const visibleDms = useMemo(
+    () =>
+      dms
+        .filter((d) => d.channel.request_to !== myId)
+        .filter((d) => !filter || d.title.toLowerCase().includes(filter.toLowerCase()) || (d.other && displayName(d.other.id).toLowerCase().includes(filter.toLowerCase()))),
+    [dms, filter, myId],
+  );
+  const isPinned = (d: DmChannel) => dmPrefs.pinned.includes(d.channel.id) || Boolean(d.other && relations[d.other.id]?.pinned);
+  const isArchived = (d: DmChannel) => dmPrefs.archived.includes(d.channel.id) && !(unread.counts[d.channel.id] > 0);
+  const inFolder = (d: DmChannel) => dmPrefs.folders.find((f) => f.channels.includes(d.channel.id));
+  const pinnedDms = visibleDms.filter((d) => isPinned(d) && !isArchived(d));
+  const archivedDms = visibleDms.filter(isArchived);
+  const looseDms = visibleDms.filter((d) => !isPinned(d) && !isArchived(d) && !inFolder(d));
+
+  function setDmPrefs(patch: (p: typeof dmPrefs) => Partial<typeof dmPrefs>) {
+    updateSettings((st) => ({ dms: { ...st.dms, ...patch(st.dms) } }));
+  }
+  const toggleIn = (list: string[], id: string, on: boolean) => (on ? [...new Set([...list, id])] : list.filter((x) => x !== id));
+  const mutedUntil = (id: string) => dmPrefs.mutedUntil[id] ?? 0;
+  const muteFor = (id: string, ms: number | null) =>
+    setDmPrefs((p) => ({ mutedUntil: { ...p.mutedUntil, [id]: ms === null ? Number.MAX_SAFE_INTEGER : ms === 0 ? 0 : Date.now() + ms } }));
+
+  function organiseMenu(d: DmChannel): Entry[] {
+    const id = d.channel.id;
+    const muted = mutedUntil(id) > Date.now();
+    const folder = inFolder(d);
+    return [
+      { label: isPinned(d) ? 'Unpin Conversation' : 'Pin to Top', icon: 'pin', onClick: () => setDmPrefs((p) => ({ pinned: toggleIn(p.pinned, id, !p.pinned.includes(id)) })) },
+      muted
+        ? { label: `Unmute (muted ${mutedUntil(id) === Number.MAX_SAFE_INTEGER ? 'until you unmute' : `until ${new Date(mutedUntil(id)).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`})`, icon: 'bell', onClick: () => muteFor(id, 0) }
+        : { type: 'header', label: 'Mute conversation' },
+      !muted && { label: 'For 15 minutes', icon: 'bellOff', onClick: () => muteFor(id, 15 * 60_000) },
+      !muted && { label: 'For 1 hour', icon: 'bellOff', onClick: () => muteFor(id, 3_600_000) },
+      !muted && { label: 'For 8 hours', icon: 'bellOff', onClick: () => muteFor(id, 8 * 3_600_000) },
+      !muted && { label: 'For 24 hours', icon: 'bellOff', onClick: () => muteFor(id, 24 * 3_600_000) },
+      !muted && { label: 'Until I turn it back on', icon: 'bellOff', onClick: () => muteFor(id, null) },
+      { type: 'sep' },
+      { label: 'Mark Unread', icon: 'unread', onClick: () => setUnread(id, null, Math.max(1, unread.counts[id] ?? 1)) },
+      { label: dmPrefs.archived.includes(id) ? 'Unarchive' : 'Archive', icon: 'archive', onClick: () => setDmPrefs((p) => ({ archived: toggleIn(p.archived, id, !p.archived.includes(id)) })) },
+      { type: 'header', label: 'Folder' },
+      ...dmPrefs.folders
+        .filter((f) => f.id !== folder?.id)
+        .map((f) => ({ label: `Move to ${f.name}`, icon: 'folder', onClick: () => setDmPrefs((p) => ({ folders: p.folders.map((x) => ({ ...x, channels: x.id === f.id ? [...new Set([...x.channels, id])] : x.channels.filter((c) => c !== id) })) })) })),
+      folder && { label: `Remove from ${folder.name}`, icon: 'folder', onClick: () => setDmPrefs((p) => ({ folders: p.folders.map((x) => ({ ...x, channels: x.channels.filter((c) => c !== id) })) })) },
+      {
+        label: 'New folder…',
+        icon: 'plus',
+        onClick: async () => {
+          const name = await askText({ title: 'New folder', label: 'Folder name', placeholder: 'Close friends', maxLength: 40 });
+          if (!name?.trim()) return;
+          setDmPrefs((p) => ({ folders: [...p.folders.map((x) => ({ ...x, channels: x.channels.filter((c) => c !== id) })), { id: crypto.randomUUID(), name: name.trim(), channels: [id] }] }));
+        },
+      },
+      { type: 'sep' },
+    ];
+  }
 
   function convoMenu(e: React.MouseEvent, d: DmChannel) {
     const unreadCount = unread.counts[d.channel.id] ?? 0;
     if (d.other) {
-      openMenu(e, [unreadCount > 0 && { label: 'Mark As Read', icon: 'check', onClick: () => markRead(d.channel.id) }, ...userMenu(d.other.id)]);
+      openMenu(e, [unreadCount > 0 && { label: 'Mark As Read', icon: 'check', onClick: () => markRead(d.channel.id) }, ...organiseMenu(d), ...userMenu(d.other.id)]);
       return;
     }
     openMenu(e, [
       { type: 'header', label: d.title },
       unreadCount > 0 && { label: 'Mark As Read', icon: 'check', onClick: () => markRead(d.channel.id) },
+      ...organiseMenu(d),
       { label: 'Group Settings', icon: 'users', onClick: () => (openChannel('@me', d.channel.id), setGroupSettings(true)) },
       { label: 'Copy Link', icon: 'link', onClick: () => copyText(linkTo(`channels/@me/${d.channel.id}`)) },
       { type: 'sep' },
       { label: 'Copy Channel ID', icon: 'copy', onClick: () => copyText(d.channel.id) },
     ]);
   }
+
+  const dmRow = (d: DmChannel) => {
+    const p = d.other ? getProfile(d.other.id) : null;
+    const muted = mutedUntil(d.channel.id) > Date.now();
+    return (
+      <button
+        key={d.channel.id}
+        className={`channel dm${selected === d.channel.id ? ' active' : ''}${muted ? ' muted-convo' : ''}`}
+        onClick={() => openChannel('@me', d.channel.id)}
+        onContextMenu={(e) => convoMenu(e, d)}
+      >
+        <ConvoAvatar dm={d} size={32} />
+        <span className="channel-name">
+          {d.other ? displayName(d.other.id) : d.title}
+          {d.channel.is_group ? (
+            <small className="convo-sub">{d.members.length + 1} members</small>
+          ) : p?.status_text ? (
+            <small className="convo-sub">
+              {p.status_emoji} {p.status_text}
+            </small>
+          ) : null}
+        </span>
+        {muted && <Icon name="bellOff" size={12} />}
+        {isPinned(d) && <Icon name="pin" size={12} />}
+        {(unread.counts[d.channel.id] ?? 0) > 0 && !muted && <span className="badge inline">{unread.counts[d.channel.id]}</span>}
+      </button>
+    );
+  };
 
   return (
     <>
@@ -530,6 +617,10 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
             <Icon name="compass" size={20} />
             <span className="channel-name">Discover</span>
           </button>
+          <button className={`channel nav-item${!current && homeTab === 'saved' ? ' active' : ''}`} onClick={() => (setHomeTab('saved'), openFriends())}>
+            <Icon name="bookmark" size={20} />
+            <span className="channel-name">Saved Messages</span>
+          </button>
           <button className={`channel nav-item${!current && homeTab === 'donate' ? ' active' : ''}`} onClick={() => (setHomeTab('donate'), openFriends())}>
             <Icon name="star" size={20} />
             <span className="channel-name">Donate</span>
@@ -545,31 +636,53 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
               </button>
             </span>
           </div>
-          {pinnedFirst.map((d) => {
-            const p = d.other ? getProfile(d.other.id) : null;
+          {pinnedDms.length > 0 && <div className="dm-section-label">Pinned</div>}
+          {pinnedDms.map(dmRow)}
+          {dmPrefs.folders.map((f) => {
+            const list = visibleDms.filter((d) => f.channels.includes(d.channel.id) && !isPinned(d) && !isArchived(d));
+            const open = !collapsedFolders[f.id];
+            const unreadIn = list.reduce((n, d) => n + (unread.counts[d.channel.id] ?? 0), 0);
             return (
-              <button
-                key={d.channel.id}
-                className={`channel dm${selected === d.channel.id ? ' active' : ''}`}
-                onClick={() => openChannel('@me', d.channel.id)}
-                onContextMenu={(e) => convoMenu(e, d)}
-              >
-                <ConvoAvatar dm={d} size={32} />
-                <span className="channel-name">
-                  {d.other ? displayName(d.other.id) : d.title}
-                  {d.channel.is_group ? (
-                    <small className="convo-sub">{d.members.length + 1} members</small>
-                  ) : p?.status_text ? (
-                    <small className="convo-sub">
-                      {p.status_emoji} {p.status_text}
-                    </small>
-                  ) : null}
-                </span>
-                {d.other && relations[d.other.id]?.pinned && <Icon name="pin" size={12} />}
-                {(unread.counts[d.channel.id] ?? 0) > 0 && <span className="badge inline">{unread.counts[d.channel.id]}</span>}
-              </button>
+              <div key={f.id} className="dm-folder">
+                <button
+                  className="dm-folder-head"
+                  onClick={() => setCollapsedFolders((c) => ({ ...c, [f.id]: open }))}
+                  onContextMenu={(e) =>
+                    openMenu(e, [
+                      { type: 'header', label: f.name },
+                      {
+                        label: 'Rename Folder',
+                        icon: 'edit',
+                        onClick: async () => {
+                          const name = await askText({ title: 'Rename folder', label: 'Name', initial: f.name, maxLength: 40 });
+                          if (name?.trim()) setDmPrefs((p) => ({ folders: p.folders.map((x) => (x.id === f.id ? { ...x, name: name.trim() } : x)) }));
+                        },
+                      },
+                      { label: 'Delete Folder', icon: 'trash', danger: true, onClick: () => setDmPrefs((p) => ({ folders: p.folders.filter((x) => x.id !== f.id) })) },
+                    ])
+                  }
+                  aria-expanded={open}
+                >
+                  <Icon name="chevron" size={12} />
+                  <Icon name="folder" size={14} />
+                  <span className="grow">{f.name}</span>
+                  {!open && unreadIn > 0 && <span className="badge inline">{unreadIn}</span>}
+                </button>
+                {open && list.map(dmRow)}
+                {open && !list.length && <p className="empty-hint small">Right-click a conversation → Move to {f.name}</p>}
+              </div>
             );
           })}
+          {(pinnedDms.length > 0 || dmPrefs.folders.length > 0) && looseDms.length > 0 && <div className="dm-section-label">Conversations</div>}
+          {looseDms.map(dmRow)}
+          {archivedDms.length > 0 && (
+            <button className="dm-folder-head archived-toggle" onClick={() => setShowArchived((v) => !v)} aria-expanded={showArchived}>
+              <Icon name="archive" size={14} />
+              <span className="grow">Archived ({archivedDms.length})</span>
+              <Icon name="chevron" size={12} />
+            </button>
+          )}
+          {showArchived && archivedDms.map(dmRow)}
           {!dms.length && <p className="empty-hint">No conversations yet. Start one with the + button.</p>}
         </div>
         <CallDock />
@@ -632,6 +745,16 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           <MessageRequestsView requests={requests} onOpen={(d) => openChannel('@me', d.channel.id)} />
         ) : homeTab === 'donate' ? (
           <DonateView />
+        ) : homeTab === 'saved' ? (
+          <SavedView
+            header={
+              <header className="chat-header">
+                <Icon name="bookmark" />
+                <h3>Saved Messages</h3>
+                <span className="topic small muted">Only you can see these</span>
+              </header>
+            }
+          />
         ) : (
           <FriendsView />
         )}
@@ -1210,56 +1333,106 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
 }
 
 /** Ctrl+K: jump to any conversation, server or friend. */
-function QuickSwitcher({ servers, dms, onClose }: { servers: Server[]; dms: DmChannel[]; onClose: () => void }) {
+type PaletteItem = { key: string; label: string; sub: string; icon: React.ReactNode; go: () => void; kind: 'place' | 'command' | 'search' };
+
+/** Ctrl+K: jump anywhere or run a command. Prefixes: > commands, # channels, @ people, * servers. */
+function QuickSwitcher({ servers, dms, onClose, onCreateServer }: { servers: Server[]; dms: DmChannel[]; onClose: () => void; onCreateServer: () => void }) {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
   const friends = socialStore.use((s) => s.friends);
+  const [channels, setChannels] = useState<{ id: string; name: string; server_id: string; type: string }[]>([]);
+  const call = useActiveCall();
+  useEffect(() => {
+    const ids = servers.map((x) => x.id);
+    if (!ids.length) return;
+    supabase
+      .from('channels')
+      .select('id, name, server_id, type')
+      .in('server_id', ids)
+      .then(({ data }) => setChannels((data ?? []) as typeof channels));
+  }, [servers]);
+  const commands: PaletteItem[] = useMemo(() => {
+    const c = (key: string, label: string, icon: string, go: () => void, sub = 'Command'): PaletteItem => ({ key: `cmd:${key}`, label, sub, icon: <Icon name={icon} size={18} />, go, kind: 'command' });
+    return [
+      c('settings', 'Open settings', 'settings', () => openSettings('account')),
+      c('appearance', 'Change theme', 'palette', () => openSettings('appearance')),
+      c('notifications', 'Notification settings', 'bell', () => openSettings('notifications')),
+      c('voice', 'Voice & video settings', 'mic', () => openSettings('voice')),
+      c('privacy', 'Privacy & safety', 'shield', () => openSettings('privacy')),
+      c('saved', 'Open saved messages', 'bookmark', () => (uiStore.set({ homeTab: 'saved' }), openFriends())),
+      c('search', 'Search messages', 'search', () => openSearch('', null)),
+      c('discover', 'Discover servers', 'compass', openDiscover),
+      c('friends', 'Open friends', 'users', openFriends),
+      c('create-server', 'Create or join a server', 'plus', onCreateServer),
+      c('readall', 'Mark everything as read', 'check', () => Object.keys(unreadStore.get().counts).forEach(markRead)),
+      call && c('mute', call.muted ? 'Unmute microphone' : 'Mute microphone', call.muted ? 'mic' : 'micOff', () => call.toggleMute(), 'Call'),
+      call && c('deafen', call.deafened ? 'Undeafen' : 'Deafen', 'headphones', () => call.toggleDeafen(), 'Call'),
+      call && c('leave', 'Leave call', 'phoneOff', leaveCall, 'Call'),
+      c('reduce-motion', 'Toggle reduced motion', 'sparkles', () => updateSettings((st) => ({ chat: { ...st.chat, reduceMotion: !st.chat.reduceMotion } }))),
+    ].filter(Boolean) as PaletteItem[];
+  }, [call, onCreateServer]);
   const items = useMemo(() => {
-    const out: { key: string; label: string; sub: string; icon: React.ReactNode; go: () => void }[] = [];
-    for (const d of dms)
-      out.push({
-        key: d.channel.id,
-        label: d.other ? displayName(d.other.id) : d.title,
-        sub: d.channel.is_group ? 'Group' : 'Direct message',
-        icon: <ConvoAvatar dm={d} size={24} />,
-        go: () => openChannel('@me', d.channel.id),
-      });
-    for (const sv of servers)
-      out.push({
-        key: sv.id,
-        label: sv.name,
-        sub: 'Server',
-        icon: (
-          <span className="server-icon-sm" style={{ background: sv.icon_color, width: 24, height: 24 }}>
-            {initials(sv.name)}
-          </span>
-        ),
-        go: () => openServer(sv.id),
-      });
-    for (const f of Object.values(friends).filter((x) => x.accepted && !dms.some((d) => d.other?.id === x.other)))
-      out.push({
-        key: f.other,
-        label: displayName(f.other),
-        sub: 'Friend',
-        icon: <Avatar profile={getProfile(f.other)} size={24} />,
-        go: () => startDm(f.other).catch((e) => alert(errorMessage(e))),
-      });
-    const needle = q.trim().toLowerCase();
-    return needle ? out.filter((i) => i.label.toLowerCase().includes(needle) || getProfile(i.key)?.username?.includes(needle)) : out;
-  }, [dms, servers, friends, q]);
+    const out: PaletteItem[] = [];
+    let needle = q.trim().toLowerCase();
+    let only: null | 'command' | 'channel' | 'person' | 'server' = null;
+    if (needle.startsWith('>')) (only = 'command'), (needle = needle.slice(1).trim());
+    else if (needle.startsWith('#')) (only = 'channel'), (needle = needle.slice(1).trim());
+    else if (needle.startsWith('@')) (only = 'person'), (needle = needle.slice(1).trim());
+    else if (needle.startsWith('*')) (only = 'server'), (needle = needle.slice(1).trim());
+    if (!only || only === 'person') {
+      for (const d of dms)
+        out.push({ key: d.channel.id, label: d.other ? displayName(d.other.id) : d.title, sub: d.channel.is_group ? 'Group' : 'Direct message', icon: <ConvoAvatar dm={d} size={24} />, go: () => openChannel('@me', d.channel.id), kind: 'place' });
+      for (const f of Object.values(friends).filter((x) => x.accepted && !dms.some((d) => d.other?.id === x.other)))
+        out.push({ key: f.other, label: displayName(f.other), sub: 'Friend', icon: <Avatar profile={getProfile(f.other)} size={24} />, go: () => startDm(f.other).catch((e) => alert(errorMessage(e))), kind: 'place' });
+    }
+    if (!only || only === 'server')
+      for (const sv of servers)
+        out.push({
+          key: sv.id,
+          label: sv.name,
+          sub: 'Server',
+          icon: <span className="server-icon-sm" style={{ background: sv.icon_color, width: 24, height: 24 }}>{initials(sv.name)}</span>,
+          go: () => openServer(sv.id),
+          kind: 'place',
+        });
+    if (!only || only === 'channel')
+      for (const ch of channels)
+        out.push({
+          key: ch.id,
+          label: ch.name,
+          sub: servers.find((x) => x.id === ch.server_id)?.name ?? 'Channel',
+          icon: <Icon name={ch.type === 'voice' ? 'speaker' : 'hash'} size={18} />,
+          go: () => openChannel(ch.server_id, ch.id),
+          kind: 'place',
+        });
+    if (!only || only === 'command') out.push(...commands);
+    const filtered = needle
+      ? out.filter((i) => i.label.toLowerCase().includes(needle) || i.sub.toLowerCase().includes(needle) || getProfile(i.key)?.username?.includes(needle))
+      : only
+        ? out
+        : out.filter((i) => i.kind === 'place').slice(0, 12).concat(commands.slice(0, 6));
+    if (q.trim() && !only)
+      filtered.push({ key: 'search', label: `Search messages for “${q.trim()}”`, sub: 'Enter', icon: <Icon name="search" size={18} />, go: () => openSearch(q.trim(), null), kind: 'search' });
+    return filtered;
+  }, [dms, servers, friends, channels, commands, q]);
   useEffect(() => setSel(0), [q]);
   const pick = (i: number) => {
-    items[i]?.go();
-    onClose();
+    const it = items[i];
+    if (!it) return;
+    it.go();
+    if (it.kind !== 'search') onClose();
+    else uiStore.set({ switcher: false });
   };
+  let lastKind: string | null = null;
   return (
     <div className="modal-backdrop switcher-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="switcher" role="dialog" aria-label="Quick switcher">
+      <div className="switcher" role="dialog" aria-label="Command palette">
         <input
           autoFocus
-          placeholder="Where would you like to go?"
+          placeholder="Go to a conversation, channel or server, or type > for commands"
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          aria-label="Search or run a command"
           onKeyDown={(e) => {
             if (e.key === 'Escape') onClose();
             if (e.key === 'ArrowDown') (e.preventDefault(), setSel((v) => Math.min(items.length - 1, v + 1)));
@@ -1267,17 +1440,24 @@ function QuickSwitcher({ servers, dms, onClose }: { servers: Server[]; dms: DmCh
             if (e.key === 'Enter') pick(sel);
           }}
         />
-        <div className="switcher-list">
-          {items.slice(0, 30).map((it, i) => (
-            <button key={it.key} className={`switcher-item${i === sel ? ' active' : ''}`} onMouseEnter={() => setSel(i)} onClick={() => pick(i)}>
-              {it.icon}
-              <span className="grow">{it.label}</span>
-              <span className="small muted">{it.sub}</span>
-            </button>
-          ))}
+        <div className="switcher-list" role="listbox">
+          {items.slice(0, 40).map((it, i) => {
+            const head = it.kind !== lastKind ? (it.kind === 'command' ? 'Commands' : it.kind === 'search' ? 'Search' : null) : null;
+            lastKind = it.kind;
+            return (
+              <Fragment key={it.key}>
+                {head && <div className="switcher-group">{head}</div>}
+                <button role="option" aria-selected={i === sel} className={`switcher-item${i === sel ? ' active' : ''}`} onMouseEnter={() => setSel(i)} onClick={() => pick(i)}>
+                  {it.icon}
+                  <span className="grow">{it.label}</span>
+                  <span className="small muted">{it.sub}</span>
+                </button>
+              </Fragment>
+            );
+          })}
           {!items.length && <p className="muted small switcher-empty">Nothing matches “{q}”.</p>}
         </div>
-        <div className="switcher-hint small muted">↑↓ to move · Enter to go · Esc to close</div>
+        <div className="switcher-hint small muted">↑↓ move · Enter go · <b>&gt;</b> commands · <b>#</b> channels · <b>@</b> people · <b>*</b> servers · Esc close</div>
       </div>
     </div>
   );

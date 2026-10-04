@@ -13,7 +13,8 @@ import type { Channel, MessageRow, Profile } from '../lib/types';
 import { openChannel, useMessages, type ServerData } from '../hooks/data';
 import { setUnread, setViewingChannel } from '../lib/notify';
 import { socialStore } from '../lib/social';
-import { useSettings } from '../lib/settings';
+import { getSettings, useSettings } from '../lib/settings';
+import { fetchPreview, previewableLink } from '../lib/linkPreview';
 import { languageName, translate, translationSupported, type Translation } from '../lib/translate';
 import { containsSlur } from '../lib/automod';
 import { has, P } from '../lib/permissions';
@@ -267,10 +268,13 @@ export function ChatView({
       attachments.push({ ...a, ...(f.spoiler ? { spoiler: true } : {}), ...(f.alt ? { alt: f.alt } : {}) });
       doneBytes += f.file.size;
     }
+    const link = getSettings().chat.linkPreviews && !poll ? previewableLink(text) : null;
+    const preview = link ? await fetchPreview(link) : null;
     return {
       v: 1,
       text,
       sentAt: Date.now(),
+      ...(preview ? { preview } : {}),
       ...(attachments.length ? { attachments } : {}),
       ...(poll ? { poll: { question: poll.question, options: poll.options, multi: poll.multi, anonymous: poll.anonymous, expiresAt: poll.hours ? Date.now() + poll.hours * 3_600_000 : null } } : {}),
       ...(quote?.payload ? { quote: { id: quote.row.id, author: nameOf(quote.row.author_id), text: quote.payload.text.slice(0, 300), channel: channel.id } } : {}),
@@ -757,6 +761,31 @@ export function ChatView({
   );
 }
 
+/** Site name, title and description of a link (made by the sender, shown from the encrypted message). */
+function LinkPreviewCard({ p }: { p: NonNullable<MessagePayload['preview']> }) {
+  const [imgOk, setImgOk] = useState(true);
+  let host = '';
+  try {
+    host = new URL(p.url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+  return (
+    <div className="link-preview" style={p.themeColor ? { borderLeftColor: p.themeColor } : undefined}>
+      <div className="grow link-preview-text">
+        <div className="link-preview-site">{p.siteName || host}</div>
+        {p.title && (
+          <a className="link-preview-title" href={p.url} target="_blank" rel="noopener noreferrer nofollow ugc">
+            {p.title}
+          </a>
+        )}
+        {p.description && <div className="link-preview-desc">{p.description}</div>}
+      </div>
+      {p.image && imgOk && <img className="link-preview-img" src={p.image} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setImgOk(false)} />}
+    </div>
+  );
+}
+
 function MessageSkeleton() {
   return (
     <div className="msg-skeleton" aria-label="Loading messages" role="status">
@@ -1211,6 +1240,7 @@ function MessageItem({
                   </div>
                 )}
                 {m.payload.poll && <PollView row={m.row} poll={m.payload.poll} state={poll} ctx={ctx} />}
+                {m.payload.preview && <LinkPreviewCard p={m.payload.preview} />}
                 {translation && (
                   <div className="translated-note">
                     <Icon name="translate" size={12} />

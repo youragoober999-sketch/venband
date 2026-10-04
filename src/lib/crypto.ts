@@ -381,6 +381,8 @@ export interface MessagePayload {
   poll?: { question: string; options: string[]; multi?: boolean; anonymous?: boolean; expiresAt?: number | null };
   /** quoted message preview */
   quote?: { id: string; author: string; text: string; channel: string };
+  /** link preview made by the sender (so receivers never contact the site) */
+  preview?: { url: string; title?: string; description?: string; siteName?: string; image?: string; themeColor?: string };
 }
 
 export interface MessageEnvelope {

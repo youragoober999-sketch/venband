@@ -47,6 +47,8 @@ export interface Settings {
     clock24: boolean;
     /** images / videos / GIFs / link embeds: load automatically or on click */
     mediaAutoload: 'always' | 'wifi' | 'click';
+    /** attach previews (site name, title, description) to links you send */
+    linkPreviews: boolean;
   };
   /** how often each emoji was used (for autocomplete ranking) */
   emojiUsage: Record<string, number>;
@@ -87,6 +89,7 @@ export const DEFAULT_SETTINGS: Settings = {
     saveDrafts: true,
     clock24: false,
     mediaAutoload: 'always',
+    linkPreviews: true,
   },
   emojiUsage: {},
   recentReactions: [],

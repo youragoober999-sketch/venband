@@ -9,6 +9,7 @@ import { BUILT_IN_THEMES, sanitizeTheme, THEME_KEYS, type Theme } from '../lib/t
 import { describeAgent, listDevices, revokeDevice, type Device } from '../lib/devices';
 import { setRelation, socialStore } from '../lib/social';
 import { LANGUAGES, deviceTranslationSupported } from '../lib/translate';
+import { CODE_THEMES } from '../lib/highlight';
 import { PHRASEBOOK_LANGS, PHRASEBOOK_SIZE } from '../lib/phrasebook';
 import type { PresenceStatus, Profile, Server } from '../lib/types';
 import { Avatar, ColorPicker, Field, Icon } from './ui';
@@ -932,9 +933,48 @@ function ChatTab() {
           onChange={(v) => updateChat({ autoEmbeds: v })}
         />
         <Toggle label="Autoplay GIFs" checked={c.gifAutoplay} onChange={(v) => updateChat({ gifAutoplay: v })} />
+        <Toggle
+          label="Add previews to links I send"
+          desc="Shows the site name, title and description under your links. Venband’s server fetches the page for you (people you chat with never contact the site), and the preview is encrypted with your message."
+          checked={c.linkPreviews}
+          onChange={(v) => updateChat({ linkPreviews: v })}
+        />
       </Section>
       <Section title="Servers">
         <Toggle label="Show join messages" desc="“Someone just joined” notices in welcome channels." checked={c.showJoins} onChange={(v) => updateChat({ showJoins: v })} />
+      </Section>
+      <Section title="Spelling" desc="Checked on this device with a built-in English dictionary — your text is never sent anywhere.">
+        <div className="radio-cards">
+          {(
+            [
+              ['off', 'Off', 'No spell checking.'],
+              ['suggest', 'Underline mistakes', 'Wavy underline under misspelled words. Right-click (or long-press) a word, or highlight it, for corrections.'],
+              ['auto', 'Fix automatically', 'Common typos are corrected hands-free as you type (teh → the, dont → don’t).'],
+            ] as const
+          ).map(([id, label, desc]) => (
+            <label key={id} className={`radio-card${c.autocorrect === id ? ' selected' : ''}`}>
+              <input type="radio" name="autocorrect" checked={c.autocorrect === id} onChange={() => updateChat({ autocorrect: id })} />
+              <b>{label}</b>
+              <span className="small muted">{desc}</span>
+            </label>
+          ))}
+        </div>
+      </Section>
+      <Section title="Code blocks" desc="Colours for ```code``` in messages, like your code editor.">
+        <Select value={c.codeTheme} onChange={(v) => updateChat({ codeTheme: v as typeof c.codeTheme })} options={CODE_THEMES.map((t) => ({ value: t.id, label: t.label }))} />
+        <div className="md-codeblock-preview">
+          <Markdown text={'```js\n// greet everyone\nconst names = ["Sam", "Ari"];\nfor (const n of names) console.log(`Hi ${n}!`, 42);\n```'} />
+        </div>
+      </Section>
+      <Section title="Messages">
+        <Toggle
+          label="Send long messages as a file"
+          desc="Messages over 2,000 characters are sent as message.txt instead of a giant wall of text."
+          checked={c.longTextAsFile}
+          onChange={(v) => updateChat({ longTextAsFile: v })}
+        />
+        <Toggle label="Keep unsent drafts" desc="If you leave a conversation (or close Venband) while typing, your text is still there when you come back. Stored on this device only." checked={c.saveDrafts} onChange={(v) => updateChat({ saveDrafts: v })} />
+        <Toggle label="24-hour clock" checked={c.clock24} onChange={(v) => updateChat({ clock24: v })} />
       </Section>
       <Section title="Formatting cheat sheet">
         <div className="md-cheats">

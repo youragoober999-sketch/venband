@@ -30,7 +30,7 @@
         },
         {
           "key": "Permissions-Policy",
-          "value": "camera=(self), microphone=(self), display-capture=(self), fullscreen=(self), geolocation=(), payment=(), usb=()"
+          "value": "camera=(self), microphone=(self), display-capture=(self), fullscreen=(self \"https://www.youtube-nocookie.com\" \"https://www.youtube.com\" \"https://www.tiktok.com\" \"https://www.instagram.com\" \"https://open.spotify.com\"), picture-in-picture=(self \"https://www.youtube-nocookie.com\" \"https://www.youtube.com\"), encrypted-media=(self \"https://open.spotify.com\" \"https://www.youtube-nocookie.com\" \"https://www.youtube.com\"), autoplay=(self \"https://www.youtube-nocookie.com\" \"https://open.spotify.com\"), clipboard-write=(self \"https://open.spotify.com\"), geolocation=(), payment=(), usb=()"
         }
       ]
     },

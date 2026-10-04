@@ -4,6 +4,7 @@
 //   [masked](https://links), <https://no-embed>, <@user> <@&role> <#channel> @everyone @here
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { highlightAuto, languageLabel } from '../lib/highlight';
+import { copyText, openMenu } from './ContextMenu';
 import { useSettings } from '../lib/settings';
 
 export interface MentionContext {
@@ -267,6 +268,8 @@ export interface EmbedInfo {
   src: string;
   label: string;
   tall?: boolean;
+  /** playlists / albums / shows: show the track list */
+  list?: boolean;
 }
 
 export function findEmbeds(text: string): EmbedInfo[] {
@@ -300,7 +303,8 @@ export function embedFor(raw: string): EmbedInfo | null {
     return {
       kind: 'youtube',
       url: raw,
-      src: `https://www.youtube-nocookie.com/embed/${id}${t ? `?start=${t}` : ''}`,
+      // a bigger player lets YouTube pick HD; rel=0 keeps suggestions to this channel
+      src: `https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1&playsinline=1${t ? `&start=${t}` : ''}`,
       label: 'YouTube',
       tall: u.pathname.startsWith('/shorts/'),
     };
@@ -308,7 +312,7 @@ export function embedFor(raw: string): EmbedInfo | null {
   if (host === 'open.spotify.com') {
     const m = u.pathname.match(/^\/(?:intl-\w+\/)?(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]{10,32})/);
     if (!m) return null;
-    return { kind: 'spotify', url: raw, src: `https://open.spotify.com/embed/${m[1]}/${m[2]}`, label: 'Spotify' };
+    return { kind: 'spotify', url: raw, src: `https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator`, label: 'Spotify', list: m[1] !== 'track' && m[1] !== 'episode' };
   }
   if (host === 'instagram.com') {
     const m = u.pathname.match(/^\/(p|reel|reels|tv)\/([\w-]{5,40})/);
@@ -356,7 +360,16 @@ export function Embed({ e }: { e: EmbedInfo }) {
     );
   }
   return (
-    <div className={`embed-frame ${e.kind}${e.tall ? ' tall' : ''}`}>
+    <div
+      className={`embed-frame ${e.kind}${e.tall ? ' tall' : ''}${e.list ? ' list' : ''}`}
+      onContextMenu={(ev) =>
+        openMenu(ev, [
+          { type: 'header', label: e.label },
+          { label: `Open on ${e.label}`, icon: 'external', onClick: () => window.open(e.url, '_blank', 'noopener,noreferrer') },
+          { label: 'Copy link', icon: 'link', onClick: () => copyText(e.url) },
+        ])
+      }
+    >
       <iframe
         src={e.src}
         title={`${e.label} embed`}
