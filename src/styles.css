@@ -856,7 +856,7 @@ input[type='range'] { accent-color: var(--accent); }
 .mention-option.active { background: var(--bg-hover); }
 .mention-label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 
-/* ---- GIF picker */
+/* ---- GIF picker Thing */
 .gif-picker {
   position: absolute; right: 16px; bottom: calc(100% - 4px); z-index: 30; width: min(420px, calc(100vw - 32px)); height: 460px;
   display: flex; flex-direction: column; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: 0 16px 48px #000c;
@@ -877,11 +877,6 @@ input[type='range'] { accent-color: var(--accent); }
 .gif-star.on svg { fill: currentColor; }
 .gif-empty { column-span: all; padding: 30px 10px; text-align: center; }
 .gif-more { column-span: all; width: 100%; margin-top: 4px; }
-.gif-attribution { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: var(--muted); padding: 6px 10px; text-align: right; border-top: 1px solid var(--line); }
-.make-gif { padding: 14px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; overflow-y: auto; }
-.make-gif .btn { cursor: pointer; }
-.make-gif-delay { display: flex; flex-direction: column; gap: 4px; font-size: 13px; width: 100%; }
-.make-gif-preview { max-width: 100%; max-height: 220px; border-radius: 10px; }
 
 /* ---- call tiles */
 .tile-more { position: absolute; left: 8px; top: 8px; width: 30px; height: 30px; border-radius: 50%; background: #0009; color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .15s; }
