@@ -160,6 +160,7 @@ const ICONS: Record<string, string> = {
   key: 'M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zM15.5 7.5l3 3L22 7l-3-3',
   sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
   menu: 'M3 6h18M3 12h18M3 18h18',
+  share: 'M15 5l6 6-6 6M21 11H9a6 6 0 0 0-6 6v2',
   wave: 'M2 12h2M6 8v8M10 5v14M14 8v8M18 10v4M22 12h0',
   hand: 'M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-3a2 2 0 0 0-4 0',
   upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',

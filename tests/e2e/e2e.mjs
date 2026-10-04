@@ -247,6 +247,56 @@ await alice.page.keyboard.press('Enter');
 await bob.page.locator('img.attachment-img[alt="pixel.png"]').waitFor({ timeout: 20000 });
 const stored = execSync(`psql ${DB} -Atc "select count(*) from storage.objects where bucket_id='attachments'"`).toString().trim();
 log('✅ encrypted attachment uploaded, decrypted and shown to bob; objects in bucket:', stored);
+// drag & drop a code file: bob sees it highlighted, can switch language and open the full viewer
+const py = Array.from({ length: 30 }, (_, i) => `def f${i}(x):\n    return x * ${i}  # line ${i}`).join('\n');
+await alice.page.locator('.chat').evaluate((el, text) => {
+  const dt = new DataTransfer();
+  dt.items.add(new File([text], 'script.py', { type: 'text/x-python' }));
+  for (const type of ['dragenter', 'dragover', 'drop']) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+}, py);
+await alice.page.locator('.pending-file', { hasText: 'script.py' }).waitFor({ timeout: 5000 });
+await alice.page.locator('.composer textarea').press('Enter');
+const codeCard = bob.page.locator('.code-card', { hasText: 'script.py' });
+await codeCard.locator('.hljs-keyword', { hasText: 'def' }).first().waitFor({ timeout: 20000 });
+if ((await codeCard.locator('.code-lang').inputValue()) !== 'python') throw new Error('language not detected');
+await codeCard.locator('.code-expand').click();
+await bob.page.locator('.code-viewer .code-gutter div', { hasText: '60' }).waitFor({ timeout: 5000 });
+await bob.page.keyboard.press('Escape');
+log('✅ dropped code file shows as highlighted code with a language picker and full viewer');
+// audio plays inline
+const wav = (() => {
+  const rate = 8000, n = 8000, b = Buffer.alloc(44 + n);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n, 4); b.write('WAVE', 8); b.write('fmt ', 12); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(rate, 24); b.writeUInt32LE(rate, 28); b.writeUInt16LE(1, 32); b.writeUInt16LE(8, 34); b.write('data', 36); b.writeUInt32LE(n, 40);
+  for (let i = 0; i < n; i++) b[44 + i] = 128 + Math.round(60 * Math.sin(i / 4));
+  return b;
+})();
+await alice.page.locator('.composer input[type=file]').setInputFiles({ name: 'beep.wav', mimeType: 'audio/wav', buffer: wav });
+await alice.page.locator('.composer textarea').press('Enter');
+await bob.page.locator('.audio-card', { hasText: 'beep.wav' }).locator('audio').waitFor({ timeout: 20000 });
+log('✅ audio files play inline');
+// a file bigger than one 8 MiB piece goes up in encrypted pieces and comes back identical
+const big = Buffer.alloc(9 * 1024 * 1024 + 123);
+for (let i = 0; i < big.length; i += 4096) big[i] = (i / 4096) % 251;
+await alice.page.locator('.composer input[type=file]').setInputFiles({ name: 'big.bin', mimeType: 'application/octet-stream', buffer: big });
+await alice.page.locator('.composer textarea').press('Enter');
+const bigCard = bob.page.locator('.attachment', { hasText: 'big.bin' });
+await bigCard.waitFor({ timeout: 60000 });
+const pieces = execSync(`psql ${DB} -Atc "select count(*) from storage.objects where bucket_id='attachments' and name like '%/0.bin' or name like '%/1.bin'"`).toString().trim();
+const [download] = await Promise.all([bob.page.waitForEvent('download', { timeout: 60000 }), bigCard.locator('.icon-btn').last().click()]);
+const got = await (await import('node:fs/promises')).readFile(await download.path());
+if (!got.equals(big)) throw new Error(`big file came back different (${got.length} vs ${big.length} bytes)`);
+log('✅ 9 MB file sent in encrypted pieces and downloaded byte-for-byte; piece objects:', pieces);
+// forward a message
+await bob.page.locator('.message', { hasText: 'private DM for bob only' }).click({ button: 'right' });
+await bob.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Copy Message Link' }).waitFor();
+await bob.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Forward' }).click();
+await bob.page.locator('.forward-row').first().waitFor({ timeout: 15000 });
+await bob.page.locator('.forward-row', { hasText: 'Alice' }).getByRole('button', { name: 'Send' }).click();
+await bob.page.locator('.forward-row', { hasText: 'Alice' }).getByRole('button', { name: 'Sent' }).waitFor({ timeout: 15000 });
+await bob.page.keyboard.press('Escape');
+await alice.page.locator('.forwarded-label', { hasText: 'Forwarded from' }).waitFor({ timeout: 20000 });
+log('✅ messages can be forwarded');
 await bob.page.locator('.rail-item.home').click();
 await bob.page.evaluate(() => { history.replaceState(null, '', location.pathname); });
 // bob also has a second tab open (same login)
@@ -352,7 +402,10 @@ await bob.page.getByRole('button', { name: 'Leave group' }).click();
 await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).waitFor({ state: 'detached', timeout: 20000 });
 await alice.page.locator('.composer textarea').fill('after bob left');
 await alice.page.keyboard.press('Enter');
-await alice.page.getByText('after bob left').waitFor({ timeout: 20000 });
+await alice.page.locator('.message-text', { hasText: 'after bob left' }).waitFor({ timeout: 20000 }).catch(async (e) => {
+  console.log('composer error:', await alice.page.locator('.composer-wrap .form-error').allTextContents());
+  throw e;
+});
 log('✅ leaving a group works and the group keeps working (keys rotated)');
 
 // ---- refreshing keeps you signed in ("stay signed in" is on by default)

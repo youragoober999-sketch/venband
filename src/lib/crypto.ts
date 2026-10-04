@@ -361,6 +361,9 @@ export interface Attachment {
   size: number;
   key: string; // AES-256-GCM key for the blob, base64
   iv: string;
+  /** large files: number of 8 MiB pieces stored under `path/<n>.bin` */
+  chunks?: number;
+  chunkSize?: number;
 }
 
 export interface MessagePayload {
@@ -368,6 +371,8 @@ export interface MessagePayload {
   text: string;
   attachments?: Attachment[];
   sentAt: number;
+  /** set when this message was forwarded from somewhere else */
+  forwarded?: { author: string; at: string };
 }
 
 export interface MessageEnvelope {

@@ -62,24 +62,51 @@ function useDbFeed(
   useEffect(() => {
     if (!topic) return;
     let t: ReturnType<typeof setTimeout> | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let closed = false;
+    let attempts = 0;
     const fire = () => {
       clearTimeout(t);
       t = setTimeout(() => cb.current(), 150);
     };
-    let ch: RealtimeChannel = supabase.channel(topic, { config: { private: true } });
-    for (const c of JSON.parse(key) as Change[]) {
-      if (c.rows) {
-        ch = ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: c.table, filter: c.filter }, (p) =>
-          rowCb.current?.(c.table, p.new as Record<string, unknown>),
-        );
-      } else {
-        ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: c.table, filter: c.filter }, fire);
+    let ch: RealtimeChannel | null = null;
+    const connect = (isRetry: boolean) => {
+      let c: RealtimeChannel = supabase.channel(topic, { config: { private: true } });
+      for (const change of JSON.parse(key) as Change[]) {
+        if (change.rows) {
+          c = c.on('postgres_changes', { event: 'INSERT', schema: 'public', table: change.table, filter: change.filter }, (p) =>
+            rowCb.current?.(change.table, p.new as Record<string, unknown>),
+          );
+        } else {
+          c = c.on('postgres_changes', { event: '*', schema: 'public', table: change.table, filter: change.filter }, fire);
+        }
       }
-    }
-    ch.subscribe();
+      ch = c;
+      c.subscribe((status) => {
+        if (closed || ch !== c) return;
+        if (status === 'SUBSCRIBED') {
+          attempts = 0;
+          if (isRetry) fire(); // catch up on anything missed while disconnected
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          // the realtime server dropped us: reconnect instead of silently missing updates
+          clearTimeout(retry);
+          retry = setTimeout(() => {
+            if (closed || ch !== c) return;
+            ch = null;
+            supabase.removeChannel(c);
+            connect(true);
+          }, Math.min(15_000, 1000 * 2 ** Math.min(attempts++, 4)));
+        }
+      });
+    };
+    connect(false);
     return () => {
+      closed = true;
       clearTimeout(t);
-      supabase.removeChannel(ch);
+      clearTimeout(retry);
+      const c = ch;
+      ch = null;
+      if (c) supabase.removeChannel(c);
     };
   }, [topic, key]);
 }
@@ -128,6 +155,19 @@ export function useMyServers(onMessage?: (row: MessageRow) => void) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // safety net for missed realtime updates: re-check now and then and when you come back
+  useEffect(() => {
+    const onVisible = () => document.visibilityState === 'visible' && load();
+    const timer = setInterval(() => document.visibilityState === 'visible' && load(), 30_000);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
   }, [load]);
 
   useDbFeed(

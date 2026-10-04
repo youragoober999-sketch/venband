@@ -21,7 +21,9 @@ export const uiStore = createStore<{
   /** phone layout: which slide-in panel is open */
   drawer: 'nav' | 'members' | null;
   switcher: boolean;
-}>({ settings: null, modQuery: '', profile: null, drawer: null, switcher: false });
+  /** message to scroll to (from a message link) */
+  jump: string | null;
+}>({ settings: null, modQuery: '', profile: null, drawer: null, switcher: false, jump: null });
 
 // narrow layouts show the member list as a slide-in panel
 export const isPhone = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 1000px)').matches;
