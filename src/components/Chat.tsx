@@ -474,6 +474,7 @@ function MessageItem({
   const [trError, setTrError] = useState<string | null>(null);
   const reportStatus = myReports.use((s) => s.byMessage[m.row.id]);
   const [forwarding, setForwarding] = useState(false);
+  const [starred, setStarred] = useState<Set<string>>(new Set());
   const text = m.payload?.text ?? '';
   const flagged = automod && !mine && containsSlur(text);
 
@@ -504,6 +505,16 @@ function MessageItem({
   const bareGif = isBareGif(text);
   const shownText = translation && !showOriginal ? translation.text : text;
 
+  function starGif(src: string) {
+  toggleGifFavorite({ id: src, url: src, preview: src, width: 1, height: 1 });
+  setStarred((prev) => {
+    const next = new Set(prev);
+    if (next.has(src)) next.delete(src);
+    else next.add(src);
+    return next;
+  });
+}
+
   function menu(e: React.MouseEvent) {
     const items: Entry[] = [
       m.payload && { label: 'Reply', icon: 'reply', onClick: onReply },
@@ -515,7 +526,7 @@ function MessageItem({
         (translation
           ? { label: showOriginal ? 'Show Translation' : 'Show Original', icon: 'translate', onClick: () => setShowOriginal((v) => !v) }
           : { label: 'Translate', icon: 'translate', onClick: doTranslate }),
-      bareGif && { label: 'Favorite GIF', icon: 'star', onClick: () => toggleGifFavorite({ id: text, url: text.trim(), preview: text.trim(), width: 1, height: 1 }) },
+    bareGif && { label: starred.has(text.trim()) ? 'Unfavorite GIF' : 'Favorite GIF', icon: 'star', onClick: () => starGif(text.trim()) },
       { type: 'sep' },
       canDelete && { label: 'Delete Message', icon: 'trash', danger: true, hint: 'shift-click skips', onClick: () => onDelete(e.shiftKey) },
       { type: 'sep' },
@@ -646,21 +657,21 @@ function MessageItem({
                 {trError && <div className="translated-note">{trError}</div>}
               </>
             ))}
-          {!flagged &&
-            embeds.map((e) => (
-              <div key={e.src} className="embed-wrap">
-                <Embed e={e} />
-                {e.kind === 'gif' && (
-                  <button
-                    className="gif-star embed-star"
-                    title="Add to favorites"
-                    onClick={() => toggleGifFavorite({ id: e.src, url: e.src, preview: e.src, width: 1, height: 1 })}
-                  >
-                    <Icon name="star" size={16} />
-                  </button>
-                )}
-              </div>
-            ))}
+{!flagged &&
+  embeds.map((e) => (
+    <div key={e.src} className="embed-wrap">
+      <Embed e={e} />
+      {e.kind === 'gif' && (
+        <button
+          className={`gif-star embed-star${starred.has(e.src) ? ' on' : ''}`}
+          title={starred.has(e.src) ? 'Remove from favorites' : 'Add to favorites'}
+          onClick={() => starGif(e.src)}
+        >
+          <Icon name="star" size={16} />
+        </button>
+      )}
+    </div>
+  ))}
           {m.payload?.attachments?.map((a) => <AttachmentView key={a.path} a={a} />)}
         </div>
         <div className="message-actions">
