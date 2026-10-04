@@ -96,6 +96,23 @@ function FileCard({ a, children, onOpen }: { a: Attachment; children?: React.Rea
 }
 
 export function AttachmentView({ a }: { a: Attachment }) {
+  const [revealed, setRevealed] = useState(!a.spoiler);
+  if (!revealed)
+    return (
+      <button type="button" className="spoiler-file" onClick={() => setRevealed(true)} aria-label={`Spoiler: ${a.name}. Click to reveal.`}>
+        <span className="spoiler-file-blur" aria-hidden>
+          <span className="att-icon">{fileIcon(a.name)}</span>
+          <span className="attachment-name">{a.name}</span>
+        </span>
+        <span className="spoiler-file-label">
+          <Icon name="eyeOff" size={16} /> SPOILER
+        </span>
+      </button>
+    );
+  return <AttachmentInner a={a} />;
+}
+
+function AttachmentInner({ a }: { a: Attachment }) {
   const kind = fileKind(a);
   const auto = a.size <= AUTO_LOAD[kind] * 1024 * 1024;
   if (kind === 'image') return <ImageAttachment a={a} auto={auto} />;
@@ -119,7 +136,7 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
     );
   return (
     <>
-      <img className="attachment-img" src={url} alt={a.name} onClick={() => setBig(true)} onError={() => setBroken(true)} />
+      <img className="attachment-img" src={url} alt={a.alt || a.name} title={a.alt || undefined} onClick={() => setBig(true)} onError={() => setBroken(true)} />
       {big && (
         <div className="lightbox" onClick={() => setBig(false)}>
           <img src={url} alt={a.name} onClick={(e) => e.stopPropagation()} />

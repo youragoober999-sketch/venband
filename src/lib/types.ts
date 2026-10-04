@@ -121,6 +121,7 @@ export interface MessageRow {
   reply_to: string | null;
   created_at: string;
   edited_at: string | null;
+  thread_root?: string | null;
 }
 
 export interface UserKey {

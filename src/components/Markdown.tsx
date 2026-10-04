@@ -2,7 +2,8 @@
 //   # / ## / ### headings, -# subtext, > quotes, >>> quotes, - lists, 1. lists
 //   **bold** *italic* _italic_ __underline__ ~~strike~~ ||spoiler|| `code` ```blocks```
 //   [masked](https://links), <https://no-embed>, <@user> <@&role> <#channel> @everyone @here
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
+import { highlightAuto, languageLabel } from '../lib/highlight';
 import { useSettings } from '../lib/settings';
 
 export interface MentionContext {
@@ -25,6 +26,33 @@ export function mentionsMe(text: string, myId: string, myRoleIds: string[] = [],
   return allowEveryone && /(^|[^\w`])@(everyone|here)\b/.test(text);
 }
 
+/** A ``` block: coloured like a code editor, with the language and a copy button. */
+function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+  const { html, language } = useMemo(() => highlightAuto(code, lang), [code, lang]);
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="md-codeblock-wrap">
+      <div className="md-codeblock-bar">
+        <span>{languageLabel(language)}</span>
+        <button
+          type="button"
+          className="btn link small"
+          onClick={() => {
+            navigator.clipboard?.writeText(code);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre className="md-codeblock hljs" data-lang={language}>
+        <code dangerouslySetInnerHTML={{ __html: html }} />
+      </pre>
+    </div>
+  );
+}
+
 export function Markdown({ text, ctx }: { text: string; ctx?: MentionContext }) {
   const blocks: ReactNode[] = [];
   const pieces = text.split(/```/);
@@ -32,11 +60,7 @@ export function Markdown({ text, ctx }: { text: string; ctx?: MentionContext }) 
     if (i % 2 === 1 && i < pieces.length - 1) {
       const m = piece.match(/^([\w+-]{1,20})\n/);
       const code = m ? piece.slice(m[0].length) : piece.replace(/^\n/, '');
-      blocks.push(
-        <pre key={`c${i}`} className="md-codeblock" data-lang={m?.[1] ?? undefined}>
-          <code>{code.replace(/\n$/, '')}</code>
-        </pre>,
-      );
+      blocks.push(<CodeBlock key={`c${i}`} code={code.replace(/\n$/, '')} lang={m?.[1]} />);
       return;
     }
     const raw = i % 2 === 1 ? '```' + piece : piece;

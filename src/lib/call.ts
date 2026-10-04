@@ -10,7 +10,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { sdpSignaturePayload, sign, verify, type Identity } from './crypto';
 import { getCurrentKey, observeKey } from './directory';
-import { acquireScope, setVoiceState } from './presence';
+import { acquireScope, sendRing, setVoiceState } from './presence';
 import { stopRing } from './notify';
 import { getSettings } from './settings';
 
@@ -630,15 +630,18 @@ function bump() {
   activeListeners.forEach((l) => l());
 }
 
-export async function joinCall(identity: Identity, channelId: string, scopeId: string, channelName: string) {
+export async function joinCall(identity: Identity, channelId: string, scopeId: string, channelName: string, opts: { ring?: boolean } = {}) {
   stopRing(); // answering always silences any ringtone
   if (active?.channelId === channelId) return active;
+  // switching calls counts as hanging up the old one (so it doesn't "ring" you back)
+  if (active) recentlyLeft.set(active.channelId, Date.now());
   active?.leave();
   const call = new Call(identity, channelId, scopeId, channelName);
   active = call;
   call.subscribe(bump);
   bump();
   await call.join();
+  if (opts.ring) sendRing(scopeId, channelId);
   return call;
 }
 

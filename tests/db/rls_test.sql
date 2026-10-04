@@ -56,7 +56,7 @@ select set_config('t.general', (select id::text from public.channels where serve
 select set_config('t.voice', (select id::text from public.channels where server_id = current_setting('t.server')::uuid and type = 'voice'), false);
 
 do $t$ begin
-  assert public.server_permissions(current_setting('t.server')::uuid) = 4095, 'owner has all perms';
+  assert public.server_permissions(current_setting('t.server')::uuid) = 2147483647, 'owner has all perms';
   assert (select count(*) from public.roles where server_id = current_setting('t.server')::uuid) = 1;
 end $t$;
 
@@ -127,7 +127,7 @@ do $t$ begin
   assert pg_temp.affected($$delete from public.messages$$) = 0, 'cannot delete alice message';
   assert pg_temp.affected($$update public.messages set ciphertext = 'x'$$) = 0, 'cannot edit alice message';
   assert pg_temp.affected($$delete from public.server_members where user_id <> auth.uid()$$) = 0, 'cannot kick';
-  assert pg_temp.affected($$update public.roles set permissions = 4095$$) = 0, 'cannot escalate @everyone';
+  assert pg_temp.affected($$update public.roles set permissions = 2147483647$$) = 0, 'cannot escalate @everyone';
 end $t$;
 select pg_temp.must_fail($$insert into public.roles (server_id, name, permissions, position)
   values (current_setting('t.server')::uuid, 'hax', 1, 1)$$);
@@ -371,7 +371,7 @@ end $t$;
 select public.mod_server_action(current_setting('t.server')::uuid, 'approve');
 select public.mod_server_action(current_setting('t.server')::uuid, 'verify');
 do $t$ begin
-  assert public.server_permissions(current_setting('t.server')::uuid) = 4095;
+  assert public.server_permissions(current_setting('t.server')::uuid) = 2147483647;
   assert (select verified from public.servers where id = current_setting('t.server')::uuid);
 end $t$;
 
@@ -476,3 +476,142 @@ do $t$ begin
   assert not public.username_available('alice');
 end $t$;
 reset role;
+
+-- ============================================================ messaging ----
+-- owner m1, member m2, outsider m3
+reset role;
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000f1', 'm1@example.com', '{"username":"msgowner"}'),
+  ('00000000-0000-0000-0000-0000000000f2', 'm2@example.com', '{"username":"msgmember"}'),
+  ('00000000-0000-0000-0000-0000000000f3', 'm3@example.com', '{"username":"msgoutsider"}');
+insert into public.user_keys (key_id, user_id, enc_public, sign_public) values
+  ('msgKey00000000000001', '00000000-0000-0000-0000-0000000000f1', 'e', 's'),
+  ('msgKey00000000000002', '00000000-0000-0000-0000-0000000000f2', 'e', 's'),
+  ('msgKey00000000000003', '00000000-0000-0000-0000-0000000000f3', 'e', 's');
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+select set_config('t.ms', public.create_server('Messaging test')::text, false);
+select set_config('t.mc', (select id::text from public.channels where server_id = current_setting('t.ms')::uuid and name = 'chat'), false);
+reset role;
+insert into public.server_members (server_id, user_id) values (current_setting('t.ms')::uuid, '00000000-0000-0000-0000-0000000000f2');
+insert into public.channel_epochs (channel_id, epoch, key_check, created_by) values (current_setting('t.mc')::uuid, 1, 'kc', '00000000-0000-0000-0000-0000000000f1');
+update public.channels set key_rotation_needed = false where id = current_setting('t.mc')::uuid;
+do $t$ begin
+  assert (select permissions & 4096 from public.roles where server_id = current_setting('t.ms')::uuid and is_default) = 4096, 'new servers let everyone react';
+end $t$;
+set role authenticated;
+
+-- owner posts, member replies
+select set_config('t.m1', gen_random_uuid()::text, false);
+insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature)
+values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, auth.uid(), 'msgKey00000000000001', 1, 'iv', 'ct-one', 'sig');
+
+-- reactions: members only, one of each per person, encrypted blob only
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+insert into public.reactions (message_id, channel_id, user_id, epoch, tag, iv, ciphertext)
+values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, auth.uid(), 1, 'tagtagtagtag', 'iv', 'ct');
+select pg_temp.must_fail($$insert into public.reactions (message_id, channel_id, user_id, epoch, tag, iv, ciphertext)
+  values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, auth.uid(), 1, 'tagtagtagtag', 'iv', 'ct')$$);
+select pg_temp.must_fail($$insert into public.reactions (message_id, channel_id, user_id, epoch, tag, iv, ciphertext)
+  values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, '00000000-0000-0000-0000-0000000000f1', 1, 'othertagtag1', 'iv', 'ct')$$);
+-- members can't pin in servers without Manage Messages
+select pg_temp.must_fail($$insert into public.pins (message_id, channel_id) values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid)$$);
+-- saved messages: own only
+insert into public.saved_messages (message_id, channel_id) values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid);
+do $t$ begin
+  assert (select count(*) from public.saved_messages) = 1;
+  assert public.my_row_count('saved_messages') = 1;
+end $t$;
+
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', false);
+do $t$ begin
+  assert (select count(*) from public.reactions where message_id = current_setting('t.m1')::uuid) = 0, 'outsider sees no reactions';
+  assert (select count(*) from public.saved_messages) = 0, 'saved messages are private';
+end $t$;
+select pg_temp.must_fail($$insert into public.reactions (message_id, channel_id, user_id, epoch, tag, iv, ciphertext)
+  values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, auth.uid(), 1, 'outsidertag1', 'iv', 'ct')$$);
+select pg_temp.must_fail($$insert into public.saved_messages (message_id, channel_id) values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid)$$);
+
+-- pins: owner can
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+insert into public.pins (message_id, channel_id) values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid);
+
+-- edits keep the previous ciphertext; members can read the history
+update public.messages set ciphertext = 'ct-two' where id = current_setting('t.m1')::uuid;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+do $t$ begin
+  assert (select ciphertext from public.message_revisions where message_id = current_setting('t.m1')::uuid) = 'ct-one', 'old version kept';
+end $t$;
+
+-- threads: member creates, owner locks, member can no longer post; member can't unlock
+insert into public.threads (root_id, channel_id, name) values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, 'side chat');
+insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature, thread_root)
+values (gen_random_uuid(), current_setting('t.mc')::uuid, auth.uid(), 'msgKey00000000000002', 1, 'iv', 'ct', 'sig', current_setting('t.m1')::uuid);
+do $t$ begin
+  assert (select message_count from public.threads where root_id = current_setting('t.m1')::uuid) = 1, 'reply counted';
+end $t$;
+select pg_temp.must_fail($$update public.threads set locked = true where root_id = current_setting('t.m1')::uuid$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+update public.threads set locked = true where root_id = current_setting('t.m1')::uuid;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+select pg_temp.must_fail($$insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature, thread_root)
+  values (gen_random_uuid(), current_setting('t.mc')::uuid, auth.uid(), 'msgKey00000000000002', 1, 'iv', 'ct', 'sig', current_setting('t.m1')::uuid)$$);
+-- nobody can fake the reply count
+select pg_temp.must_fail($$update public.threads set message_count = 999 where root_id = current_setting('t.m1')::uuid$$);
+do $t$ begin
+  assert (select message_count from public.threads where root_id = current_setting('t.m1')::uuid) = 1, 'count cannot be faked';
+end $t$;
+
+-- anonymous poll: totals for everyone, individual votes hidden
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+select set_config('t.poll', gen_random_uuid()::text, false);
+insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature)
+values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, auth.uid(), 'msgKey00000000000001', 1, 'iv', 'poll', 'sig');
+insert into public.polls (message_id, channel_id, option_count, anonymous) values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, 3, true);
+insert into public.poll_votes (message_id, channel_id, options) values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, '{2}');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+select pg_temp.must_fail($$insert into public.poll_votes (message_id, channel_id, options) values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, '{0,1}')$$);
+select pg_temp.must_fail($$insert into public.poll_votes (message_id, channel_id, options) values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, '{7}')$$);
+insert into public.poll_votes (message_id, channel_id, options) values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, '{2}');
+do $t$ begin
+  assert (select count(*) from public.poll_votes where message_id = current_setting('t.poll')::uuid) = 1, 'only my own vote is visible';
+  assert (select votes from public.poll_results(current_setting('t.poll')::uuid) where option = 2) = 2, 'totals are visible';
+end $t$;
+
+-- deleted messages are kept (encrypted) for moderators, not for members
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+select set_config('t.gone', gen_random_uuid()::text, false);
+insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature)
+values (current_setting('t.gone')::uuid, current_setting('t.mc')::uuid, auth.uid(), 'msgKey00000000000002', 1, 'iv', 'oops', 'sig');
+delete from public.messages where id = current_setting('t.gone')::uuid;
+do $t$ begin
+  assert (select count(*) from public.deleted_messages) = 0, 'members cannot browse deleted messages';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+do $t$ begin
+  assert (select ciphertext from public.deleted_messages where id = current_setting('t.gone')::uuid) = 'oops', 'moderators see the deleted (still encrypted) message';
+end $t$;
+
+-- scheduled messages: delivered later, but only if the author may still send
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+select set_config('t.sched', gen_random_uuid()::text, false);
+insert into public.scheduled_messages (id, channel_id, author_key_id, epoch, iv, ciphertext, signature, send_at)
+values (current_setting('t.sched')::uuid, current_setting('t.mc')::uuid, 'msgKey00000000000002', 1, 'iv', 'later', 'sig', now() + interval '1 hour');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', false);
+do $t$ begin
+  assert (select count(*) from public.scheduled_messages) = 0, 'scheduled messages are private';
+end $t$;
+reset role;
+update public.scheduled_messages set send_at = now() - interval '1 minute';
+do $t$ begin
+  assert public.deliver_scheduled_messages() = 1;
+  assert exists (select 1 from public.messages where id = current_setting('t.sched')::uuid and ciphertext = 'later');
+end $t$;
+-- a kicked author's queued message is dropped
+insert into public.scheduled_messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature, send_at)
+values (gen_random_uuid(), current_setting('t.mc')::uuid, '00000000-0000-0000-0000-0000000000f2', 'msgKey00000000000002', 1, 'iv', 'after kick', 'sig', now() - interval '1 minute');
+delete from public.server_members where server_id = current_setting('t.ms')::uuid and user_id = '00000000-0000-0000-0000-0000000000f2';
+do $t$ begin
+  assert public.deliver_scheduled_messages() = 0;
+  assert not exists (select 1 from public.messages where ciphertext = 'after kick');
+end $t$;

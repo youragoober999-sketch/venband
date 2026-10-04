@@ -165,8 +165,14 @@ log('✅ alice received bob reply live');
 
 // ---- verify server only has ciphertext
 const { execSync } = await import('node:child_process');
+const iconPngForSpoiler = () => Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const rows = execSync(`psql ${DB} -Atc "select ciphertext from public.messages"`).toString();
-if (/hello|alice|bob/i.test(rows)) throw new Error('PLAINTEXT FOUND IN DB');
+// decode each stored ciphertext and look for the actual words (a regex on the
+// base64 text itself would sometimes match "bob" by pure chance)
+for (const line of rows.split('\n').filter(Boolean)) {
+  const bytes = Buffer.from(line, 'base64').toString('latin1');
+  if (/hello bob|hi alice|encrypted/i.test(bytes) || /hello bob|hi alice/i.test(line)) throw new Error('PLAINTEXT FOUND IN DB');
+}
 log('✅ database contains only ciphertext:', rows.split('\n')[0].slice(0, 40) + '…');
 
 // ---- roles: alice creates a Mods role, makes a private channel
@@ -298,6 +304,95 @@ await bob.page.locator('.forward-row', { hasText: 'Alice' }).getByRole('button',
 await bob.page.keyboard.press('Escape');
 await alice.page.locator('.forwarded-label', { hasText: 'Forwarded from' }).waitFor({ timeout: 20000 });
 log('✅ messages can be forwarded');
+
+// ---- reactions: one-click quick reaction, live on the other side, emoji never stored in plaintext
+const dmMsg = alice.page.locator('.message', { hasText: 'private DM for bob only' }).first();
+await dmMsg.hover();
+await dmMsg.locator('.quick-react button', { hasText: '👍' }).click();
+await bob.page.locator('.message', { hasText: 'private DM for bob only' }).first().locator('.reaction', { hasText: '👍' }).waitFor({ timeout: 15000 });
+await bob.page.locator('.message', { hasText: 'private DM for bob only' }).first().locator('.reaction', { hasText: '👍' }).click();
+await alice.page.locator('.message', { hasText: 'private DM for bob only' }).first().locator('.reaction', { hasText: '2' }).waitFor({ timeout: 15000 });
+const reactionDump = execSync(`psql ${DB} -Atc "select tag || iv || ciphertext from public.reactions"`).toString();
+if (reactionDump.includes('👍')) throw new Error('reaction emoji stored in plaintext');
+log('✅ reactions: quick-react, live counts, encrypted at rest');
+
+// ---- :shortcode autocomplete (type :hear, Enter picks the top match)
+const aliceBox = alice.page.locator('.composer textarea:not([disabled])');
+await aliceBox.click();
+await alice.page.keyboard.type('love you :hear', { delay: 20 });
+await alice.page.locator('.mention-pop .mention-option').first().waitFor({ timeout: 10000 });
+await alice.page.keyboard.press('Enter');
+if (!(await aliceBox.inputValue()).includes('❤️')) throw new Error('emoji autocomplete did not insert ❤️: ' + (await aliceBox.inputValue()));
+await alice.page.keyboard.type(' and :broken_heart:', { delay: 10 });
+await alice.page.keyboard.press('Escape');
+await alice.page.keyboard.press('Enter');
+await bob.page.locator('.message-text', { hasText: 'love you ❤️' }).filter({ hasText: '💔' }).waitFor({ timeout: 15000 });
+log('✅ :emoji: autocomplete (Enter picks the top match) and :shortcodes: become emoji');
+
+// ---- over 2000 characters goes out as message.txt
+await aliceBox.fill('long '.repeat(500));
+await aliceBox.press('Enter');
+await bob.page.locator('.code-card, .attachment', { hasText: 'message.txt' }).first().waitFor({ timeout: 20000 });
+log('✅ messages over 2,000 characters are sent as message.txt');
+
+// ---- spoiler attachments stay blurred until clicked
+await alice.page.locator('.composer input[type=file]').setInputFiles({ name: 'secret.png', mimeType: 'image/png', buffer: iconPngForSpoiler() });
+await alice.page.locator('.pending-file').getByRole('button', { name: 'Spoiler' }).click();
+await aliceBox.press('Enter');
+const spoiler = bob.page.locator('.spoiler-file', { hasText: 'secret.png' });
+await spoiler.waitFor({ timeout: 20000 });
+await spoiler.click();
+await bob.page.locator('img.attachment-img[alt="secret.png"]').waitFor({ timeout: 20000 });
+log('✅ files can be sent as spoilers');
+
+// ---- edit history
+await aliceBox.fill('version one');
+await aliceBox.press('Enter');
+const v1 = alice.page.locator('.message', { hasText: 'version one' }).last();
+await v1.waitFor();
+await v1.hover();
+await v1.getByRole('button', { name: 'Edit' }).click();
+await alice.page.locator('.edit-box textarea').fill('version two');
+await alice.page.locator('.edit-box textarea').press('Enter');
+await bob.page.locator('.message', { hasText: 'version two' }).locator('button.edited').click();
+await bob.page.locator('.edit-version', { hasText: 'version one' }).waitFor({ timeout: 15000 });
+await bob.page.locator('.modal-close').click();
+log('✅ edited tag opens the (still encrypted) edit history');
+
+// ---- pins in DMs + pinned panel
+await bob.page.locator('.message', { hasText: 'version two' }).click({ button: 'right' });
+await bob.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Pin Message' }).click();
+await alice.page.getByRole('button', { name: 'Pinned messages' }).click();
+await alice.page.locator('.side-panel .panel-message', { hasText: 'version two' }).waitFor({ timeout: 15000 });
+await alice.page.getByRole('button', { name: 'Pinned messages' }).click();
+log('✅ pins work in DMs and show in the pinned panel');
+
+// ---- saved messages
+await alice.page.locator('.message', { hasText: 'version two' }).click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Save Message' }).click();
+await new Promise((r) => setTimeout(r, 500));
+const savedCount = execSync(`psql ${DB} -Atc "select count(*) from public.saved_messages"`).toString().trim();
+if (savedCount === '0') throw new Error('message was not saved');
+log('✅ messages can be saved');
+
+// ---- polls (encrypted question, live counts)
+await alice.page.locator('.composer .icon-btn[aria-label="Upload, poll or schedule"]').click();
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create a poll' }).click();
+await alice.page.locator('.modal input').first().fill('Pizza or tacos?');
+await alice.page.locator('.modal input[placeholder="Answer 1"]').fill('Pizza');
+await alice.page.locator('.modal input[placeholder="Answer 2"]').fill('Tacos');
+await alice.page.locator('.modal').getByRole('button', { name: 'Post poll' }).click();
+const bobPoll = bob.page.locator('.poll', { hasText: 'Pizza or tacos?' });
+await bobPoll.waitFor({ timeout: 20000 });
+await bobPoll.locator('.poll-option', { hasText: 'Tacos' }).click();
+await alice.page.locator('.poll', { hasText: 'Pizza or tacos?' }).locator('.poll-option', { hasText: 'Tacos' }).locator('.poll-count', { hasText: '1 ·' }).waitFor({ timeout: 15000 });
+log('✅ polls: encrypted question, live vote counts');
+
+// ---- mark unread + unread divider
+await bob.page.locator('.message', { hasText: 'version two' }).click({ button: 'right' });
+await bob.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Mark Unread' }).click();
+await bob.page.locator('.unread-divider').waitFor({ timeout: 10000 });
+log('✅ mark unread shows the New divider');
 await bob.page.locator('.rail-item.home').click();
 await bob.page.evaluate(() => { history.replaceState(null, '', location.pathname); });
 // bob also has a second tab open (same login)
@@ -373,7 +468,10 @@ await alice.page.locator('.call-controls [title=Camera]').click();
 // refresh mid-call and come back: must not show the same person twice
 await bob.page.reload();
 await bob.page.locator('.user-panel').waitFor({ timeout: 30000 });
-await bob.page.locator('.toast').getByTitle('Join call').click({ timeout: 20000 });
+// refreshing never "rings": he rejoins with the Join call button in the DM header
+await bob.page.waitForTimeout(1500);
+if (await bob.page.locator('.toast.incoming-call').count()) throw new Error('a refresh made the call ring again');
+await bob.page.locator('.chat-header').getByRole('button', { name: /Join call/ }).click({ timeout: 20000 });
 await alice.page.waitForTimeout(6000);
 const tilesAfterRejoin = await alice.page.locator('.voice-view .tile').count();
 if (tilesAfterRejoin !== 2) throw new Error(`expected 2 tiles after bob refreshed and rejoined, got ${tilesAfterRejoin}`);
@@ -527,6 +625,11 @@ await alice.page.locator('.rail-item:not(.home):not(.add)').first().click();
 await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
 await alice.page.locator('.message-text', { hasText: 'bob is back and can talk' }).waitFor({ timeout: 20000 });
 log('✅ a newcomer can send immediately (new key shared with everyone) and others read it');
+// …and once a member who has the older keys is online, the newcomer can read the history too
+for (let i = 0; i < 40 && (await bob.page.locator('.message .undecryptable').count()); i++) await new Promise((r) => setTimeout(r, 500));
+if (await bob.page.locator('.message .undecryptable').count()) throw new Error('newcomer still cannot read earlier messages');
+await bob.page.locator('.message-text', { hasText: 'hello bob, this is' }).waitFor({ timeout: 5000 });
+log('✅ newcomers can read messages sent before they joined (keys shared by online members)');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/11-server-badges.png` });
 // ---- channels: right-click to create a category and a channel in it
 await alice.page.locator('.rail-item[aria-label="Venband HQ"]').first().click().catch(() => {});
@@ -572,6 +675,39 @@ await alice.page.keyboard.press('Enter');
 await alice.page.locator('.vc-chat .message-text', { hasText: 'chatting in the voice channel' }).waitFor({ timeout: 10000 });
 await alice.page.locator('.voice-bar [title=Disconnect]').click();
 log('✅ voice channel side chat works');
+
+// ---- threads: replies stay out of the main channel; lock/rename
+await alice.page.locator('.channel .channel-name').getByText('clips', { exact: true }).click();
+await bob.page.locator('.channel .channel-name').getByText('clips', { exact: true }).click();
+const rootMsg = alice.page.locator('.message', { hasText: 'make this bold' }).last();
+await rootMsg.click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Thread' }).click();
+await alice.page.locator('.modal input').fill('Bold talk');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+const threadBox = alice.page.locator('.thread-panel .composer textarea:not([disabled])');
+await threadBox.waitFor({ timeout: 15000 });
+await threadBox.fill('reply inside the thread');
+await threadBox.press('Enter');
+await alice.page.locator('.thread-panel .message-text', { hasText: 'reply inside the thread' }).waitFor({ timeout: 15000 });
+if (await alice.page.locator('.chat:not(.thread-chat) .message-text', { hasText: 'reply inside the thread' }).count()) throw new Error('thread reply leaked into the main channel');
+await bob.page.locator('.thread-summary', { hasText: 'Bold talk' }).waitFor({ timeout: 20000 });
+await bob.page.locator('.thread-summary', { hasText: 'Bold talk' }).click();
+await bob.page.locator('.thread-panel .message-text', { hasText: 'reply inside the thread' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.thread-panel [title^="Lock thread"]').click();
+await bob.page.locator('.thread-panel textarea[placeholder="This thread is locked"]').waitFor({ timeout: 15000 });
+await bob.page.locator('.thread-panel [aria-label="Close thread"]').click();
+await alice.page.locator('.thread-panel [aria-label="Close thread"]').click();
+log('✅ threads: side panel, replies stay out of the channel, locking works live');
+
+// ---- scheduled message (encrypted now, delivered later by the server)
+const schedBox = alice.page.locator('.chat:not(.thread-chat) .composer textarea:not([disabled])');
+await schedBox.fill('this was scheduled');
+await alice.page.locator('.chat:not(.thread-chat) .send-btn').click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'In 1 hour' }).click();
+await alice.page.locator('.form-notice', { hasText: 'Scheduled for' }).waitFor({ timeout: 10000 });
+execSync(`psql ${DB} -Atc "update public.scheduled_messages set send_at = now() - interval '1 second'; select public.deliver_scheduled_messages();"`);
+await bob.page.locator('.message-text', { hasText: 'this was scheduled' }).waitFor({ timeout: 20000 });
+log('✅ scheduled messages are delivered at their time');
 
 // ---- reports: bob reports a message, alice (owner) handles it in the Report Centre
 await bob.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();

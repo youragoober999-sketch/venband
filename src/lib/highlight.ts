@@ -61,3 +61,32 @@ export function highlight(code: string, language: string): string {
   const lang = hljs.getLanguage(language) ? language : 'plaintext';
   return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
 }
+
+const ALIASES: Record<string, string> = {
+  js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', rb: 'ruby', rs: 'rust',
+  sh: 'bash', shell: 'bash', zsh: 'bash', ps: 'powershell', ps1: 'powershell', cs: 'csharp', 'c#': 'csharp', 'c++': 'cpp',
+  html: 'xml', htm: 'xml', svg: 'xml', yml: 'yaml', toml: 'ini', md: 'markdown', kt: 'kotlin', golang: 'go', bat: 'dos',
+  cmd: 'dos', docker: 'dockerfile', make: 'makefile', ex: 'elixir', exs: 'elixir', hs: 'haskell', txt: 'plaintext', text: 'plaintext',
+};
+
+/** Highlight a code block. Uses the language after ``` if given, otherwise detects it. */
+export function highlightAuto(code: string, hint?: string): { html: string; language: string } {
+  const named = hint ? ALIASES[hint.toLowerCase()] ?? hint.toLowerCase() : '';
+  if (named && hljs.getLanguage(named)) return { html: hljs.highlight(code, { language: named, ignoreIllegals: true }).value, language: named };
+  if (code.length > 20_000) return { html: hljs.highlight(code, { language: 'plaintext' }).value, language: 'plaintext' };
+  const r = hljs.highlightAuto(code, Object.keys(LANGS).filter((l) => l !== 'plaintext'));
+  return (r.relevance ?? 0) >= 4 ? { html: r.value, language: r.language ?? 'plaintext' } : { html: hljs.highlight(code, { language: 'plaintext' }).value, language: 'plaintext' };
+}
+
+export function languageLabel(id: string): string {
+  return LANGUAGE_OPTIONS.find((l) => l.id === id)?.label ?? id;
+}
+
+export const CODE_THEMES: { id: string; label: string }[] = [
+  { id: 'vscode-dark', label: 'Visual Studio Code — Dark+' },
+  { id: 'vs-2026', label: 'Visual Studio 2026 — Dark' },
+  { id: 'github-dark', label: 'GitHub Dark' },
+  { id: 'monokai', label: 'Monokai' },
+  { id: 'one-dark', label: 'One Dark' },
+  { id: 'vscode-light', label: 'Visual Studio Code — Light+' },
+];

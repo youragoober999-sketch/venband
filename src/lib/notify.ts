@@ -28,6 +28,15 @@ export function addUnread(channelId: string, serverId: string | null, mention: b
   updateTitle();
 }
 
+/** Set a channel's unread count (e.g. "mark unread from here"). */
+export function setUnread(channelId: string, serverId: string | null, n: number) {
+  unreadStore.set((s) => ({
+    counts: { ...s.counts, [channelId]: n },
+    serverOf: serverId ? { ...s.serverOf, [channelId]: serverId } : s.serverOf,
+  }));
+  updateTitle();
+}
+
 export function markRead(channelId: string) {
   const s = unreadStore.get();
   if (!s.counts[channelId] && !s.mentions[channelId]) return;

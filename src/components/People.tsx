@@ -58,7 +58,7 @@ async function callUser(userId: string) {
   const { data, error } = await supabase.rpc('open_dm', { p_other: userId });
   if (error) throw error;
   openChannel('@me', data as string);
-  await joinCall(identity, data as string, data as string, displayName(userId));
+  await joinCall(identity, data as string, data as string, displayName(userId), { ring: true });
 }
 
 function report(e: unknown) {

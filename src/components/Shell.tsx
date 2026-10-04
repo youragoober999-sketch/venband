@@ -19,6 +19,7 @@ import {
 } from '../lib/notify';
 import { currentPath, go, linkTo, parseRoute, useRoute } from '../lib/router';
 import { socialStore } from '../lib/social';
+import { RING_MS, ringFor, subscribeRings } from '../lib/presence';
 import { updateLayout, useSettings } from '../lib/settings';
 import { isPhone, openSettings, setDrawer, uiStore } from '../lib/ui';
 import {
@@ -608,7 +609,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
                   {!inCall && (
                     <button
                       className={`btn small ${othersInCall.length ? 'success' : 'secondary'}`}
-                      onClick={() => joinCall(identity, current.channel.id, current.channel.id, current.title)}
+                      onClick={() => joinCall(identity, current.channel.id, current.channel.id, current.title, { ring: !othersInCall.length })}
                     >
                       <Icon name="phone" size={16} /> {othersInCall.length ? 'Join call' : 'Call'}
                     </button>
@@ -1296,7 +1297,21 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
   const relations = socialStore.use((s) => s.relations);
   const call = useActiveCall();
   const [dismissedAt, setDismissedAt] = useState(0);
-  const caller = presence.find((p) => p.voice_channel_id === dm.channel.id && p.user_id !== identity.userId && !relations[p.user_id]?.blocked);
+  const [, tick] = useState(0);
+  useEffect(() => subscribeRings(() => tick((x) => x + 1)), []);
+  // A call rings for a short while after someone presses "Call", like a phone.
+  // Rejoining, refreshing or sitting in a call never rings anyone: the DM
+  // shows "Join call" instead.
+  const ring = ringFor(dm.channel.id);
+  const caller = ring
+    ? presence.find((p) => p.voice_channel_id === dm.channel.id && p.user_id === ring.from && !relations[p.user_id]?.blocked)
+    : undefined;
+  const ringEndsIn = ring ? RING_MS - (Date.now() - ring.at) : null;
+  useEffect(() => {
+    if (ringEndsIn === null || ringEndsIn <= 0) return;
+    const t = setTimeout(() => tick((x) => x + 1), ringEndsIn + 50);
+    return () => clearTimeout(t);
+  }, [ringEndsIn]);
   // already in this call — here, or in another tab / on another device → don't ring
   const meAlreadyIn = presence.some((p) => p.voice_channel_id === dm.channel.id && p.user_id === identity.userId);
   const ringing = caller && call?.channelId !== dm.channel.id && !meAlreadyIn;
