@@ -6,6 +6,7 @@ import { has, P, PERMISSION_INFO } from '../lib/permissions';
 import type { Ban, Invite, Role } from '../lib/types';
 import { openServer, type ServerData } from '../hooks/data';
 import { Avatar, ColorPicker, Field, Modal } from './ui';
+import { Select } from './Select';
 
 type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans';
 
@@ -78,16 +79,11 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
           <input maxLength={4} value={tag} placeholder="VNB" onChange={(e) => setTag(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())} />
         </Field>
         <Field label="Welcome channel" hint="Join messages are posted here.">
-          <select value={welcome} onChange={(e) => setWelcome(e.target.value)}>
-            <option value="">No join messages</option>
-            {data.channels
-              .filter((c) => c.type === 'text')
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  #{c.name}
-                </option>
-              ))}
-          </select>
+          <Select
+            value={welcome}
+            onChange={setWelcome}
+            options={[{ value: '', label: 'No join messages' }, ...data.channels.filter((c) => c.type === 'text').map((c) => ({ value: c.id, label: `#${c.name}` }))]}
+          />
         </Field>
       </div>
       <Field label="Banner color">
@@ -130,16 +126,13 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
           <hr />
           <h3>Transfer ownership</h3>
           <div className="copy-row">
-            <select value={newOwner} onChange={(e) => setNewOwner(e.target.value)}>
-              <option value="">Choose a member…</option>
-              {data.members
-                .filter((m) => m.user_id !== me.id)
-                .map((m) => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {displayName(m.user_id, m.nickname)}
-                  </option>
-                ))}
-            </select>
+            <Select
+              value={newOwner}
+              onChange={setNewOwner}
+              placeholder="Choose a member…"
+              searchable
+              options={data.members.filter((m) => m.user_id !== me.id).map((m) => ({ value: m.user_id, label: displayName(m.user_id, m.nickname), hint: `@${getProfile(m.user_id)?.username ?? ''}` }))}
+            />
             <button
               className="btn danger"
               disabled={!newOwner}
@@ -364,20 +357,13 @@ function Members({ data }: { data: ServerData }) {
                   </span>
                 ))}
                 {canRoles && (
-                  <select
+                  <Select
                     className="add-role"
                     value=""
-                    onChange={(e) => e.target.value && toggleRole(m.user_id, e.target.value, true)}
-                  >
-                    <option value="">+ role</option>
-                    {assignable
-                      .filter((r) => !roles.some((x) => x.id === r.id))
-                      .map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name}
-                        </option>
-                      ))}
-                  </select>
+                    placeholder="+ role"
+                    onChange={(v) => v && toggleRole(m.user_id, v, true)}
+                    options={assignable.filter((r) => !roles.some((x) => x.id === r.id)).map((r) => ({ value: r.id, label: r.name, icon: <span className="role-dot" style={{ background: r.color ?? 'var(--muted)' }} /> }))}
+                  />
                 )}
               </div>
               {outranked && has(data.myPermissions, P.KICK_MEMBERS) && (

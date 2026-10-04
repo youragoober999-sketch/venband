@@ -8,9 +8,11 @@ import { DEFAULT_SETTINGS, updateChat, updateSettings, updateVoice, useSettings 
 import { BUILT_IN_THEMES, sanitizeTheme, THEME_KEYS, type Theme } from '../lib/themes';
 import { describeAgent, listDevices, revokeDevice, type Device } from '../lib/devices';
 import { setRelation, socialStore } from '../lib/social';
-import { LANGUAGES, translationSupported } from '../lib/translate';
+import { LANGUAGES, deviceTranslationSupported } from '../lib/translate';
+import { PHRASEBOOK_LANGS, PHRASEBOOK_SIZE } from '../lib/phrasebook';
 import type { PresenceStatus, Profile, Server } from '../lib/types';
 import { Avatar, ColorPicker, Field, Icon } from './ui';
+import { Select } from './Select';
 import { Badges } from './Badges';
 import { accountAge, bannerStyle, NAMEPLATES, ServerTag } from './People';
 import { askConfirm } from './Dialogs';
@@ -301,13 +303,7 @@ function ProfileTab() {
             </Field>
           </div>
           <Field label="Online status">
-            <select value={preview.presence ?? 'online'} onChange={(e) => set({ presence: e.target.value as PresenceStatus })}>
-              {PRESENCE.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
+            <Select value={preview.presence ?? 'online'} onChange={(v) => set({ presence: v as PresenceStatus })} options={PRESENCE.map((p) => ({ value: p.id, label: p.label, icon: <span className={`status-dot inline ${p.id}`} /> }))} />
           </Field>
           <Field label="About me" hint={`${(preview.about ?? '').length}/190 · markdown works`}>
             <textarea maxLength={190} rows={4} value={preview.about ?? ''} onChange={(e) => set({ about: e.target.value })} />
@@ -843,16 +839,16 @@ function VoiceTab() {
   }, [testing, v.inputId, v.inputVolume, v.noiseSuppression, v.echoCancellation, v.autoGain]);
 
   const select = (kind: MediaDeviceKind, value: string, onChange: (id: string) => void) => (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">Default</option>
-      {devices
-        .filter((d) => d.kind === kind && d.deviceId && d.deviceId !== 'default')
-        .map((d, i) => (
-          <option key={d.deviceId} value={d.deviceId}>
-            {d.label || `${kind === 'audioinput' ? 'Microphone' : kind === 'audiooutput' ? 'Speaker' : 'Camera'} ${i + 1}`}
-          </option>
-        ))}
-    </select>
+    <Select
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: '', label: 'Default' },
+        ...devices
+          .filter((d) => d.kind === kind && d.deviceId && d.deviceId !== 'default')
+          .map((d, i) => ({ value: d.deviceId, label: d.label || `${kind === 'audioinput' ? 'Microphone' : kind === 'audiooutput' ? 'Speaker' : 'Camera'} ${i + 1}` })),
+      ]}
+    />
   );
 
   return (
@@ -962,28 +958,27 @@ function LanguageTab() {
   const language = useSettings((s) => s.language);
   const mode = useSettings((s) => s.translateMode);
   const me = sessionStore.use((s) => s.me)!;
-  const supported = translationSupported();
+  const device = deviceTranslationSupported();
   return (
     <>
       <h2>Language</h2>
       <Section title="Your language" desc="Messages in other languages can be translated into this one.">
-        <select
+        <Select
           value={language || navigator.language.split('-')[0]}
-          onChange={(e) => {
-            updateSettings({ language: e.target.value });
-            updateMyProfile({ language: e.target.value }).catch(() => {});
+          searchable
+          onChange={(v) => {
+            updateSettings({ language: v });
+            updateMyProfile({ language: v }).catch(() => {});
             void me;
           }}
-        >
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.native} — {l.name}
-            </option>
-          ))}
-        </select>
+          options={LANGUAGES.map((l) => ({ value: l.code, label: `${l.native} — ${l.name}` }))}
+        />
       </Section>
       <Section title="Translation" desc="Translation happens on your device, so encrypted messages stay private.">
-        {!supported && <div className="notice small">Your browser doesn’t have built-in translation yet. Use a recent Chrome or Edge (version 138 or newer).</div>}
+        <div className="notice small">
+          Venband has a built-in phrasebook ({PHRASEBOOK_SIZE} common phrases and words in {PHRASEBOOK_LANGS.length} languages), so translation always works with nothing to download.
+          {device ? ' Your browser also has on-device translation, which Venband uses when its language model is ready for full sentences.' : ''}
+        </div>
         <div className="radio-cards">
           {(
             [

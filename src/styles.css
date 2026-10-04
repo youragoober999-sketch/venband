@@ -1394,3 +1394,54 @@ code.id { font-size: 11px; color: var(--muted); }
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 700; }
 html[data-theme-light='true'] .hljs-comment { color: #6a737d; }
+
+/* ---------------------------------------------------- themed scrollbars -- */
+* { scrollbar-width: thin; scrollbar-color: var(--bg-4) transparent; }
+*:hover { scrollbar-color: color-mix(in srgb, var(--text) 28%, transparent) transparent; }
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text) 30%, transparent); }
+::-webkit-scrollbar-corner { background: transparent; }
+option, optgroup { background: var(--bg-2); color: var(--text); }
+
+/* ------------------------------------------------------- themed select -- */
+.vselect {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px;
+  padding: 8px 10px 8px 12px; border: 1px solid var(--line-2); border-radius: 8px;
+  background: var(--bg-0); color: var(--text); text-align: left; transition: border-color .12s var(--ease), background .12s;
+}
+.vselect:hover { border-color: #ffffff2e; }
+.vselect.open, .vselect:focus-visible { border-color: var(--accent); outline: none; }
+.vselect > svg { margin-left: auto; flex: none; opacity: .7; transition: transform .18s var(--ease); }
+.vselect.open > svg { transform: rotate(180deg); }
+.vselect-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vselect-pop {
+  position: fixed; z-index: 1200; max-height: 320px; display: flex; flex-direction: column;
+  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 6px;
+  box-shadow: 0 16px 40px #000a; animation: pop-in .14s var(--ease);
+}
+.vselect-pop.up { transform: translateY(-100%); animation: none; }
+.vselect-search { margin-bottom: 6px; padding: 7px 10px; }
+.vselect-list { overflow-y: auto; overscroll-behavior: contain; }
+.vselect-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.vselect-opt.active { background: var(--bg-4); }
+.vselect-opt.selected { font-weight: 600; }
+.vselect-opt.disabled { opacity: .4; cursor: not-allowed; }
+.vselect-group { padding: 8px 10px 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.vselect-empty { padding: 10px; color: var(--muted); font-size: 13px; }
+.code-lang.vselect { width: auto; min-width: 130px; min-height: 30px; padding: 4px 8px; font-size: 12.5px; }
+.add-role.vselect, .mod-role.vselect { width: auto; min-height: 30px; padding: 4px 8px; font-size: 12.5px; }
+.role-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.status-dot.inline { position: static; width: 10px; height: 10px; border: 0; flex: none; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+
+/* ------------------------------------------------- favorite star (GIFs) -- */
+.gif-star { transition: opacity .15s, transform .15s var(--spring), background .15s; }
+.gif-star:hover { transform: scale(1.1); background: #000c; }
+.gif-star.on { color: #ffd60a; opacity: 1; }
+.gif-star > span { display: flex; }
+.star-pop { animation: star-pop .45s var(--spring); }
+.star-burst { position: absolute; inset: -4px; border-radius: 50%; border: 2px solid #ffd60a; animation: star-burst .5s var(--ease) forwards; pointer-events: none; }
+@keyframes star-pop { 0% { transform: scale(.4) rotate(-30deg); } 60% { transform: scale(1.35) rotate(8deg); } 100% { transform: none; } }
+@keyframes star-burst { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(1.6); } }
+.chat-gif-wrap { position: relative; display: inline-block; }
+.chat-gif-wrap:hover .gif-star { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .star-pop, .star-burst { animation: none; } }

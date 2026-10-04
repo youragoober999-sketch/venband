@@ -62,30 +62,54 @@ export function Avatar({
   );
 }
 
+// Stack of open modals, so Escape only closes the top one.
+const modalStack: symbol[] = [];
+
 export function Modal({
   title,
   onClose,
   children,
   wide,
+  className,
 }: {
   title: ReactNode;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  // Runs once per modal: re-running on every render used to move focus to the
+  // close button while typing, so Space would close the dialog.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const id = Symbol('modal');
+    modalStack.push(id);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || modalStack[modalStack.length - 1] !== id) return;
+      e.stopPropagation();
+      closeRef.current();
+    };
     window.addEventListener('keydown', onKey);
-    ref.current?.querySelector<HTMLElement>('input, textarea, select, button')?.focus();
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    const body = ref.current?.querySelector('.modal-body');
+    const first =
+      body?.querySelector<HTMLElement>('input:not([type=hidden]):not([disabled]), textarea, select, [autofocus]') ??
+      body?.querySelector<HTMLElement>('button:not([disabled])');
+    if (first && !ref.current?.contains(document.activeElement)) first.focus();
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      const i = modalStack.indexOf(id);
+      if (i >= 0) modalStack.splice(i, 1);
+    };
+  }, []);
+  // Clicking outside never closes a dialog: only the X button or Escape do.
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal${wide ? ' wide' : ''}`} ref={ref} role="dialog" aria-modal>
+    <div className="modal-backdrop">
+      <div className={`modal${wide ? ' wide' : ''}${className ? ' ' + className : ''}`} ref={ref} role="dialog" aria-modal aria-label={typeof title === 'string' ? title : undefined}>
         <div className="modal-header">
           <h2>{title}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <button className="icon-btn modal-close" onClick={() => closeRef.current()} aria-label="Close" title="Close (Esc)" type="button">
             <Icon name="x" />
           </button>
         </div>
@@ -93,6 +117,13 @@ export function Modal({
       </div>
     </div>
   );
+}
+
+/** True when the user is typing in a text field (shortcuts must not fire). */
+export function isTyping(e?: Event | null) {
+  const t = (e?.target ?? document.activeElement) as HTMLElement | null;
+  if (!t) return false;
+  return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 }
 
 const ICONS: Record<string, string> = {
@@ -170,13 +201,13 @@ const ICONS: Record<string, string> = {
   compass: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM16.2 7.8l-2.1 6.4-6.4 2.1 2.1-6.4z',
 };
 
-export function Icon({ name, size = 20 }: { name: keyof typeof ICONS | string; size?: number }) {
+export function Icon({ name, size = 20, filled }: { name: keyof typeof ICONS | string; size?: number; filled?: boolean }) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
+      fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
       strokeWidth={2}
       strokeLinecap="round"

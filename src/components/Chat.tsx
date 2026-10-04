@@ -22,7 +22,7 @@ import { copyText, openMenu, type Entry } from './ContextMenu';
 import { askConfirm, askText } from './Dialogs';
 import { loadMyReports, myReports, reportMessage } from '../lib/reports';
 import { Embed, findEmbeds, isBareGif, Markdown, mentionsMe, type MentionContext } from './Markdown';
-import { GifPicker, toggleGifFavorite } from './GifPicker';
+import { FavoriteStar, GifPicker, toggleGifFavorite } from './GifPicker';
 import { openProfile, ServerTag, userMenu } from './People';
 
 const MAX_TEXT = 4000;
@@ -468,6 +468,7 @@ function MessageItem({
   const trust = trustState(m.row.author_id);
   const author = getProfile(m.row.author_id);
   const translateMode = useSettings((s) => s.translateMode);
+  const gifFavs = useSettings((s) => s.gifFavorites);
   const [reveal, setReveal] = useState(false);
   const [translation, setTranslation] = useState<Translation | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -515,7 +516,7 @@ function MessageItem({
         (translation
           ? { label: showOriginal ? 'Show Translation' : 'Show Original', icon: 'translate', onClick: () => setShowOriginal((v) => !v) }
           : { label: 'Translate', icon: 'translate', onClick: doTranslate }),
-      bareGif && { label: 'Favorite GIF', icon: 'star', onClick: () => toggleGifFavorite({ id: text, url: text.trim(), preview: text.trim(), width: 1, height: 1 }) },
+      bareGif && { label: gifFavs.some((f) => f.url === text.trim()) ? 'Remove from Favorites' : 'Favorite GIF', icon: 'star', onClick: () => toggleGifFavorite({ id: text, url: text.trim(), preview: text.trim(), width: 1, height: 1 }) },
       { type: 'sep' },
       canDelete && { label: 'Delete Message', icon: 'trash', danger: true, hint: 'shift-click skips', onClick: () => onDelete(e.shiftKey) },
       { type: 'sep' },
@@ -637,7 +638,7 @@ function MessageItem({
                 {translation && (
                   <div className="translated-note">
                     <Icon name="translate" size={12} />
-                    {showOriginal ? 'Original' : `Translated from ${languageName(translation.from)}`} ·{' '}
+                    {showOriginal ? 'Original' : `Translated from ${languageName(translation.from)}${translation.engine === 'phrasebook' ? ' (phrasebook)' : ''}`} ·{' '}
                     <button className="btn link" onClick={() => setShowOriginal((v) => !v)}>
                       {showOriginal ? 'show translation' : 'show original'}
                     </button>
@@ -651,13 +652,7 @@ function MessageItem({
               <div key={e.src} className="embed-wrap">
                 <Embed e={e} />
                 {e.kind === 'gif' && (
-                  <button
-                    className="gif-star embed-star"
-                    title="Add to favorites"
-                    onClick={() => toggleGifFavorite({ id: e.src, url: e.src, preview: e.src, width: 1, height: 1 })}
-                  >
-                    <Icon name="star" size={16} />
-                  </button>
+                  <FavoriteStar className="embed-star" g={{ id: e.src, url: e.src, preview: e.src, width: 1, height: 1 }} fav={gifFavs.some((f) => f.url === e.src)} />
                 )}
               </div>
             ))}

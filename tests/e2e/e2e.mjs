@@ -181,7 +181,8 @@ await alice.page.getByRole('button', { name: 'Save Changes' }).click();
 await alice.page.locator('.role-item', { hasText: 'Moderators' }).waitFor();
 await alice.page.locator('.settings-nav').getByRole('button', { name: 'Members' }).click();
 const bobRow = alice.page.locator('.member-row', { hasText: 'Bob' });
-await bobRow.locator('select.add-role').selectOption({ label: 'Moderators' });
+await bobRow.locator('button.add-role').click();
+await alice.page.locator('.vselect-opt', { hasText: 'Moderators' }).click();
 await bobRow.getByText('Moderators').waitFor();
 log('✅ role created and assigned');
 if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/4-roles.png` });
@@ -258,7 +259,7 @@ await alice.page.locator('.pending-file', { hasText: 'script.py' }).waitFor({ ti
 await alice.page.locator('.composer textarea').press('Enter');
 const codeCard = bob.page.locator('.code-card', { hasText: 'script.py' });
 await codeCard.locator('.hljs-keyword', { hasText: 'def' }).first().waitFor({ timeout: 20000 });
-if ((await codeCard.locator('.code-lang').inputValue()) !== 'python') throw new Error('language not detected');
+if ((await codeCard.locator('.code-lang .vselect-value').textContent()) !== 'Python') throw new Error('language not detected');
 await codeCard.locator('.code-expand').click();
 await bob.page.locator('.code-viewer .code-gutter div', { hasText: '60' }).waitFor({ timeout: 5000 });
 await bob.page.keyboard.press('Escape');
@@ -532,12 +533,18 @@ await alice.page.locator('.rail-item[aria-label="Venband HQ"]').first().click().
 await alice.page.locator(`.rail-item`).filter({ has: alice.page.locator('.rail-initials', { hasText: 'VH' }) }).first().click();
 await alice.page.locator('.sidebar-scroll').click({ button: 'right', position: { x: 60, y: 400 } });
 await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Category' }).click();
+// type like a person (letter by letter, with a space): the dialog must keep focus and stay open
+await alice.page.keyboard.type('Game Room', { delay: 30 });
+if ((await alice.page.locator('.modal input').inputValue()) !== 'Game Room') throw new Error('typing in a dialog lost focus or closed it');
+await alice.page.mouse.click(5, 5); // clicking outside must not close it
+if (!(await alice.page.locator('.modal input').isVisible())) throw new Error('dialog closed on outside click');
 await alice.page.locator('.modal input').fill('Gaming');
 await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+log('✅ dialogs keep focus while typing (spaces included) and ignore outside clicks');
 await alice.page.locator('.category', { hasText: 'Gaming' }).waitFor({ timeout: 10000 });
 await alice.page.locator('.category', { hasText: 'Gaming' }).click({ button: 'right' });
 await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Channel' }).click();
-if ((await alice.page.locator('.modal select').first().inputValue()) !== 'Gaming') throw new Error('category dropdown not preselected');
+if ((await alice.page.locator('.modal .vselect-value').first().textContent()) !== 'Gaming') throw new Error('category dropdown not preselected');
 await alice.page.locator('.modal input[placeholder="new-channel"]').fill('clips');
 await alice.page.locator('.modal').getByRole('button', { name: 'Create Channel' }).click();
 await alice.page.getByText('This is the start of #clips').waitFor({ timeout: 15000 });

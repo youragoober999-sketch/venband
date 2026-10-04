@@ -5,6 +5,7 @@ import { loadProfiles, putProfile } from '../lib/directory';
 import type { Channel, DmChannel, Profile } from '../lib/types';
 import { openChannel, openServer, type ServerData } from '../hooks/data';
 import { Avatar, ColorPicker, Field, Icon, Modal, randomColor } from './ui';
+import { Select } from './Select';
 
 // ------------------------------------------------------ create/join server --
 
@@ -122,21 +123,34 @@ export function InviteModal({ serverId, serverName, onClose }: { serverId: strin
       </p>
       <div className="row">
         <Field label="Expire after">
-          <select value={hours ?? ''} onChange={(e) => setHours(e.target.value ? Number(e.target.value) : null)}>
-            <option value={1}>1 hour</option>
-            <option value={24}>1 day</option>
-            <option value={24 * 7}>7 days</option>
-            <option value="">Never</option>
-          </select>
+          <Select
+            value={hours == null ? '' : String(hours)}
+            onChange={(v) => setHours(v ? Number(v) : null)}
+            options={[
+              { value: '0.5', label: '30 minutes' },
+              { value: '1', label: '1 hour' },
+              { value: '6', label: '6 hours' },
+              { value: '12', label: '12 hours' },
+              { value: '24', label: '1 day' },
+              { value: String(24 * 7), label: '7 days' },
+              { value: '', label: 'Never' },
+            ]}
+          />
         </Field>
         <Field label="Max uses">
-          <select value={maxUses ?? ''} onChange={(e) => setMaxUses(e.target.value ? Number(e.target.value) : null)}>
-            <option value="">No limit</option>
-            <option value={1}>1 use</option>
-            <option value={5}>5 uses</option>
-            <option value={25}>25 uses</option>
-            <option value={100}>100 uses</option>
-          </select>
+          <Select
+            value={maxUses == null ? '' : String(maxUses)}
+            onChange={(v) => setMaxUses(v ? Number(v) : null)}
+            options={[
+              { value: '', label: 'No limit' },
+              { value: '1', label: '1 use' },
+              { value: '5', label: '5 uses' },
+              { value: '10', label: '10 uses' },
+              { value: '25', label: '25 uses' },
+              { value: '50', label: '50 uses' },
+              { value: '100', label: '100 uses' },
+            ]}
+          />
         </Field>
       </div>
     </Modal>
@@ -240,15 +254,11 @@ export function CreateChannelModal({
           <input required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder={type === 'text' ? 'new-channel' : 'Lounge'} />
         </Field>
         <Field label="Category">
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">No category</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-            <option value={NEW}>+ New category…</option>
-          </select>
+          <Select
+            value={category}
+            onChange={setCategory}
+            options={[{ value: '', label: 'No category' }, ...categories.map((c) => ({ value: c, label: c })), { value: NEW, label: '+ New category…' }]}
+          />
         </Field>
         {category === NEW && (
           <Field label="New category name">
@@ -350,14 +360,7 @@ export function ChannelSettingsModal({ channel, data, onClose }: { channel: Chan
         )}
         <div className="row">
           <Field label="Category">
-            <select value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="">No category</option>
-              {serverCategories(data).map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+            <Select value={category} onChange={setCategory} options={[{ value: '', label: 'No category' }, ...serverCategories(data).map((c) => ({ value: c, label: c }))]} />
           </Field>
           <Field label="Position">
             <input type="number" value={position} onChange={(e) => setPosition(Number(e.target.value))} />

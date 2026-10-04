@@ -7,6 +7,7 @@ import { displayName, getProfile, loadProfiles, putProfile } from '../lib/direct
 import { uiStore } from '../lib/ui';
 import type { AccountStatus, PlatformRole, Profile, ServerStatus } from '../lib/types';
 import { Avatar, Icon, Modal } from './ui';
+import { Select } from './Select';
 import { BADGES, BadgeIcon, Badges, VerifiedMark } from './Badges';
 import { askConfirm, askText } from './Dialogs';
 import { Markdown } from './Markdown';
@@ -225,18 +226,18 @@ export function ModerationCenter() {
                     </>
                   )}
                   {myRank === 3 && u.id !== me.id && (
-                    <select
+                    <Select
                       className="mod-role"
                       value={u.platform_role}
-                      onChange={(e) =>
-                        run(`@${u.username} is now ${e.target.value}.`, () => supabase.rpc('mod_set_platform_role', { p_user: u.id, p_role: e.target.value }))
-                      }
-                    >
-                      <option value="user">Staff role: none</option>
-                      <option value="moderator">Moderator</option>
-                      <option value="admin">Administrator</option>
-                      <option value="owner">Owner</option>
-                    </select>
+                      ariaLabel="Staff role"
+                      onChange={(v) => run(`@${u.username} is now ${v}.`, () => supabase.rpc('mod_set_platform_role', { p_user: u.id, p_role: v }))}
+                      options={[
+                        { value: 'user', label: 'Staff role: none' },
+                        { value: 'moderator', label: 'Moderator' },
+                        { value: 'admin', label: 'Administrator' },
+                        { value: 'owner', label: 'Owner' },
+                      ]}
+                    />
                   )}
                 </div>
               </div>

@@ -568,10 +568,23 @@ export class Call {
     try {
       const { streamRes, streamFps } = getSettings().voice;
       const width = { 720: 1280, 1080: 1920, 1440: 2560 }[streamRes];
+      // Anti-echo: the sharer's computer is playing everyone else's voices.
+      // Without this, "share system audio" captures those voices and sends them
+      // straight back, so people hear themselves. restrictOwnAudio removes
+      // Venband's own playback from the capture (Chrome/Edge 141+); the others
+      // ask the browser not to capture or replay Venband itself.
       this.screen = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: streamFps, max: streamFps }, width: { ideal: width, max: width }, height: { ideal: streamRes, max: streamRes } },
-        audio: true,
-      });
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: false,
+          autoGainControl: false,
+          restrictOwnAudio: true,
+          suppressLocalAudioPlayback: true,
+        } as MediaTrackConstraints,
+        selfBrowserSurface: 'exclude',
+        systemAudio: 'include',
+      } as DisplayMediaStreamOptions);
       const track = this.screen.getVideoTracks()[0];
       if (track) track.contentHint = streamFps >= 60 ? 'motion' : 'detail';
     } catch {

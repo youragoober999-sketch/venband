@@ -120,15 +120,38 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
   );
 }
 
+/** Star toggle: filled + a little pop when favorited, click the filled star to unfavorite. */
+export function FavoriteStar({ g, fav, className = '' }: { g: GifFavorite; fav: boolean; className?: string }) {
+  const [burst, setBurst] = useState(0);
+  return (
+    <button
+      type="button"
+      className={`gif-star${fav ? ' on' : ''}${className ? ' ' + className : ''}`}
+      title={fav ? 'Remove from favorites' : 'Add to favorites'}
+      aria-label={fav ? 'Remove from favorites' : 'Add to favorites'}
+      aria-pressed={fav}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!fav) setBurst((b) => b + 1);
+        toggleGifFavorite(g);
+      }}
+    >
+      <span key={burst} className={burst && fav ? 'star-pop' : undefined}>
+        <Icon name="star" size={16} filled={fav} />
+      </span>
+      {burst > 0 && fav && <span key={`b${burst}`} className="star-burst" aria-hidden />}
+    </button>
+  );
+}
+
 function GifTile({ g, fav, onPick }: { g: GifFavorite; fav: boolean; onPick: () => void }) {
   return (
     <div className="gif-tile" style={{ aspectRatio: `${g.width || 1} / ${g.height || 1}` }}>
       <button className="gif-img" onClick={onPick} title="Send">
         <img src={g.preview} alt="" loading="lazy" />
       </button>
-      <button className={`gif-star${fav ? ' on' : ''}`} title={fav ? 'Remove from favorites' : 'Add to favorites'} onClick={() => toggleGifFavorite(g)}>
-        <Icon name="star" size={16} />
-      </button>
+      <FavoriteStar g={g} fav={fav} />
     </div>
   );
 }

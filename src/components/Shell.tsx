@@ -70,9 +70,14 @@ const myRolesByServer = new Map<string, string[]>();
 function useMessageAlerts(servers: Server[]) {
   const serversRef = useRef(servers);
   serversRef.current = servers;
+  const seen = useRef(new Set<string>());
   return useCallback(async (row: MessageRow) => {
     const { me, keyring } = sessionStore.get();
     if (!me || !keyring || row.author_id === me.id || isViewing(row.channel_id)) return;
+    // a reconnecting feed can deliver the same row twice: alert once per message
+    if (seen.current.has(row.id)) return;
+    seen.current.add(row.id);
+    if (seen.current.size > 500) seen.current = new Set([...seen.current].slice(-200));
     const rel = socialStore.get().relations[row.author_id];
     if (rel?.blocked) return;
     const meta = await describeChannel(row.channel_id);

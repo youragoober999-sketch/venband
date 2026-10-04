@@ -5,6 +5,7 @@ import { highlight, LANGUAGE_OPTIONS } from '../lib/highlight';
 import { errorMessage } from '../lib/supabase';
 import { copyText, openMenu } from './ContextMenu';
 import { Icon, Modal } from './ui';
+import { Select } from './Select';
 
 export function formatSize(n: number) {
   if (n < 1024) return `${n} B`;
@@ -238,13 +239,7 @@ function CodeAttachment({ a }: { a: Attachment }) {
             {formatSize(a.size)} · {lines.length.toLocaleString()} lines{a.size > MAX_VIEW ? ' (first 2 MB shown)' : ''}
           </div>
         </div>
-        <select className="code-lang" value={lang} onChange={(e) => setLang(e.target.value)} title="Language">
-          {LANGUAGE_OPTIONS.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.label}
-            </option>
-          ))}
-        </select>
+        <Select className="code-lang" value={lang} onChange={setLang} title="Language" searchable options={LANGUAGE_OPTIONS.map((l) => ({ value: l.id, label: l.label }))} />
         <button className="icon-btn" title="Copy" onClick={() => copyText(text)}>
           <Icon name="copy" size={16} />
         </button>
@@ -275,13 +270,7 @@ function CodeViewer({ name, text, lang, setLang, a, onClose }: { name: string; t
       title={
         <span className="viewer-title">
           {name}
-          <select className="code-lang" value={lang} onChange={(e) => setLang(e.target.value)}>
-            {LANGUAGE_OPTIONS.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.label}
-              </option>
-            ))}
-          </select>
+          <Select className="code-lang" value={lang} onChange={setLang} title="Language" searchable options={LANGUAGE_OPTIONS.map((l) => ({ value: l.id, label: l.label }))} />
           <button className="icon-btn" title="Copy everything" onClick={() => copyText(text)}>
             <Icon name="copy" size={16} />
           </button>
