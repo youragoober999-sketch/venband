@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { supabase, appUrl, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
-import { loadProfiles, putProfile } from '../lib/directory';
+import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
+import { socialStore } from '../lib/social';
 import type { Channel, DmChannel, Profile } from '../lib/types';
 import { openChannel, openServer, type ServerData } from '../hooks/data';
 import { Avatar, ColorPicker, Field, Icon, Modal, randomColor } from './ui';
@@ -415,31 +416,78 @@ export async function startDm(userId: string) {
 
 // ------------------------------------------------------------ group chats --
 
-/** Pick people by @username. Used for creating a group and adding to one. */
+/** Friends and people you have a DM with, for the add list. */
+function useKnownPeople(): Profile[] {
+  const friends = socialStore.use((s) => s.friends);
+  const meId = sessionStore.use((s) => s.me?.id);
+  const friendIds = useMemo(
+    () => Object.values(friends).filter((f) => f.accepted).map((f) => f.other).sort().join(','),
+    [friends],
+  );
+  const [people, setPeople] = useState<Profile[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: parts } = await supabase.from('dm_participants').select('channel_id, user_id');
+      const byChannel = new Map<string, string[]>();
+      for (const p of parts ?? []) byChannel.set(p.channel_id, [...(byChannel.get(p.channel_id) ?? []), p.user_id]);
+      const channelIds = [...byChannel.keys()];
+      const { data: chans } = channelIds.length ? await supabase.from('channels').select('id, is_group').in('id', channelIds) : { data: [] };
+      const direct = ((chans ?? []) as { id: string; is_group: boolean }[]).filter((c) => !c.is_group).map((c) => c.id);
+      const fromDms = direct.flatMap((id) => byChannel.get(id) ?? []);
+      const ids = [...new Set([...friendIds.split(',').filter(Boolean), ...fromDms])].filter((id) => id !== meId);
+      await loadProfiles(ids);
+      if (cancelled) return;
+      const list = ids.map((id) => getProfile(id)).filter(Boolean) as Profile[];
+      list.sort((a, b) => displayName(a.id).localeCompare(displayName(b.id)));
+      setPeople(list);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [friendIds, meId]);
+
+  return people;
+}
+
+/** Pick people from your friends and DMs, or add someone by username. Used for creating a group and adding to one. */
 function PeoplePicker({ picked, setPicked, exclude = [] }: { picked: Profile[]; setPicked: (p: Profile[]) => void; exclude?: string[] }) {
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const known = useKnownPeople();
+  const query = username.replace(/^@+/, '').trim().toLowerCase();
+  const rows = known.filter((p) => !query || displayName(p.id).toLowerCase().includes(query) || p.username.toLowerCase().includes(query));
+
+  function pick(user: Profile) {
+    putProfile(user);
+    setPicked([...picked, user]);
+  }
+
+  function toggle(user: Profile) {
+    if (picked.some((p) => p.id === user.id)) setPicked(picked.filter((p) => p.id !== user.id));
+    else pick(user);
+  }
+
   async function add() {
-    const name = username.replace(/^@/, '').trim().toLowerCase();
+    const name = username.replace(/^@+/, '').trim().toLowerCase();
     if (!name) return;
     setError(null);
     const { data } = await supabase.rpc('find_user', { p_username: name });
     const user = (data as Profile[] | null)?.[0];
     if (!user) return setError(`Nobody has the username “${name}”.`);
     if (user.id === sessionStore.get().me?.id || exclude.includes(user.id)) return setError('They’re already in here.');
-    if (!picked.some((p) => p.id === user.id)) {
-      putProfile(user as Profile);
-      setPicked([...picked, user as Profile]);
-    }
+    if (!picked.some((p) => p.id === user.id)) pick(user as Profile);
     setUsername('');
   }
+
   return (
     <>
-      <Field label="Add people by username" error={error}>
+      <Field label="Add people" error={error}>
         <div className="copy-row">
           <input
             value={username}
-            placeholder="@username"
+            placeholder="Search friends or type a username"
             onChange={(e) => setUsername(e.target.value.toLowerCase())}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -453,6 +501,33 @@ function PeoplePicker({ picked, setPicked, exclude = [] }: { picked: Profile[]; 
           </button>
         </div>
       </Field>
+      <div style={{ maxHeight: 240, overflowY: 'auto', marginBottom: 12 }}>
+        {rows.map((p) => {
+          const isPicked = picked.some((x) => x.id === p.id);
+          const locked = exclude.includes(p.id);
+          return (
+            <div key={p.id} className="member">
+              <Avatar profile={p} size={32} />
+              <div className="member-text">
+                <span className="member-name">{displayName(p.id)}</span>
+                <span className="member-status">@{p.username}</span>
+              </div>
+              <button
+                type="button"
+                className={`btn small ${isPicked ? 'secondary' : 'primary'}`}
+                disabled={locked}
+                title={isPicked ? 'Click to remove' : undefined}
+                onClick={() => toggle(p)}
+              >
+                {locked ? 'In group' : isPicked ? 'Added' : 'Add'}
+              </button>
+            </div>
+          );
+        })}
+        {!rows.length && (
+          <p className="muted small">{query ? 'No matches. Press Enter to add by exact username.' : 'No friends or chats yet. Type a username above.'}</p>
+        )}
+      </div>
       {picked.length > 0 && (
         <div className="role-pills">
           {picked.map((p) => (

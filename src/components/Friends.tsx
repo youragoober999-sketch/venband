@@ -134,16 +134,18 @@ function AddFriend() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
+    const name = username.trim().replace(/^@+/, '');
+    if (!name) return;
     try {
-      const res = await sendFriendRequest(username);
+      const res = await sendFriendRequest(name);
       const text =
         res === 'accepted'
-          ? `You and ${username} are now friends!`
+          ? `You and ${name} are now friends!`
           : res === 'already_friends'
-            ? `You’re already friends with ${username}.`
+            ? `You’re already friends with ${name}.`
             : res === 'pending'
-              ? `You already sent ${username} a request.`
-              : `Friend request sent to ${username}.`;
+              ? `You already sent ${name} a request.`
+              : `Friend request sent to ${name}.`;
       setMsg({ ok: true, text });
       setUsername('');
     } catch (err) {
@@ -155,8 +157,8 @@ function AddFriend() {
       <h3>Add Friend</h3>
       <p className="muted">You can add friends with their Venband username.</p>
       <form className={`add-friend-box${msg ? (msg.ok ? ' ok' : ' bad') : ''}`} onSubmit={submit}>
-        <input autoFocus value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} placeholder="You can add friends with their Venband username." />
-        <button className="btn primary small" disabled={!username.trim()}>
+        <input autoFocus value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} placeholder="Enter a username" />
+        <button className="btn primary small" disabled={!username.trim().replace(/^@+/, '')}>
           Send Friend Request
         </button>
       </form>

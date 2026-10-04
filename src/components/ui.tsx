@@ -75,17 +75,14 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    ref.current?.querySelector<HTMLElement>('input, textarea, select, button')?.focus();
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    ref.current?.querySelector<HTMLElement>('.modal-body input, .modal-body textarea, .modal-body select')?.focus();
+  }, []);
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-backdrop">
       <div className={`modal${wide ? ' wide' : ''}`} ref={ref} role="dialog" aria-modal>
         <div className="modal-header">
           <h2>{title}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <button className="icon-btn" onClick={onClose} aria-label="Close" tabIndex={-1}>
             <Icon name="x" />
           </button>
         </div>
