@@ -856,7 +856,7 @@ input[type='range'] { accent-color: var(--accent); }
 .mention-option.active { background: var(--bg-hover); }
 .mention-label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 
-/* ---- GIF picker Thing */
+/* ---- GIF picker Thing   */
 .gif-picker {
   position: absolute; right: 16px; bottom: calc(100% - 4px); z-index: 30; width: min(420px, calc(100vw - 32px)); height: 460px;
   display: flex; flex-direction: column; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: 0 16px 48px #000c;
