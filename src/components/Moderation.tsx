@@ -111,7 +111,7 @@ export function ModerationCenter() {
       active: 'Restore',
       limited: 'Make Limited',
       very_limited: 'Make Very Limited',
-      banned: 'Ban Nigger Account',
+      banned: 'Ban Account',
     };
     const reason = await askText({
       title: `${verbs[status]}: @${u.username}`,
@@ -219,7 +219,7 @@ export function ModerationCenter() {
                       )}
                       {u.account_status !== 'banned' && (
                         <button className="btn danger small" onClick={() => setStatus(u, 'banned')}>
-                          <Icon name="gavel" size={14} /> Ban Nigger Account
+                          <Icon name="gavel" size={14} /> Ban Account
                         </button>
                       )}
                     </>
@@ -499,7 +499,7 @@ export function ReportCentre() {
               {r.status === 'under_review' ? (
                 <>
                   <button className="btn danger small" onClick={() => resolve(r, 'actioned', 'banned')}>
-                    <Icon name="gavel" size={14} /> Ban Nigger Account
+                    <Icon name="gavel" size={14} /> Ban Account
                   </button>
                   <button className="btn secondary small" onClick={() => resolve(r, 'actioned', 'very_limited')}>
                     Make Very Limited
