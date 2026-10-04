@@ -55,7 +55,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!api/|assets/|favicon\\.svg).*)",
+      "source": "/((?!api/|assets/|favicon|icon-|apple-touch-icon|robots\\.txt|sitemap\\.xml|site\\.webmanifest).*)",
       "destination": "/index.html"
     }
   ]
