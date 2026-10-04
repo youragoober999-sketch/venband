@@ -36,7 +36,8 @@ function csp(env: Record<string, string>): Plugin {
           "object-src 'none'",
           "base-uri 'none'",
           "form-action 'self'",
-          `frame-src ${frames.join(' ')}`,
+          // blob: = decrypted PDFs shown in the built-in viewer
+          `frame-src blob: ${frames.join(' ')}`,
           'upgrade-insecure-requests',
         ].join('; ');
         return html.replace(

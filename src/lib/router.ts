@@ -47,8 +47,8 @@ export function useRoute(): string {
 export type Route =
   | { kind: 'sign-in' }
   | { kind: 'register' }
-  | { kind: 'home'; target: string | null }
-  | { kind: 'server'; serverId: string; channelId: string | null }
+  | { kind: 'home'; target: string | null; messageId?: string }
+  | { kind: 'server'; serverId: string; channelId: string | null; messageId?: string }
   | { kind: 'discover' }
   | { kind: 'root' };
 
@@ -58,8 +58,8 @@ export function parseRoute(path = currentPath()): Route {
   if (parts[0] === 'register' || parts[0] === 'signup') return { kind: 'register' };
   if (parts[0] === 'discover') return { kind: 'discover' };
   if (parts[0] === 'channels') {
-    if (!parts[1] || parts[1] === '@me') return { kind: 'home', target: parts[2] ?? null };
-    return { kind: 'server', serverId: parts[1], channelId: parts[2] ?? null };
+    if (!parts[1] || parts[1] === '@me') return { kind: 'home', target: parts[2] ?? null, messageId: parts[3] };
+    return { kind: 'server', serverId: parts[1], channelId: parts[2] ?? null, messageId: parts[3] };
   }
   return { kind: 'root' };
 }

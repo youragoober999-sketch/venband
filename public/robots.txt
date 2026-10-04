@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /channels/
+
+Sitemap: https://www.venband.com/sitemap.xml

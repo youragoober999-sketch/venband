@@ -1,7 +1,12 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
-import { decryptBlob, encryptBlob, type Attachment, type MessagePayload } from '../lib/crypto';
+import type { Attachment, MessagePayload } from '../lib/crypto';
+import { copyAttachment, MAX_FILE, removeAttachment, uploadEncrypted } from '../lib/files';
+import { AttachmentView, formatSize } from './Attachments';
+import { linkTo } from '../lib/router';
+import { uiStore } from '../lib/ui';
+import { Modal } from './ui';
 import { displayName, getProfile, loadProfiles, trustState } from '../lib/directory';
 import type { DecryptedMessage } from '../lib/keyring';
 import type { Channel, MessageRow, Profile } from '../lib/types';
@@ -21,7 +26,6 @@ import { GifPicker, toggleGifFavorite } from './GifPicker';
 import { openProfile, ServerTag, userMenu } from './People';
 
 const MAX_TEXT = 4000;
-const MAX_FILE = 25 * 1024 * 1024;
 
 interface JoinEvent {
   id: string;
@@ -114,6 +118,19 @@ export function ChatView({
     loadMyReports();
   }, []);
 
+  // opened from a message link: scroll to it and flash it
+  const jump = uiStore.use((s) => s.jump);
+  useEffect(() => {
+    if (!jump) return;
+    const el = document.getElementById(`m-${jump}`);
+    if (!el) return;
+    stick.current = false;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 2400);
+    uiStore.set({ jump: null });
+  }, [jump, messages]);
+
   useEffect(() => {
     stick.current = true;
     setReplyTo(null);
@@ -142,17 +159,16 @@ export function ChatView({
     onChannel: (id) => data?.server && openChannel(data.server.id, id),
   };
 
-  async function sendPayload(text: string, files: File[]) {
+  async function sendPayload(text: string, files: File[], onProgress?: (fraction: number) => void) {
     if (automod && containsSlur(text)) throw new Error('AutoMod blocked this message: it contains a slur this server doesn’t allow.');
     const keyring = sessionStore.get().keyring!;
     await keyring.prepareSend(channel.id);
     const attachments: Attachment[] = [];
+    const totalBytes = files.reduce((n, f) => n + f.size, 0) || 1;
+    let doneBytes = 0;
     for (const f of files) {
-      const { blob, key, iv } = await encryptBlob(await f.arrayBuffer());
-      const path = `${channel.id}/${crypto.randomUUID()}.bin`;
-      const { error } = await supabase.storage.from('attachments').upload(path, blob, { contentType: 'application/octet-stream' });
-      if (error) throw error;
-      attachments.push({ path, name: f.name, mime: f.type || 'application/octet-stream', size: f.size, key, iv });
+      attachments.push(await uploadEncrypted(channel.id, f, (p) => onProgress?.((doneBytes + p * f.size) / totalBytes)));
+      doneBytes += f.size;
     }
     const id = crypto.randomUUID();
     const payload: MessagePayload = { v: 1, text, sentAt: Date.now(), ...(attachments.length ? { attachments } : {}) };
@@ -195,7 +211,7 @@ export function ChatView({
     if (!skipConfirm && !(await askConfirm({ title: 'Delete message', body: 'Delete this message for everyone?', confirm: 'Delete', danger: true }))) return;
     const { error } = await supabase.from('messages').delete().eq('id', m.row.id);
     if (error) return alert(errorMessage(error));
-    for (const a of m.payload?.attachments ?? []) supabase.storage.from('attachments').remove([a.path]);
+    for (const a of m.payload?.attachments ?? []) removeAttachment(a);
     removeLocal(m.row.id);
   }
 
@@ -224,8 +240,42 @@ export function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, dmMembers, me]);
 
+  const [dragging, setDragging] = useState(false);
+  const [dropped, setDropped] = useState<File[]>([]);
+  const dragDepth = useRef(0);
+  const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes('Files');
+
   return (
-    <div className="chat">
+    <div
+      className="chat"
+      onDragEnter={(e) => {
+        if (!hasFiles(e) || !canSend) return;
+        e.preventDefault();
+        dragDepth.current++;
+        setDragging(true);
+      }}
+      onDragOver={(e) => hasFiles(e) && canSend && e.preventDefault()}
+      onDragLeave={() => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (!dragDepth.current) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!hasFiles(e) || !canSend) return;
+        e.preventDefault();
+        dragDepth.current = 0;
+        setDragging(false);
+        setDropped([...e.dataTransfer.files]);
+      }}
+    >
+      {dragging && (
+        <div className="drop-overlay">
+          <div className="drop-card">
+            <Icon name="upload" size={40} />
+            <b>Drop to send to {channel.type === 'dm' ? title : `#${title}`}</b>
+            <span className="small muted">Up to 10 files, 5 GB each. Encrypted on your device before upload.</span>
+          </div>
+        </div>
+      )}
       <header className="chat-header">
         <Icon name={channel.type === 'dm' ? 'message' : 'hash'} />
         <h3>{title}</h3>
@@ -362,6 +412,8 @@ export function ChatView({
         onCancelReply={() => setReplyTo(null)}
         onSend={sendPayload}
         mentionables={mentionables}
+        incoming={dropped}
+        onIncomingTaken={() => setDropped([])}
       />
     </div>
   );
@@ -421,6 +473,7 @@ function MessageItem({
   const [showOriginal, setShowOriginal] = useState(false);
   const [trError, setTrError] = useState<string | null>(null);
   const reportStatus = myReports.use((s) => s.byMessage[m.row.id]);
+  const [forwarding, setForwarding] = useState(false);
   const text = m.payload?.text ?? '';
   const flagged = automod && !mine && containsSlur(text);
 
@@ -455,6 +508,7 @@ function MessageItem({
     const items: Entry[] = [
       m.payload && { label: 'Reply', icon: 'reply', onClick: onReply },
       canEdit && { label: 'Edit Message', icon: 'edit', onClick: onEdit },
+      m.payload && { label: 'Forward', icon: 'share', onClick: () => setForwarding(true) },
       m.payload && text && { label: 'Copy Text', icon: 'copy', onClick: () => copyText(text) },
       m.payload &&
         text &&
@@ -466,6 +520,11 @@ function MessageItem({
       canDelete && { label: 'Delete Message', icon: 'trash', danger: true, hint: 'shift-click skips', onClick: () => onDelete(e.shiftKey) },
       { type: 'sep' },
       !mine && m.payload && !reportStatus && { label: 'Report Message', icon: 'flag', danger: true, onClick: onReport },
+      {
+        label: 'Copy Message Link',
+        icon: 'link',
+        onClick: () => copyText(linkTo(`channels/${data?.server?.id ?? '@me'}/${m.row.channel_id}/${m.row.id}`)),
+      },
       { label: 'Copy Message ID', icon: 'copy', onClick: () => copyText(m.row.id) },
     ];
     openMenu(e, items);
@@ -483,7 +542,8 @@ function MessageItem({
   }
 
   return (
-    <div className={`message${grouped ? ' grouped' : ''}${mentioned ? ' mentioned' : ''}`} onContextMenu={menu}>
+    <div id={`m-${m.row.id}`} className={`message${grouped ? ' grouped' : ''}${mentioned ? ' mentioned' : ''}`} onContextMenu={menu}>
+      {forwarding && m.payload && <ForwardModal m={m} onClose={() => setForwarding(false)} />}
       {m.row.reply_to && (
         <div className="reply-ref">
           <Icon name="reply" size={14} />
@@ -558,6 +618,11 @@ function MessageItem({
               </div>
             ) : (
               <>
+                {m.payload.forwarded && (
+                  <div className="forwarded-label">
+                    <Icon name="share" size={13} /> Forwarded from <b>{m.payload.forwarded.author}</b>
+                  </div>
+                )}
                 {!bareGif && shownText && (
                   <div className="message-text">
                     <Markdown text={shownText} ctx={ctx} />
@@ -602,6 +667,11 @@ function MessageItem({
           {m.payload && (
             <button className="icon-btn" onClick={onReply} title="Reply">
               <Icon name="reply" size={16} />
+            </button>
+          )}
+          {m.payload && (
+            <button className="icon-btn" onClick={() => setForwarding(true)} title="Forward">
+              <Icon name="share" size={16} />
             </button>
           )}
           {m.payload && text && !mine && (
@@ -654,72 +724,6 @@ function EditBox({ initial, onSave, onCancel }: { initial: string; onSave: (t: s
   );
 }
 
-function formatSize(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
-
-const SAFE_INLINE = /^(image\/(png|jpeg|gif|webp|avif)|video\/(mp4|webm)|audio\/(mpeg|ogg|wav|webm))$/;
-
-function AttachmentView({ a }: { a: Attachment }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-  const inline = SAFE_INLINE.test(a.mime);
-
-  async function load(): Promise<string | null> {
-    if (url) return url;
-    const { data, error } = await supabase.storage.from('attachments').download(a.path);
-    if (error || !data) {
-      setError(true);
-      return null;
-    }
-    try {
-      const plain = await decryptBlob(await data.arrayBuffer(), a.key, a.iv);
-      const u = URL.createObjectURL(new Blob([plain], { type: inline ? a.mime : 'application/octet-stream' }));
-      setUrl(u);
-      return u;
-    } catch {
-      setError(true);
-      return null;
-    }
-  }
-
-  useEffect(() => {
-    if (inline && a.size < 10 * 1024 * 1024) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [a.path]);
-  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
-
-  if (error) return <div className="attachment bad">Could not decrypt {a.name}</div>;
-  if (url && a.mime.startsWith('image/')) return <img className="attachment-img" src={url} alt={a.name} />;
-  if (url && a.mime.startsWith('video/')) return <video className="attachment-img" src={url} controls />;
-  if (url && a.mime.startsWith('audio/')) return <audio src={url} controls />;
-  return (
-    <div className="attachment">
-      <Icon name="file" size={28} />
-      <div>
-        <div className="attachment-name">{a.name}</div>
-        <div className="small muted">{formatSize(a.size)} · encrypted</div>
-      </div>
-      <button
-        className="icon-btn"
-        title="Download"
-        onClick={async () => {
-          const u = await load();
-          if (!u) return;
-          const link = document.createElement('a');
-          link.href = u;
-          link.download = a.name;
-          link.click();
-        }}
-      >
-        <Icon name="download" />
-      </button>
-    </div>
-  );
-}
-
 // --------------------------------------------------------------- composer --
 
 interface Mentionables {
@@ -739,17 +743,23 @@ function Composer({
   onCancelReply,
   onSend,
   mentionables,
+  incoming,
+  onIncomingTaken,
 }: {
   channelId: string;
   placeholder: string;
   disabled: boolean;
   replyTo: string | null;
   onCancelReply: () => void;
-  onSend: (text: string, files: File[]) => Promise<void>;
+  onSend: (text: string, files: File[], onProgress?: (fraction: number) => void) => Promise<void>;
   mentionables: Mentionables;
+  /** files dropped onto the chat */
+  incoming: File[];
+  onIncomingTaken: () => void;
 }) {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [upload, setUpload] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gifs, setGifs] = useState(false);
@@ -906,7 +916,8 @@ function Composer({
     setBusy(true);
     setError(null);
     try {
-      await onSend(t, all);
+      setUpload(all.length ? 0 : null);
+      await onSend(t, all, all.length ? setUpload : undefined);
       if (raw === text) {
         setText('');
         setFiles([]);
@@ -916,8 +927,23 @@ function Composer({
       setError(errorMessage(e));
     } finally {
       setBusy(false);
+      setUpload(null);
     }
   }
+
+  function addFiles(picked: File[]) {
+    const tooBig = picked.find((f) => f.size > MAX_FILE);
+    if (tooBig) setError(`${tooBig.name} is larger than 5 GB.`);
+    setFiles((f) => [...f, ...picked.filter((x) => x.size <= MAX_FILE)].slice(0, 10));
+  }
+
+  useEffect(() => {
+    if (!incoming.length) return;
+    addFiles(incoming);
+    onIncomingTaken();
+    textarea.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incoming]);
 
   return (
     <div className="composer-wrap">
@@ -933,12 +959,20 @@ function Composer({
         <div className="pending-files">
           {files.map((f, i) => (
             <div key={i} className="pending-file">
-              <Icon name="file" size={16} /> {f.name}
+              <Icon name="file" size={16} /> {f.name} <span className="muted small">{formatSize(f.size)}</span>
               <button className="icon-btn" onClick={() => setFiles(files.filter((_, j) => j !== i))}>
                 <Icon name="x" size={14} />
               </button>
             </div>
           ))}
+        </div>
+      )}
+      {upload !== null && (
+        <div className="upload-progress">
+          <span>Encrypting and uploading… {Math.round(upload * 100)}%</span>
+          <div className="att-progress">
+            <span style={{ width: `${Math.round(upload * 100)}%` }} />
+          </div>
         </div>
       )}
       {error && <div className="form-error">{error}</div>}
@@ -1012,10 +1046,7 @@ function Composer({
           multiple
           hidden
           onChange={(e) => {
-            const picked = [...(e.target.files ?? [])];
-            const tooBig = picked.find((f) => f.size > MAX_FILE);
-            if (tooBig) setError(`${tooBig.name} is larger than 25 MB.`);
-            setFiles((f) => [...f, ...picked.filter((x) => x.size <= MAX_FILE)].slice(0, 10));
+            addFiles([...(e.target.files ?? [])]);
             e.target.value = '';
           }}
         />
@@ -1042,7 +1073,7 @@ function Composer({
           onScroll={() => setFmt(null)}
           onPaste={(e) => {
             const pasted = [...e.clipboardData.files];
-            if (pasted.length) setFiles((f) => [...f, ...pasted.filter((x) => x.size <= MAX_FILE)].slice(0, 10));
+            if (pasted.length) addFiles(pasted);
           }}
           onKeyDown={(e) => {
             if (suggestions.length) {
@@ -1199,4 +1230,116 @@ function caretCoords(el: HTMLTextAreaElement, index: number): { top: number; lef
   const out = { top: mark.offsetTop - el.scrollTop, left: mark.offsetLeft - el.scrollLeft };
   div.remove();
   return out;
+}
+
+// ---------------------------------------------------------------- forward --
+
+interface Destination {
+  id: string;
+  label: string;
+  sub: string;
+}
+
+function ForwardModal({ m, onClose }: { m: DecryptedMessage; onClose: () => void }) {
+  const me = sessionStore.use((s) => s.me)!;
+  const [dests, setDests] = useState<Destination[] | null>(null);
+  const [q, setQ] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [done, setDone] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const out: Destination[] = [];
+      const { data: parts } = await supabase.from('dm_participants').select('channel_id, user_id');
+      const byChannel = new Map<string, string[]>();
+      for (const p of parts ?? []) byChannel.set(p.channel_id, [...(byChannel.get(p.channel_id) ?? []), p.user_id]);
+      const dmIds = [...byChannel.keys()];
+      const { data: dmChans } = dmIds.length ? await supabase.from('channels').select('id, name, is_group').in('id', dmIds) : { data: [] };
+      await loadProfiles([...byChannel.values()].flat());
+      for (const c of (dmChans ?? []) as { id: string; name: string; is_group: boolean }[]) {
+        const others = (byChannel.get(c.id) ?? []).filter((u) => u !== me.id);
+        out.push({ id: c.id, label: c.is_group ? c.name : displayName(others[0] ?? ''), sub: c.is_group ? 'Group' : 'Direct message' });
+      }
+      const { data: mem } = await supabase.from('server_members').select('server_id').eq('user_id', me.id);
+      const sids = (mem ?? []).map((x) => x.server_id);
+      if (sids.length) {
+        const [{ data: servers }, { data: chans }] = await Promise.all([
+          supabase.from('servers').select('id, name').in('id', sids),
+          supabase.from('channels').select('id, name, server_id, type').in('server_id', sids),
+        ]);
+        const sname = new Map(((servers ?? []) as { id: string; name: string }[]).map((x) => [x.id, x.name]));
+        for (const c of (chans ?? []) as { id: string; name: string; server_id: string; type: string }[])
+          out.push({ id: c.id, label: c.type === 'voice' ? `🔊 ${c.name}` : `#${c.name}`, sub: sname.get(c.server_id) ?? 'Server' });
+      }
+      setDests(out);
+    })();
+  }, [me.id]);
+
+  async function send(d: Destination) {
+    setBusy(d.id);
+    setError(null);
+    try {
+      const keyring = sessionStore.get().keyring!;
+      await keyring.prepareSend(d.id);
+      const attachments: Attachment[] = [];
+      for (const a of m.payload?.attachments ?? []) attachments.push(await copyAttachment(a, d.id));
+      const payload: MessagePayload = {
+        v: 1,
+        text: m.payload!.text,
+        sentAt: Date.now(),
+        forwarded: { author: displayName(m.row.author_id), at: m.row.created_at },
+        ...(attachments.length ? { attachments } : {}),
+      };
+      for (const p of [payload, ...(note.trim() ? [{ v: 1 as const, text: note.trim(), sentAt: Date.now() + 1 }] : [])]) {
+        const id = crypto.randomUUID();
+        const env = await keyring.encrypt(d.id, id, p);
+        const { error: err } = await supabase.from('messages').insert({
+          id,
+          channel_id: d.id,
+          author_id: me.id,
+          author_key_id: env.author_key_id,
+          epoch: env.epoch,
+          iv: env.iv,
+          ciphertext: env.ciphertext,
+          signature: env.signature,
+        });
+        if (err) throw err;
+      }
+      setDone((x) => [...x, d.id]);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const list = (dests ?? []).filter((d) => !q || `${d.label} ${d.sub}`.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <Modal title="Forward message" onClose={onClose}>
+      <div className="forward-preview">
+        <b>{displayName(m.row.author_id)}</b>
+        <span>{m.payload?.text.slice(0, 200) || `${m.payload?.attachments?.length ?? 0} file(s)`}</span>
+      </div>
+      <input className="search-input" autoFocus placeholder="Search conversations and channels" value={q} onChange={(e) => setQ(e.target.value)} />
+      {error && <div className="form-error">{error}</div>}
+      <div className="forward-list">
+        {!dests && <div className="spinner small" />}
+        {list.map((d) => (
+          <div key={d.id} className="forward-row">
+            <div className="grow">
+              <div>{d.label}</div>
+              <div className="small muted">{d.sub}</div>
+            </div>
+            <button className="btn small primary" disabled={busy !== null || done.includes(d.id)} onClick={() => send(d)}>
+              {done.includes(d.id) ? 'Sent' : busy === d.id ? 'Sending…' : 'Send'}
+            </button>
+          </div>
+        ))}
+      </div>
+      <input placeholder="Add a message (optional)" maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
+      <p className="small muted">Forwarded messages are re-encrypted for the new conversation.</p>
+    </Modal>
+  );
 }

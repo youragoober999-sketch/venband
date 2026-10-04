@@ -17,7 +17,7 @@ import {
   stopRing,
   unreadStore,
 } from '../lib/notify';
-import { go, linkTo, parseRoute, useRoute } from '../lib/router';
+import { currentPath, go, linkTo, parseRoute, useRoute } from '../lib/router';
 import { socialStore } from '../lib/social';
 import { updateLayout, useSettings } from '../lib/settings';
 import { isPhone, openSettings, setDrawer, uiStore } from '../lib/ui';
@@ -124,9 +124,17 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
   const pending = useRef<string | null>(null);
   const navState = nav.use((s) => s);
 
-  // URL -> view (reads the live URL: an earlier effect may just have changed it)
+  // URL -> view (reads the live URL: an earlier effect may just have changed it).
+  // Only acts when the address actually changed (or a link target is still
+  // waiting for the DM list), so a list refresh can't undo a click.
+  const lastRoute = useRef<string | null>(null);
   useEffect(() => {
+    const path = currentPath();
+    const waiting = pending.current !== null && !pending.current.startsWith('tried:');
+    if (path === lastRoute.current && !waiting) return;
+    lastRoute.current = path;
     const r = parseRoute();
+    if ((r.kind === 'home' || r.kind === 'server') && r.messageId) uiStore.set({ jump: r.messageId });
     const cur = nav.get();
     if (r.kind === 'discover') {
       if (!cur.discover) openDiscover();

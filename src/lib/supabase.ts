@@ -22,7 +22,11 @@ export function appUrl(query = ''): string {
 
 export function errorMessage(e: unknown): string {
   if (!e) return 'Unknown error';
-  if (typeof e === 'string') return e;
-  if (typeof e === 'object' && e && 'message' in e) return String((e as { message: unknown }).message);
-  return String(e);
+  let msg: string;
+  if (typeof e === 'string') msg = e;
+  else if (typeof e === 'object' && e && 'message' in e) msg = String((e as { message: unknown }).message);
+  else msg = String(e);
+  if (/bucket not found/i.test(msg))
+    return 'File storage isn’t set up on this server yet. If you run this site, run supabase/repair.sql in the Supabase SQL editor.';
+  return msg;
 }
