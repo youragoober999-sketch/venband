@@ -20,7 +20,7 @@ import {
 import { go, linkTo, parseRoute, useRoute } from '../lib/router';
 import { socialStore } from '../lib/social';
 import { updateLayout, useSettings } from '../lib/settings';
-import { openSettings } from '../lib/ui';
+import { isPhone, openSettings, setDrawer, uiStore } from '../lib/ui';
 import {
   nav,
   openChannel,
@@ -36,14 +36,14 @@ import {
 import { Avatar, Icon, Logo, initials } from './ui';
 import { ChatView } from './Chat';
 import { CallAudio, VoiceView } from './Voice';
-import { ChannelSettingsModal, CreateChannelModal, CreateJoinModal, GroupSettingsModal, InviteModal, NewDmModal, NewGroupModal, startDm } from './Modals';
+import { ChannelSettingsModal, CreateChannelModal, CreateJoinModal, createCategory, GroupSettingsModal, InviteModal, NewDmModal, NewGroupModal, startDm } from './Modals';
 import { ServerSettingsModal } from './ServerSettings';
 import { ContextMenuHost, copyText, openMenu, type Entry } from './ContextMenu';
 import { DialogHost, askConfirm, askText } from './Dialogs';
 import { ProfileHost, ServerTag, openProfile, userMenu } from './People';
 import { Badges, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
-import { DiscoveryView, FriendsView } from './Friends';
+import { DiscoveryView, DonateView, FriendsView, MessageRequestsView, RequestBanner } from './Friends';
 import { Resizer } from './Resizer';
 import { mentionsMe } from './Markdown';
 
@@ -53,14 +53,14 @@ export function useActiveCall() {
 }
 
 // channel id -> where it lives, for notifications about channels not on screen
-const channelMeta = new Map<string, { type: Channel['type']; name: string; server_id: string | null; is_group?: boolean }>();
+const channelMeta = new Map<string, { type: Channel['type']; name: string; server_id: string | null; is_group?: boolean; request_to?: string | null }>();
 
 async function describeChannel(id: string) {
   const cached = channelMeta.get(id);
   if (cached) return cached;
-  const { data } = await supabase.from('channels').select('type, name, server_id, is_group').eq('id', id).maybeSingle();
-  if (data) channelMeta.set(id, data as { type: Channel['type']; name: string; server_id: string | null; is_group?: boolean });
-  return (data as { type: Channel['type']; name: string; server_id: string | null; is_group?: boolean } | null) ?? null;
+  const { data } = await supabase.from('channels').select('type, name, server_id, is_group, request_to').eq('id', id).maybeSingle();
+  if (data) channelMeta.set(id, data as { type: Channel['type']; name: string; server_id: string | null; is_group?: boolean; request_to?: string | null });
+  return (data as { type: Channel['type']; name: string; server_id: string | null; is_group?: boolean; request_to?: string | null } | null) ?? null;
 }
 
 // my role ids per server, for @role mention notifications
@@ -92,7 +92,7 @@ function useMessageAlerts(servers: Server[]) {
     }
     const mention = !isDm && mentionsMe(text, me.id, myRolesByServer.get(meta.server_id ?? '') ?? []);
     addUnread(row.channel_id, meta.server_id, mention);
-    if ((!isDm && !mention) || rel?.muted || me.presence === 'dnd') return;
+    if ((!isDm && !mention) || rel?.muted || me.presence === 'dnd' || meta.request_to === me.id) return;
     playMessageSound();
     await loadProfiles([row.author_id]);
     const who = displayName(row.author_id);
@@ -224,7 +224,23 @@ export function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId]);
   const [modal, setModal] = useState<null | 'create-join'>(null);
+  const drawer = uiStore.use((s) => s.drawer);
+  const switcher = uiStore.use((s) => s.switcher);
   useDirectory();
+  // phone layout: going somewhere closes the slide-in panels
+  const navState = nav.use((s) => s);
+  useEffect(() => setDrawer(null), [navState]);
+  // Ctrl/Cmd+K: jump anywhere
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        uiStore.set((s) => ({ switcher: !s.switcher }));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   useRouterSync(servers, dms, loaded);
   useMyProfileFeed(me.id);
 
@@ -250,24 +266,32 @@ export function Shell() {
   }, []);
 
   return (
-    <div className="shell">
+    <div className={`shell${drawer ? ` drawer-${drawer}` : ''}`}>
       <AppBanner />
-      <ServerRail servers={servers} dms={dms} current={serverId} discover={discover} onAdd={() => setModal('create-join')} reload={reload} />
-      {discover ? (
-        <>
-          <DiscoverySidebar />
-          <DiscoveryView />
-        </>
-      ) : serverId ? (
-        <ServerView key={serverId} serverId={serverId} />
-      ) : (
-        <HomeView dms={dms} />
-      )}
+      <TopBar servers={servers} dms={dms} />
+      <div className="shell-body">
+        <ServerRail servers={servers} dms={dms} current={serverId} discover={discover} onAdd={() => setModal('create-join')} reload={reload} />
+        {discover ? (
+          <>
+            <DiscoverySidebar />
+            <DiscoveryView />
+          </>
+        ) : serverId ? (
+          <ServerView key={serverId} serverId={serverId} />
+        ) : (
+          <HomeView dms={dms} />
+        )}
+        <div className="drawer-scrim" onClick={() => setDrawer(null)} />
+      </div>
+      {switcher && <QuickSwitcher servers={servers} dms={dms} onClose={() => uiStore.set({ switcher: false })} />}
       <CallAudio />
       <div className="toasts">
-        {dms.slice(0, 25).map((d) => (
-          <IncomingCall key={d.channel.id} dm={d} />
-        ))}
+        {dms
+          .filter((d) => d.channel.request_to !== me.id)
+          .slice(0, 25)
+          .map((d) => (
+            <IncomingCall key={d.channel.id} dm={d} />
+          ))}
       </div>
       {modal === 'create-join' && <CreateJoinModal onClose={() => setModal(null)} />}
       <SettingsPage />
@@ -348,9 +372,13 @@ function ServerRail({
             style={{ background: current === s.id ? s.icon_color : undefined }}
           >
             <span className={`rail-pill${st.any ? ' unread' : ''}`} />
-            <span className="rail-initials" style={{ color: current === s.id ? '#fff' : undefined }}>
-              {initials(s.name)}
-            </span>
+            {s.icon_url ? (
+              <img className="rail-icon" src={s.icon_url} alt="" />
+            ) : (
+              <span className="rail-initials" style={{ color: current === s.id ? '#fff' : undefined }}>
+                {initials(s.name)}
+              </span>
+            )}
             {st.mentions > 0 && <span className="badge">{st.mentions}</span>}
             {s.verified && (
               <span className="rail-verified">
@@ -360,12 +388,15 @@ function ServerRail({
           </button>
         );
       })}
-      <button className="rail-item add" onClick={onAdd} data-tip="Add a server" aria-label="Add a server">
-        <Icon name="plus" size={24} />
-      </button>
-      <button className={`rail-item add${discover ? ' active' : ''}`} onClick={openDiscover} data-tip="Discover" aria-label="Discover servers">
-        <Icon name="compass" size={24} />
-      </button>
+      <div className="rail-bottom">
+        <div className="rail-sep" />
+        <button className="rail-item add" onClick={onAdd} data-tip="Add a server" aria-label="Add a server">
+          <Icon name="plus" size={24} />
+        </button>
+        <button className={`rail-item add${discover ? ' active' : ''}`} onClick={openDiscover} data-tip="Discover" aria-label="Discover servers">
+          <Icon name="compass" size={24} />
+        </button>
+      </div>
     </nav>
   );
 }
@@ -391,7 +422,7 @@ function DiscoverySidebar() {
           <Icon name="compass" size={18} /> <span className="channel-name">Servers</span>
         </div>
       </div>
-      <UserPanel />
+      <CallDock />
     </Sidebar>
   );
 }
@@ -407,7 +438,11 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
   const [newGroup, setNewGroup] = useState(false);
   const [groupSettings, setGroupSettings] = useState(false);
   const [filter, setFilter] = useState('');
+  const [homeTab, setHomeTab] = useState<'friends' | 'requests' | 'donate'>('friends');
+  const myId = sessionStore.use((s) => s.me?.id);
+  const requests = dms.filter((d) => d.channel.request_to === myId);
   const current = dms.find((d) => d.channel.id === selected) ?? null;
+  const isRequest = current?.channel.request_to === myId;
   const call = useActiveCall();
   const presence = useScopePresence(current?.channel.id ?? null);
   const identity = sessionStore.use((s) => s.identity)!;
@@ -436,9 +471,10 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
   const pinnedFirst = useMemo(() => {
     const pin = (d: DmChannel) => Boolean(d.other && relations[d.other.id]?.pinned);
     return [...dms]
+      .filter((d) => d.channel.request_to !== myId)
       .filter((d) => !filter || d.title.toLowerCase().includes(filter.toLowerCase()))
       .sort((a, b) => Number(pin(b)) - Number(pin(a)));
-  }, [dms, relations, filter]);
+  }, [dms, relations, filter, myId]);
 
   function convoMenu(e: React.MouseEvent, d: DmChannel) {
     const unreadCount = unread.counts[d.channel.id] ?? 0;
@@ -463,14 +499,26 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           <input className="search-btn" placeholder="Find a conversation" value={filter} onChange={(e) => setFilter(e.target.value)} />
         </header>
         <div className="sidebar-scroll">
-          <button className={`channel nav-item${!current ? ' active' : ''}`} onClick={openFriends}>
+          <button className={`channel nav-item${!current && homeTab === 'friends' ? ' active' : ''}`} onClick={() => (setHomeTab('friends'), openFriends())}>
             <Icon name="users" size={20} />
             <span className="channel-name">Friends</span>
             {incoming > 0 && <span className="badge inline">{incoming}</span>}
           </button>
+          <button
+            className={`channel nav-item${(!current && homeTab === 'requests') || isRequest ? ' active' : ''}`}
+            onClick={() => (setHomeTab('requests'), openFriends())}
+          >
+            <Icon name="message" size={20} />
+            <span className="channel-name">Message Requests</span>
+            {requests.length > 0 && <span className="badge inline">{requests.length}</span>}
+          </button>
           <button className="channel nav-item" onClick={openDiscover}>
             <Icon name="compass" size={20} />
             <span className="channel-name">Discover</span>
+          </button>
+          <button className={`channel nav-item${!current && homeTab === 'donate' ? ' active' : ''}`} onClick={() => (setHomeTab('donate'), openFriends())}>
+            <Icon name="star" size={20} />
+            <span className="channel-name">Donate</span>
           </button>
           <div className="category">
             <span>Direct messages — {dms.length}</span>
@@ -510,7 +558,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           })}
           {!dms.length && <p className="empty-hint">No conversations yet. Start one with the + button.</p>}
         </div>
-        <UserPanel />
+        <CallDock />
       </Sidebar>
       <main className="main">
         {current ? (
@@ -535,10 +583,11 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
                 <VoiceView compact />
               </div>
             )}
+            {isRequest && <RequestBanner dm={current} />}
             <ChatView
               channel={current.channel}
               title={current.other ? displayName(current.other.id) : current.title}
-              canSend
+              canSend={!isRequest}
               canManage={false}
               dmMembers={current.members}
               headerExtra={
@@ -565,6 +614,10 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
               }
             />
           </>
+        ) : homeTab === 'requests' ? (
+          <MessageRequestsView requests={requests} onOpen={(d) => openChannel('@me', d.channel.id)} />
+        ) : homeTab === 'donate' ? (
+          <DonateView />
         ) : (
           <FriendsView />
         )}
@@ -585,6 +638,7 @@ function ServerView({ serverId }: { serverId: string }) {
   const selected = nav.use((s) => s.channelByServer[serverId]);
   const presence = useScopePresence(serverId, { online: true }); // shows you as online in this server
   const [showMembers, setShowMembers] = useState(true);
+  const [vcChat, setVcChat] = useState(false);
   const membersWidth = useSettings((s) => s.layout.members);
   const channel = data.channels.find((c) => c.id === selected) ?? data.channels.find((c) => c.type === 'text') ?? null;
   const me = sessionStore.use((s) => s.me)!;
@@ -630,7 +684,7 @@ function ServerView({ serverId }: { serverId: string }) {
       <Sidebar>
         <ServerHeader data={data} />
         <ChannelList data={data} selected={channel?.id ?? null} presence={presence} />
-        <UserPanel />
+        <CallDock />
       </Sidebar>
       <main className="main">
         {status !== 'active' && (
@@ -644,7 +698,15 @@ function ServerView({ serverId }: { serverId: string }) {
           </div>
         )}
         {channel?.type === 'voice' ? (
-          <VoiceChannelView channel={channel} data={data} />
+          <VoiceChannelView
+            channel={channel}
+            data={data}
+            chatButton={
+              <button className={`icon-btn${vcChat ? ' on' : ''}`} onClick={() => setVcChat((v) => !v)} title={vcChat ? 'Hide chat' : 'Show voice channel chat'}>
+                <Icon name="message" />
+              </button>
+            }
+          />
         ) : channel ? (
           <ChatView
             channel={channel}
@@ -653,7 +715,11 @@ function ServerView({ serverId }: { serverId: string }) {
             canManage={has(data.myPermissions, P.MANAGE_MESSAGES)}
             data={data}
             headerExtra={
-              <button className={`icon-btn${showMembers ? ' on' : ''}`} onClick={() => setShowMembers((v) => !v)} title="Member list">
+              <button
+                className={`icon-btn${showMembers ? ' on' : ''}`}
+                onClick={() => (isPhone() ? setDrawer('members') : setShowMembers((v) => !v))}
+                title="Member list"
+              >
                 <Icon name="users" />
               </button>
             }
@@ -665,7 +731,23 @@ function ServerView({ serverId }: { serverId: string }) {
           </div>
         )}
       </main>
-      {showMembers && channel?.type === 'text' && (
+      {vcChat && channel?.type === 'voice' && (
+        <aside className="vc-chat">
+          <ChatView
+            channel={channel}
+            title={channel.name}
+            canSend={has(data.myPermissions, P.SEND_MESSAGES)}
+            canManage={has(data.myPermissions, P.MANAGE_MESSAGES)}
+            data={data}
+            headerExtra={
+              <button className="icon-btn" onClick={() => setVcChat(false)} title="Close chat">
+                <Icon name="x" />
+              </button>
+            }
+          />
+        </aside>
+      )}
+      {(showMembers || isPhone()) && channel?.type === 'text' && (
         <MemberList data={data} online={new Set(presence.map((p) => p.user_id))} width={membersWidth} />
       )}
       <ProfileHost data={data} />
@@ -690,7 +772,12 @@ function ServerHeader({ data }: { data: ServerData }) {
 
   return (
     <>
-      <header className="sidebar-header server-header" onClick={() => setOpen((o) => !o)} style={server.banner_color ? { ['--server-banner' as string]: server.banner_color } : undefined}>
+      {server.banner_url && <div className="server-banner-img" style={{ backgroundImage: `url("${server.banner_url}")` }} onClick={() => setOpen((o) => !o)} />}
+      <header
+        className={`sidebar-header server-header${server.banner_url ? ' over-banner' : ''}`}
+        onClick={() => setOpen((o) => !o)}
+        style={server.banner_color ? { ['--server-banner' as string]: server.banner_color } : undefined}
+      >
         <span className="server-name">
           {server.verified && <VerifiedMark size={16} />}
           {server.name}
@@ -712,6 +799,17 @@ function ServerHeader({ data }: { data: ServerData }) {
           {has(p, P.MANAGE_CHANNELS) && (
             <button onClick={() => (setModal('channel'), setOpen(false))}>
               Create Channel <Icon name="plus" size={16} />
+            </button>
+          )}
+          {has(p, P.MANAGE_CHANNELS) && (
+            <button
+              onClick={async () => {
+                setOpen(false);
+                const name = await askText({ title: 'Create Category', label: 'Category name', placeholder: 'Gaming', maxLength: 100 });
+                if (name?.trim()) createCategory(data, name).catch((e) => alert(errorMessage(e)));
+              }}
+            >
+              Create Category <Icon name="plus" size={16} />
             </button>
           )}
           <button onClick={() => (openProfile(me.id, server.id), setOpen(false))}>
@@ -736,7 +834,7 @@ function ServerHeader({ data }: { data: ServerData }) {
 
 function ChannelList({ data, selected, presence }: { data: ServerData; selected: string | null; presence: ReturnType<typeof useScopePresence> }) {
   const [editing, setEditing] = useState<Channel | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<null | { category?: string }>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const unread = unreadStore.use((s) => s);
   const identity = sessionStore.use((s) => s.identity)!;
@@ -747,8 +845,48 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
   const groups = useMemo(() => {
     const m = new Map<string, Channel[]>();
     for (const c of data.channels) m.set(c.category, [...(m.get(c.category) ?? []), c]);
+    // categories with no channels yet still show (so you can fill them)
+    for (const cat of data.server?.categories ?? []) if (!m.has(cat)) m.set(cat, []);
     return [...m.entries()];
-  }, [data.channels]);
+  }, [data.channels, data.server?.categories]);
+
+  async function newCategory() {
+    const name = await askText({ title: 'Create Category', label: 'Category name', placeholder: 'Gaming', maxLength: 100 });
+    if (name?.trim()) createCategory(data, name).catch((e) => alert(errorMessage(e)));
+  }
+
+  function listMenu(e: React.MouseEvent, category?: string) {
+    if (!canManage) return openMenu(e, [{ label: 'Copy Server ID', icon: 'copy', onClick: () => copyText(data.server!.id) }]);
+    const custom = category !== undefined && (data.server?.categories ?? []).includes(category);
+    const empty = category !== undefined && !data.channels.some((c) => c.category === category);
+    openMenu(e, [
+      category ? { type: 'header', label: category } : false,
+      { label: 'Create Channel', icon: 'plus', onClick: () => setCreating({ category }) },
+      { label: 'Create Category', icon: 'plus', onClick: newCategory },
+      category && {
+        label: 'Rename Category',
+        icon: 'edit',
+        onClick: async () => {
+          const name = (await askText({ title: 'Rename Category', label: 'Category name', initial: category, maxLength: 100 }))?.trim();
+          if (!name || name === category) return;
+          await supabase.from('channels').update({ category: name }).eq('server_id', data.server!.id).eq('category', category);
+          const cats = (data.server?.categories ?? []).map((c) => (c === category ? name : c));
+          await supabase.from('servers').update({ categories: cats }).eq('id', data.server!.id);
+          data.reload();
+        },
+      },
+      custom &&
+        empty && {
+          label: 'Delete Category',
+          icon: 'trash',
+          danger: true,
+          onClick: async () => {
+            await supabase.from('servers').update({ categories: (data.server?.categories ?? []).filter((c) => c !== category) }).eq('id', data.server!.id);
+            data.reload();
+          },
+        },
+    ]);
+  }
 
   const voiceUsers = (channelId: string) => {
     const seen = new Set<string>();
@@ -777,11 +915,15 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
   }
 
   return (
-    <div className="sidebar-scroll">
+    <div className="sidebar-scroll" onContextMenu={(e) => listMenu(e)}>
       {groups.map(([category, channels]) => (
         <div key={category || '_'}>
           {category && (
-            <div className="category" onClick={() => setCollapsed((c) => ({ ...c, [category]: !c[category] }))}>
+            <div
+              className="category"
+              onClick={() => setCollapsed((c) => ({ ...c, [category]: !c[category] }))}
+              onContextMenu={(e) => listMenu(e, category)}
+            >
               <span>
                 <span className={`caret${collapsed[category] ? ' closed' : ''}`}>
                   <Icon name="chevron" size={12} />
@@ -793,7 +935,7 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
                   className="icon-btn"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setCreating(true);
+                    setCreating({ category });
                   }}
                   title="Create channel"
                 >
@@ -851,18 +993,19 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
         </div>
       ))}
       {editing && <ChannelSettingsModal channel={editing} data={data} onClose={() => setEditing(null)} />}
-      {creating && <CreateChannelModal data={data} onClose={() => setCreating(false)} />}
+      {creating && <CreateChannelModal data={data} initialCategory={creating.category} onClose={() => setCreating(null)} />}
     </div>
   );
 }
 
-function VoiceChannelView({ channel, data }: { channel: Channel; data: ServerData }) {
+function VoiceChannelView({ channel, data, chatButton }: { channel: Channel; data: ServerData; chatButton: React.ReactNode }) {
   const call = useActiveCall();
   const identity = sessionStore.use((s) => s.identity)!;
   const inThis = call?.channelId === channel.id;
-  if (inThis) return <VoiceView data={data} />;
+  if (inThis) return <VoiceView data={data} headerExtra={chatButton} />;
   return (
-    <div className="empty-state">
+    <div className="empty-state voice-lobby">
+      <div className="voice-lobby-actions">{chatButton}</div>
       <Icon name="speaker" size={64} />
       <h2>{channel.name}</h2>
       <p className="muted">Talk, turn on your camera, or share your screen.</p>
@@ -951,13 +1094,45 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
 
 const PRESENCE_LABEL: Record<PresenceStatus, string> = { online: 'Online', idle: 'Idle', dnd: 'Do Not Disturb', invisible: 'Invisible' };
 
-export function UserPanel() {
+/** In-call controls at the bottom of the channel list. */
+function CallDock() {
+  const call = useActiveCall();
+  if (!call) return null;
+  return (
+    <div className="call-dock">
+      <div className="voice-bar">
+        <div className="voice-bar-info">
+          <span className={`voice-status ${call.status}`}>
+            <span className="live-dot" /> {call.status === 'connected' ? 'In a call' : 'Connecting…'}
+          </span>
+          <button className="voice-channel-link" onClick={() => openCallChannel(call.scopeId, call.channelId)}>
+            {call.channelName}
+          </button>
+        </div>
+        <button className="icon-btn" onClick={() => call.toggleCamera()} title={call.cam ? 'Turn off camera' : 'Turn on camera'}>
+          <Icon name={call.cam ? 'video' : 'videoOff'} size={18} />
+        </button>
+        <button className={`icon-btn${call.screen ? ' on' : ''}`} onClick={() => call.toggleScreen()} title="Share screen">
+          <Icon name="screen" size={18} />
+        </button>
+        <button className="icon-btn danger" onClick={() => leaveCall()} title="Disconnect">
+          <Icon name="phoneOff" size={18} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Top bar: menu (phones), where you are, quick switcher, and you. */
+function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
   const me = sessionStore.use((s) => s.me)!;
   const call = useActiveCall();
-
-  async function setPresence(presence: PresenceStatus) {
-    updateMyProfile({ presence }).catch((e) => alert(errorMessage(e)));
-  }
+  const serverId = nav.use((s) => s.serverId);
+  const discover = nav.use((s) => s.discover);
+  const dmId = nav.use((s) => s.channelByServer['@me']);
+  const server = servers.find((x) => x.id === serverId);
+  const dm = !serverId && !discover ? dms.find((d) => d.channel.id === dmId) : null;
+  const where = discover ? 'Discover' : server ? server.name : dm ? (dm.other ? displayName(dm.other.id) : dm.title) : 'Friends';
 
   function statusMenu(e: React.MouseEvent) {
     openMenu(e, [
@@ -966,7 +1141,7 @@ export function UserPanel() {
         type: 'check' as const,
         label: PRESENCE_LABEL[p],
         checked: (me.presence ?? 'online') === p,
-        onChange: () => setPresence(p),
+        onChange: () => updateMyProfile({ presence: p }).catch((err) => alert(errorMessage(err))),
       })),
       { type: 'sep' },
       {
@@ -979,41 +1154,26 @@ export function UserPanel() {
         },
       },
       { label: 'View Profile', icon: 'user', onClick: () => openProfile(me.id) },
+      { label: 'Settings', icon: 'settings', onClick: () => openSettings('account') },
       { label: 'Copy User ID', icon: 'copy', onClick: () => copyText(me.id) },
     ]);
   }
 
   return (
-    <div className="user-panel-wrap">
-      {call && (
-        <div className="voice-bar">
-          <div className="voice-bar-info">
-            <span className={`voice-status ${call.status}`}>
-              <span className="live-dot" /> {call.status === 'connected' ? 'In a call' : 'Connecting…'}
-            </span>
-            <button className="voice-channel-link" onClick={() => openCallChannel(call.scopeId, call.channelId)}>
-              {call.channelName}
-            </button>
-          </div>
-          <button className="icon-btn" onClick={() => call.toggleCamera()} title={call.cam ? 'Turn off camera' : 'Turn on camera'}>
-            <Icon name={call.cam ? 'video' : 'videoOff'} size={18} />
-          </button>
-          <button className={`icon-btn${call.screen ? ' on' : ''}`} onClick={() => call.toggleScreen()} title="Share screen">
-            <Icon name="screen" size={18} />
-          </button>
-          <button className="icon-btn danger" onClick={() => leaveCall()} title="Disconnect">
-            <Icon name="phoneOff" size={18} />
-          </button>
-        </div>
-      )}
+    <header className="topbar">
+      <button className="icon-btn topbar-menu" onClick={() => setDrawer(uiStore.get().drawer === 'nav' ? null : 'nav')} aria-label="Open menu">
+        <Icon name="menu" size={22} />
+      </button>
+      <div className="topbar-where">
+        {server?.verified && <VerifiedMark size={14} />}
+        <span>{where}</span>
+      </div>
+      <button className="topbar-search" onClick={() => uiStore.set({ switcher: true })}>
+        <Icon name="search" size={15} />
+        <span>Search or jump to…</span>
+        <kbd>Ctrl K</kbd>
+      </button>
       <div className="user-panel">
-        <button className="user-panel-me" onClick={statusMenu} onContextMenu={statusMenu} title="Set status">
-          <Avatar profile={me} size={34} online />
-          <div className="user-panel-names">
-            <span className="name">{me.display_name}</span>
-            <span className="tag">{me.status_text ? `${me.status_emoji ?? ''} ${me.status_text}` : PRESENCE_LABEL[me.presence ?? 'online']}</span>
-          </div>
-        </button>
         <button className={`icon-btn${call?.muted ? ' danger-text' : ''}`} onClick={() => call?.toggleMute()} disabled={!call} title={call?.muted ? 'Unmute' : 'Mute'}>
           <Icon name={call?.muted ? 'micOff' : 'mic'} size={18} />
         </button>
@@ -1023,6 +1183,87 @@ export function UserPanel() {
         <button className="icon-btn" onClick={() => openSettings('account')} title="User settings">
           <Icon name="settings" size={18} />
         </button>
+        <button className="user-chip" onClick={statusMenu} onContextMenu={statusMenu} title="Set status">
+          <Avatar profile={me} size={28} online />
+          <span className="user-chip-names">
+            <span className="name">{me.display_name}</span>
+            <span className="tag">{me.status_text ? `${me.status_emoji ?? ''} ${me.status_text}` : PRESENCE_LABEL[me.presence ?? 'online']}</span>
+          </span>
+        </button>
+      </div>
+    </header>
+  );
+}
+
+/** Ctrl+K: jump to any conversation, server or friend. */
+function QuickSwitcher({ servers, dms, onClose }: { servers: Server[]; dms: DmChannel[]; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState(0);
+  const friends = socialStore.use((s) => s.friends);
+  const items = useMemo(() => {
+    const out: { key: string; label: string; sub: string; icon: React.ReactNode; go: () => void }[] = [];
+    for (const d of dms)
+      out.push({
+        key: d.channel.id,
+        label: d.other ? displayName(d.other.id) : d.title,
+        sub: d.channel.is_group ? 'Group' : 'Direct message',
+        icon: <ConvoAvatar dm={d} size={24} />,
+        go: () => openChannel('@me', d.channel.id),
+      });
+    for (const sv of servers)
+      out.push({
+        key: sv.id,
+        label: sv.name,
+        sub: 'Server',
+        icon: (
+          <span className="server-icon-sm" style={{ background: sv.icon_color, width: 24, height: 24 }}>
+            {initials(sv.name)}
+          </span>
+        ),
+        go: () => openServer(sv.id),
+      });
+    for (const f of Object.values(friends).filter((x) => x.accepted && !dms.some((d) => d.other?.id === x.other)))
+      out.push({
+        key: f.other,
+        label: displayName(f.other),
+        sub: 'Friend',
+        icon: <Avatar profile={getProfile(f.other)} size={24} />,
+        go: () => startDm(f.other).catch((e) => alert(errorMessage(e))),
+      });
+    const needle = q.trim().toLowerCase();
+    return needle ? out.filter((i) => i.label.toLowerCase().includes(needle) || getProfile(i.key)?.username?.includes(needle)) : out;
+  }, [dms, servers, friends, q]);
+  useEffect(() => setSel(0), [q]);
+  const pick = (i: number) => {
+    items[i]?.go();
+    onClose();
+  };
+  return (
+    <div className="modal-backdrop switcher-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="switcher" role="dialog" aria-label="Quick switcher">
+        <input
+          autoFocus
+          placeholder="Where would you like to go?"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onClose();
+            if (e.key === 'ArrowDown') (e.preventDefault(), setSel((v) => Math.min(items.length - 1, v + 1)));
+            if (e.key === 'ArrowUp') (e.preventDefault(), setSel((v) => Math.max(0, v - 1)));
+            if (e.key === 'Enter') pick(sel);
+          }}
+        />
+        <div className="switcher-list">
+          {items.slice(0, 30).map((it, i) => (
+            <button key={it.key} className={`switcher-item${i === sel ? ' active' : ''}`} onMouseEnter={() => setSel(i)} onClick={() => pick(i)}>
+              {it.icon}
+              <span className="grow">{it.label}</span>
+              <span className="small muted">{it.sub}</span>
+            </button>
+          ))}
+          {!items.length && <p className="muted small switcher-empty">Nothing matches “{q}”.</p>}
+        </div>
+        <div className="switcher-hint small muted">↑↓ to move · Enter to go · Esc to close</div>
       </div>
     </div>
   );
@@ -1061,7 +1302,9 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
     notify(`${name} is calling you`, 'Click to open Venband and join the call.', () => openChannel('@me', dm.channel.id), `call-${dm.channel.id}`);
     return () => stopRing('incoming');
   }, [active, quiet, name, dm.channel.id]);
-  if (!active) return null;
+  // you just hung up and they stayed: no pop-up (it looked like they were
+  // calling you again). The DM header's "Join call" button rejoins.
+  if (!active || leftRecently(dm.channel.id)) return null;
   return (
     <div className="toast incoming-call" role="alert">
       <ConvoAvatar dm={dm} size={40} />

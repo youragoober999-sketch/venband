@@ -225,6 +225,12 @@ await alice.page.getByRole('button', { name: 'Open DM' }).click();
 await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
 await alice.page.locator('.composer textarea').fill('private DM for bob only');
 await alice.page.keyboard.press('Enter');
+// bob was kicked, so he and alice share nothing: it arrives as a message request
+await bob.page.locator('.nav-item', { hasText: 'Message Requests' }).locator('.badge').waitFor({ timeout: 20000 });
+if (await bob.page.locator('.toast.incoming-call').count()) throw new Error('request should be quiet');
+await bob.page.locator('.nav-item', { hasText: 'Message Requests' }).click();
+await bob.page.locator('.friend-row', { hasText: 'Alice' }).getByTitle('Accept').click();
+log('✅ DM from a stranger arrives as a message request and can be accepted');
 await bob.page.locator('.channel.dm', { hasText: 'Alice' }).locator('.badge').waitFor({ timeout: 20000 });
 log('✅ unread badge shown for the new DM');
 await bob.page.locator('.channel.dm', { hasText: 'Alice' }).click({ timeout: 20000 });
@@ -275,10 +281,12 @@ log('✅ deafen/mute toggling keeps both people in the call');
 await bob.page.locator('.voice-bar [title=Disconnect]').click();
 await alice.page.getByText('left the call').waitFor({ timeout: 8000 });
 if ((await alice.page.locator('.voice-view .tile').count()) !== 1) throw new Error('bob still shown in alice\'s call');
-await bob.page.locator('.toast', { hasText: 'is in a call' }).waitFor({ timeout: 8000 });
+await bob.page.waitForTimeout(1500);
+if (await bob.page.locator('.toast.incoming-call').count()) throw new Error('hanging up should not pop up a call notice');
+await bob.page.locator('.chat-header').getByRole('button', { name: /Join call/ }).waitFor({ timeout: 8000 });
 log('✅ hanging up is seen immediately; no ringing for the person who left');
-// and joining again from the toast works
-await bob.page.locator('.toast').getByTitle('Join call').click();
+// and joining again from the DM header works
+await bob.page.locator('.chat-header').getByRole('button', { name: /Join call/ }).click();
 await alice.page.locator('.voice-view .tile').nth(1).waitFor({ timeout: 20000 });
 log('✅ rejoining the call works');
 // full screen on a video tile
@@ -295,6 +303,9 @@ log('✅ full screen video works');
 await alice.page.locator('.call-controls [title="Share screen"]').click();
 const screenTile = bob.page.locator('.voice-view .tile.screen');
 await screenTile.waitFor({ timeout: 20000 });
+await alice.page.locator('.voice-view .tile.screen', { hasText: 'You’re sharing your screen' }).waitFor({ timeout: 10000 });
+if (await alice.page.locator('.voice-view .tile.screen video').count()) throw new Error('own screen preview shown (hall of mirrors)');
+log('✅ your own screen share is not previewed back to you (no mirror effect)');
 if (!(await screenTile.locator('.tile-full').isVisible())) throw new Error('full screen button not visible on screen share');
 await screenTile.click();
 await bob.page.waitForFunction(() => document.fullscreenElement?.classList.contains('screen'), null, { timeout: 5000 });
@@ -463,6 +474,97 @@ await alice.page.locator('.channel .channel-name').getByText('chat', { exact: tr
 await alice.page.locator('.message-text', { hasText: 'bob is back and can talk' }).waitFor({ timeout: 20000 });
 log('✅ a newcomer can send immediately (new key shared with everyone) and others read it');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/11-server-badges.png` });
+// ---- channels: right-click to create a category and a channel in it
+await alice.page.locator('.rail-item[aria-label="Venband HQ"]').first().click().catch(() => {});
+await alice.page.locator(`.rail-item`).filter({ has: alice.page.locator('.rail-initials', { hasText: 'VH' }) }).first().click();
+await alice.page.locator('.sidebar-scroll').click({ button: 'right', position: { x: 60, y: 400 } });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Category' }).click();
+await alice.page.locator('.modal input').fill('Gaming');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await alice.page.locator('.category', { hasText: 'Gaming' }).waitFor({ timeout: 10000 });
+await alice.page.locator('.category', { hasText: 'Gaming' }).click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Channel' }).click();
+if ((await alice.page.locator('.modal select').first().inputValue()) !== 'Gaming') throw new Error('category dropdown not preselected');
+await alice.page.locator('.modal input[placeholder="new-channel"]').fill('clips');
+await alice.page.locator('.modal').getByRole('button', { name: 'Create Channel' }).click();
+await alice.page.getByText('This is the start of #clips').waitFor({ timeout: 15000 });
+log('✅ right-click → Create Category / Create Channel works (no row-level security error)');
+
+// ---- formatting bar on selected text
+await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 15000 });
+await alice.page.locator('.composer textarea').fill('make this bold');
+await alice.page.locator('.composer textarea').focus();
+await alice.page.keyboard.press('End');
+for (let i = 0; i < 4; i++) await alice.page.keyboard.press('Shift+ArrowLeft');
+await alice.page.locator('.fmt-bar button[title^="Bold"]').click();
+if ((await alice.page.locator('.composer textarea').inputValue()) !== 'make this **bold**') throw new Error('bold button did not wrap the selection');
+await alice.page.keyboard.press('End');
+await alice.page.keyboard.press('Enter');
+await alice.page.locator('.message-text strong', { hasText: 'bold' }).last().waitFor({ timeout: 10000 });
+log('✅ selecting text shows the formatting bar and it formats');
+
+// ---- voice channel side chat
+await alice.page.locator('.channel .channel-name').getByText('General', { exact: true }).click();
+await alice.page.locator('.voice-view [title="Show voice channel chat"]').click();
+await alice.page.locator('.vc-chat .composer textarea:not([disabled])').waitFor({ timeout: 15000 });
+await alice.page.locator('.vc-chat .composer textarea').fill('chatting in the voice channel');
+await alice.page.keyboard.press('Enter');
+await alice.page.locator('.vc-chat .message-text', { hasText: 'chatting in the voice channel' }).waitFor({ timeout: 10000 });
+await alice.page.locator('.voice-bar [title=Disconnect]').click();
+log('✅ voice channel side chat works');
+
+// ---- reports: bob reports a message, alice (owner) handles it in the Report Centre
+await bob.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+const target = bob.page.locator('.message', { hasText: 'secret after kick' }).first();
+await target.click({ button: 'right' });
+await bob.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Report Message' }).click();
+await bob.page.locator('.modal input').fill('testing reports');
+await bob.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await target.locator('.report-tag', { hasText: 'under review' }).waitFor({ timeout: 10000 });
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Report Centre' }).click();
+const rcard = alice.page.locator('.report-card', { hasText: 'testing reports' });
+await rcard.waitFor({ timeout: 10000 });
+if (!(await rcard.locator('.evidence-msg.reported').count())) throw new Error('reported message not in evidence');
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/12-report-centre.png` });
+await rcard.getByRole('button', { name: 'Dismiss' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await rcard.waitFor({ state: 'detached', timeout: 10000 });
+await alice.page.locator('.sp-close').click();
+log('✅ reports: message reported (under review) and handled in the Report Centre');
+
+// ---- server icon upload
+await alice.page.locator('.server-header').click();
+await alice.page.getByRole('button', { name: /Server Settings/ }).click();
+const iconPng = png;
+await alice.page.locator('.asset-picker.icon input[type=file]').setInputFiles({ name: 'icon.png', mimeType: 'image/png', buffer: iconPng });
+await alice.page.locator('.asset-picker.icon .asset-preview img').waitFor({ timeout: 15000 });
+await alice.page.keyboard.press('Escape');
+await alice.page.locator('.rail-item img.rail-icon').first().waitFor({ timeout: 15000 });
+log('✅ server icon uploads and shows in the server list');
+
+// ---- phone layout
+await bob.page.setViewportSize({ width: 390, height: 844 });
+await bob.page.waitForTimeout(400);
+if (await bob.page.locator('.sidebar').isVisible() && (await bob.page.locator('.sidebar').boundingBox()).x >= 0) throw new Error('channel list should be tucked away on phones');
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/m1-chat.png` });
+await bob.page.locator('.topbar-menu').click();
+await bob.page.waitForTimeout(450);
+if ((await bob.page.locator('.sidebar').boundingBox()).x < 0) throw new Error('menu did not open the channel list');
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/m2-drawer.png` });
+await bob.page.locator('.sidebar .channel', { hasText: 'welcome' }).click();
+await bob.page.waitForTimeout(450);
+if ((await bob.page.locator('.sidebar').boundingBox()).x >= 0) throw new Error('picking a channel should close the menu');
+await bob.page.locator('.chat-header [title="Member list"]').click();
+await bob.page.waitForTimeout(450);
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/m3-members.png` });
+await bob.page.locator('.drawer-scrim').click({ position: { x: 20, y: 300 } });
+await bob.page.locator('.user-panel [title="User settings"]').click();
+await bob.page.waitForTimeout(400);
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/m4-settings.png` });
+await bob.page.locator('.sp-close').click();
+await bob.page.setViewportSize({ width: 1400, height: 850 });
+log('✅ phone layout: slide-in channel list and member list, settings fit');
 
 // ---- logging out and back in works; unticking "stay signed in" asks for the password after refresh
 await alice.page.locator('.user-panel [title="User settings"]').click();

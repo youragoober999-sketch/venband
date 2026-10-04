@@ -63,7 +63,11 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
       <Field label="Server name">
         <input maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <Field label="Icon color">
+      <div className="asset-row">
+        <ServerImagePicker data={data} kind="icon" />
+        <ServerImagePicker data={data} kind="banner" />
+      </div>
+      <Field label="Icon color (shown when there's no icon picture)">
         <ColorPicker value={color} onChange={setColor} />
       </Field>
       <Field label="Description" hint="Shown in Server Discovery.">
@@ -458,6 +462,86 @@ function Bans({ data }: { data: ServerData }) {
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Shrink a picture on this device before uploading (GIFs are kept as-is so they stay animated). */
+async function prepareImage(file: File, maxW: number, maxH: number, square: boolean): Promise<Blob> {
+  if (file.type === 'image/gif') {
+    if (file.size > 4 * 1024 * 1024) throw new Error('Animated GIFs must be under 4 MB.');
+    return file;
+  }
+  const bmp = await createImageBitmap(file).catch(() => {
+    throw new Error('That file isn’t a picture we can read. Try a PNG, JPG, GIF or WebP.');
+  });
+  let sx = 0, sy = 0, sw = bmp.width, sh = bmp.height;
+  if (square) {
+    const side = Math.min(bmp.width, bmp.height);
+    sx = (bmp.width - side) / 2;
+    sy = (bmp.height - side) / 2;
+    sw = sh = side;
+  }
+  const scale = Math.min(1, maxW / sw, maxH / sh);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(sw * scale);
+  canvas.height = Math.round(sh * scale);
+  canvas.getContext('2d')!.drawImage(bmp, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  bmp.close();
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not read that picture.'))), 'image/webp', 0.9));
+}
+
+function ServerImagePicker({ data, kind }: { data: ServerData; kind: 'icon' | 'banner' }) {
+  const server = data.server!;
+  const current = kind === 'icon' ? server.icon_url : server.banner_url;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload(file: File) {
+    setBusy(true);
+    setError(null);
+    try {
+      const blob = await prepareImage(file, kind === 'icon' ? 256 : 1280, kind === 'icon' ? 256 : 720, kind === 'icon');
+      const ext = blob.type === 'image/gif' ? 'gif' : 'webp';
+      const path = `${server.id}/${kind}-${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('server-assets').upload(path, blob, { contentType: blob.type, upsert: true });
+      if (upErr) throw upErr;
+      const url = supabase.storage.from('server-assets').getPublicUrl(path).data.publicUrl;
+      const { error: dbErr } = await supabase.from('servers').update(kind === 'icon' ? { icon_url: url } : { banner_url: url }).eq('id', server.id);
+      if (dbErr) throw dbErr;
+      // tidy up the previous picture
+      const old = current?.split('/server-assets/')[1];
+      if (old) supabase.storage.from('server-assets').remove([decodeURIComponent(old)]);
+      data.reload();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    await supabase.from('servers').update(kind === 'icon' ? { icon_url: null } : { banner_url: null }).eq('id', server.id);
+    const old = current?.split('/server-assets/')[1];
+    if (old) supabase.storage.from('server-assets').remove([decodeURIComponent(old)]);
+    data.reload();
+  }
+
+  return (
+    <div className={`asset-picker ${kind}`}>
+      <div className="field-label">{kind === 'icon' ? 'Server icon' : 'Server banner'}</div>
+      <label className="asset-preview" style={{ background: current ? undefined : kind === 'icon' ? server.icon_color : (server.banner_color ?? 'var(--bg-3)') }}>
+        {current ? <img src={current} alt="" /> : <span>{kind === 'icon' ? server.name.slice(0, 2).toUpperCase() : 'No banner'}</span>}
+        <span className="asset-overlay">{busy ? 'Uploading…' : 'Change'}</span>
+        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden disabled={busy} onChange={(e) => (e.target.files?.[0] && upload(e.target.files[0]), (e.target.value = ''))} />
+      </label>
+      <div className="small muted">{kind === 'icon' ? 'Square, at least 256×256.' : 'Wide, 16:9 looks best.'}</div>
+      {current && (
+        <button type="button" className="btn link small" onClick={remove}>
+          Remove
+        </button>
+      )}
+      {error && <div className="form-error">{error}</div>}
     </div>
   );
 }

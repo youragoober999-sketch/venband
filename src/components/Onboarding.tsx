@@ -131,6 +131,9 @@ export function Onboarding() {
         )}
 
         <div className="onboarding-actions">
+          <button className="btn link onboarding-skip" disabled={busy} onClick={() => finish(true)}>
+            Skip setup — I’ll do this later
+          </button>
           {step > 0 && (
             <button className="btn secondary" onClick={() => setStep(step - 1)}>
               Back

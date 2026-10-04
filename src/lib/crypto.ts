@@ -390,6 +390,36 @@ function messageAad(messageId: string, channelId: string, authorId: string, auth
   return `venband/v1/msg|${messageId}|${channelId}|${authorId}|${authorKeyId}|${epoch}`;
 }
 
+/**
+ * Every message gets its own AES-256-GCM key, never reused: a fresh random
+ * 128-bit salt is drawn per message (and per edit) and the message key is
+ * HKDF-SHA256(channel epoch key, salt, info = everything the message is bound
+ * to). The salt travels in the `iv` column as "v2:<iv>:<salt>" and is covered
+ * by the author's signature. Messages from before this change ("v1", a bare
+ * IV) are still decrypted with the epoch key directly.
+ */
+const MSG_V2 = 'v2:';
+
+const hkdfCache = new WeakMap<Uint8Array, Promise<CryptoKey>>();
+function hkdfBase(raw: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+  let k = hkdfCache.get(raw);
+  if (!k) {
+    k = subtle.importKey('raw', raw, 'HKDF', false, ['deriveKey']);
+    hkdfCache.set(raw, k);
+  }
+  return k;
+}
+
+async function messageKey(raw: Uint8Array<ArrayBuffer>, salt: Uint8Array<ArrayBuffer>, aad: string): Promise<CryptoKey> {
+  return subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt, info: te.encode(`venband/v2/message-key|${aad}`) },
+    await hkdfBase(raw),
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
 export async function encryptMessage(
   identity: Identity,
   raw: Uint8Array<ArrayBuffer>,
@@ -400,15 +430,16 @@ export async function encryptMessage(
 ): Promise<MessageEnvelope> {
   const aad = messageAad(messageId, channelId, identity.userId, identity.keyId, epoch);
   const iv = randomBytes(12);
+  const salt = randomBytes(16);
   const ct = await subtle.encrypt(
     { name: 'AES-GCM', iv, additionalData: te.encode(aad) },
-    await aesKey(raw),
+    await messageKey(raw, salt, aad),
     te.encode(JSON.stringify(payload)),
   );
-  const ivB64 = toB64(iv);
+  const ivField = `${MSG_V2}${toB64(iv)}:${toB64(salt)}`;
   const ctB64 = toB64(ct);
-  const signature = await sign(identity, `${aad}|${ivB64}|${ctB64}`);
-  return { iv: ivB64, ciphertext: ctB64, signature };
+  const signature = await sign(identity, `${aad}|${ivField}|${ctB64}`);
+  return { iv: ivField, ciphertext: ctB64, signature };
 }
 
 export async function decryptMessage(
@@ -425,17 +456,40 @@ export async function decryptMessage(
   if (!(await verify(authorSignPublic, env.signature, `${aad}|${env.iv}|${env.ciphertext}`))) {
     throw new Error('bad signature');
   }
-  const pt = await subtle.decrypt(
-    { name: 'AES-GCM', iv: fromB64(env.iv), additionalData: te.encode(aad) },
-    await aesKey(raw),
-    fromB64(env.ciphertext),
-  );
+  let iv: Uint8Array<ArrayBuffer>;
+  let key: CryptoKey;
+  if (env.iv.startsWith(MSG_V2)) {
+    const [ivB64, saltB64] = env.iv.slice(MSG_V2.length).split(':');
+    iv = fromB64(ivB64);
+    const salt = fromB64(saltB64 ?? '');
+    if (iv.length !== 12 || salt.length !== 16) throw new Error('bad envelope');
+    key = await messageKey(raw, salt, aad);
+  } else {
+    iv = fromB64(env.iv); // v1: one key per channel epoch
+    key = await aesKey(raw);
+  }
+  const pt = await subtle.decrypt({ name: 'AES-GCM', iv, additionalData: te.encode(aad) }, key, fromB64(env.ciphertext));
   const payload = JSON.parse(td.decode(pt)) as MessagePayload;
   if (payload.v !== 1 || typeof payload.text !== 'string') throw new Error('bad payload');
   return payload;
 }
 
-// ------------------------------------------------------------- attachments --
+/** v1 encryption, kept only so tests can prove old messages still open. */
+export async function encryptMessageV1ForTests(
+  identity: Identity,
+  raw: Uint8Array<ArrayBuffer>,
+  messageId: string,
+  channelId: string,
+  epoch: number,
+  payload: MessagePayload,
+): Promise<MessageEnvelope> {
+  const aad = messageAad(messageId, channelId, identity.userId, identity.keyId, epoch);
+  const iv = randomBytes(12);
+  const ct = await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: te.encode(aad) }, await aesKey(raw), te.encode(JSON.stringify(payload)));
+  const ivB64 = toB64(iv);
+  const ctB64 = toB64(ct);
+  return { iv: ivB64, ciphertext: ctB64, signature: await sign(identity, `${aad}|${ivB64}|${ctB64}`) };
+}
 
 export async function encryptBlob(data: ArrayBuffer): Promise<{ blob: Uint8Array<ArrayBuffer>; key: string; iv: string }> {
   const raw = randomBytes(32);

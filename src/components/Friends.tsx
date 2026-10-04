@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { displayName, getProfile } from '../lib/directory';
-import { respondFriend, removeFriend, sendFriendRequest, socialStore } from '../lib/social';
-import { openServer, useDirectory } from '../hooks/data';
+import { respondFriend, removeFriend, sendFriendRequest, setRelation, socialStore } from '../lib/social';
+import { openFriends, openServer, useDirectory } from '../hooks/data';
+import type { DmChannel } from '../lib/types';
 import { Avatar, Icon } from './ui';
 import { Badges, VerifiedMark } from './Badges';
 import { openMenu } from './ContextMenu';
@@ -172,6 +173,8 @@ interface Discoverable {
   description: string;
   icon_color: string;
   banner_color: string | null;
+  icon_url?: string | null;
+  banner_url?: string | null;
   tag: string | null;
   verified: boolean;
   members: number;
@@ -213,9 +216,12 @@ export function DiscoveryView() {
       <div className="discovery-grid">
         {(items ?? []).map((s) => (
           <button key={s.id} className="discovery-card" data-server-id={s.id} onClick={() => join(s)}>
-            <div className="discovery-banner" style={{ background: s.banner_color ?? s.icon_color }} />
+            <div
+              className="discovery-banner"
+              style={s.banner_url ? { backgroundImage: `url("${s.banner_url}")`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: s.banner_color ?? s.icon_color }}
+            />
             <span className="discovery-icon" style={{ background: s.icon_color }}>
-              {s.name.slice(0, 2).toUpperCase()}
+              {s.icon_url ? <img src={s.icon_url} alt="" /> : s.name.slice(0, 2).toUpperCase()}
             </span>
             <div className="discovery-info">
               <div className="discovery-name">
@@ -237,5 +243,171 @@ export function DiscoveryView() {
         </div>
       )}
     </main>
+  );
+}
+
+// ------------------------------------------------------- message requests --
+
+export function MessageRequestsView({ requests, onOpen }: { requests: DmChannel[]; onOpen: (d: DmChannel) => void }) {
+  useDirectory();
+  return (
+    <div className="friends">
+      <header className="chat-header">
+        <Icon name="message" />
+        <h3>Message Requests</h3>
+      </header>
+      <div className="friends-body">
+        <p className="muted small">
+          Messages from people you don’t share a server with and aren’t friends with land here. They can’t see whether you’ve read them.
+        </p>
+        <div className="members-title">Requests — {requests.length}</div>
+        {requests.map((d) => (
+          <div key={d.channel.id} className="friend-row" onClick={() => onOpen(d)}>
+            <Avatar profile={d.other} size={36} />
+            <div className="grow">
+              <div className="friend-name">
+                {d.other ? displayName(d.other.id) : d.title} <span className="muted small">@{d.other?.username}</span>
+              </div>
+              <div className="small muted">Wants to send you a message · {new Date(d.channel.created_at).toLocaleDateString()}</div>
+            </div>
+            <div className="friend-actions" onClick={(e) => e.stopPropagation()}>
+              <button className="round-icon ok" title="Accept" onClick={() => acceptRequest(d.channel.id)}>
+                <Icon name="check" size={18} />
+              </button>
+              <button className="round-icon no" title="Decline" onClick={() => declineRequest(d.channel.id)}>
+                <Icon name="x" size={18} />
+              </button>
+            </div>
+          </div>
+        ))}
+        {!requests.length && (
+          <div className="empty-state small">
+            <Icon name="message" size={48} />
+            <p className="muted">No message requests.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export async function acceptRequest(channelId: string) {
+  const { error } = await supabase.rpc('accept_message_request', { p_channel: channelId });
+  if (error) alert(errorMessage(error));
+}
+
+export async function declineRequest(channelId: string) {
+  const { error } = await supabase.rpc('decline_message_request', { p_channel: channelId });
+  if (error) alert(errorMessage(error));
+  else openFriends();
+}
+
+/** Banner shown on top of a DM that is still a request. */
+export function RequestBanner({ dm }: { dm: DmChannel }) {
+  const other = dm.other;
+  return (
+    <div className="request-banner">
+      <Avatar profile={other} size={28} />
+      <span className="grow">
+        <b>{other ? displayName(other.id) : 'Someone'}</b> wants to message you. You don’t share any servers or friends.
+      </span>
+      <button className="btn success small" onClick={() => acceptRequest(dm.channel.id)}>
+        Accept
+      </button>
+      <button className="btn secondary small" onClick={() => declineRequest(dm.channel.id)}>
+        Decline
+      </button>
+      {other && (
+        <button
+          className="btn danger small"
+          onClick={async () => {
+            await setRelation(other.id, { blocked: true }).catch(() => {});
+            declineRequest(dm.channel.id);
+          }}
+        >
+          Block
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- donate --
+// Donations go straight to the site owner's own PayPal / Cash App / Ko-fi /
+// Buy Me a Coffee page: Venband never sees or stores card details.
+
+const DONATE = {
+  paypal: (import.meta.env.VITE_DONATE_PAYPAL as string | undefined)?.trim(),
+  cashapp: (import.meta.env.VITE_DONATE_CASHAPP as string | undefined)?.trim().replace(/^\$/, ''),
+  kofi: (import.meta.env.VITE_DONATE_KOFI as string | undefined)?.trim(),
+  bmc: (import.meta.env.VITE_DONATE_BMC as string | undefined)?.trim(),
+};
+
+export function DonateView() {
+  const [amount, setAmount] = useState('5.00');
+  const n = Number(amount);
+  const valid = Number.isFinite(n) && n >= 0.01 && n <= 10000;
+  const fixed = valid ? n.toFixed(2) : '';
+  const providers = [
+    DONATE.paypal && { id: 'paypal', name: 'PayPal', sub: 'PayPal balance, Visa, Mastercard, Amex, Discover', url: `https://paypal.me/${encodeURIComponent(DONATE.paypal)}/${fixed}USD`, amount: true },
+    DONATE.cashapp && { id: 'cashapp', name: 'Cash App', sub: 'Cash App balance or a linked debit card', url: `https://cash.app/$${encodeURIComponent(DONATE.cashapp)}/${fixed}`, amount: true },
+    DONATE.kofi && { id: 'kofi', name: 'Ko-fi', sub: 'Cards, PayPal, Apple Pay, Google Pay (enter the amount there)', url: `https://ko-fi.com/${encodeURIComponent(DONATE.kofi)}`, amount: false },
+    DONATE.bmc && { id: 'bmc', name: 'Buy Me a Coffee', sub: 'Cards, Apple Pay, Google Pay (enter the amount there)', url: `https://buymeacoffee.com/${encodeURIComponent(DONATE.bmc)}`, amount: false },
+  ].filter(Boolean) as { id: string; name: string; sub: string; url: string; amount: boolean }[];
+
+  return (
+    <div className="friends">
+      <header className="chat-header">
+        <Icon name="star" />
+        <h3>Support Venband</h3>
+      </header>
+      <div className="friends-body donate">
+        <div className="donate-hero">
+          <h2>Keep Venband free, private and ad-free</h2>
+          <p className="muted">Venband is open source and run by a tiny team. Every donation helps pay for servers.</p>
+        </div>
+        <div className="field-label">Amount (USD)</div>
+        <div className="donate-amounts">
+          {['1', '5', '10', '25', '50', '100'].map((a) => (
+            <button key={a} className={`donate-chip${Number(amount) === Number(a) ? ' active' : ''}`} onClick={() => setAmount(Number(a).toFixed(2))}>
+              ${a}
+            </button>
+          ))}
+          <label className="donate-custom">
+            $
+            <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} onBlur={() => valid && setAmount(fixed)} />
+          </label>
+        </div>
+        {!valid && <div className="form-error">Pick an amount between $0.01 and $10,000.</div>}
+        <div className="donate-providers">
+          {providers.map((p) => (
+            <a
+              key={p.id}
+              className={`donate-provider ${p.id}${valid ? '' : ' disabled'}`}
+              href={valid ? p.url : undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => !valid && e.preventDefault()}
+            >
+              <b>
+                {p.amount && valid ? `Donate $${fixed} with ` : 'Donate with '}
+                {p.name}
+              </b>
+              <span className="small muted">{p.sub}</span>
+            </a>
+          ))}
+        </div>
+        {!providers.length && (
+          <div className="notice">
+            Donations aren’t set up on this site yet. (Site owner: add <code>VITE_DONATE_PAYPAL</code>, <code>VITE_DONATE_CASHAPP</code>,{' '}
+            <code>VITE_DONATE_KOFI</code> or <code>VITE_DONATE_BMC</code> in your hosting settings.)
+          </div>
+        )}
+        <p className="small muted">
+          Payments are handled by the provider you pick. Venband never sees your card or bank details. Donations aren’t refundable through
+          Venband and don’t unlock anything.
+        </p>
+      </div>
+    </div>
   );
 }

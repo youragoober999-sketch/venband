@@ -46,6 +46,9 @@ export interface Server {
   discoverable?: boolean;
   welcome_channel_id?: string | null;
   automod?: { slurs?: boolean };
+  categories?: string[];
+  icon_url?: string | null;
+  banner_url?: string | null;
 }
 
 export type ChannelType = 'text' | 'voice' | 'dm';
@@ -60,6 +63,7 @@ export interface Channel {
   position: number;
   is_private: boolean;
   is_group?: boolean;
+  request_to?: string | null;
   key_rotation_needed: boolean;
   created_at: string;
 }

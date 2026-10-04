@@ -9,6 +9,7 @@ import {
   deriveMasterKeys,
   encryptBlob,
   encryptMessage,
+  encryptMessageV1ForTests,
   fingerprint,
   newChannelKey,
   resealIdentity,
@@ -72,6 +73,23 @@ test('channel key wrap / unwrap and message round-trip', async () => {
   await assert.rejects(decryptMessage(got, alice.signPublic, id, CHANNEL, BOB, alice.keyId, 1, env));
   const flipped = { ...env, ciphertext: env.ciphertext.slice(0, -4) + 'AAA=' };
   await assert.rejects(decryptMessage(got, alice.signPublic, id, CHANNEL, ALICE, alice.keyId, 1, flipped));
+
+  // every message has its own key: a fresh salt each time, never reused
+  assert.match(env.iv, /^v2:[A-Za-z0-9+/=]{16}:[A-Za-z0-9+/=]{24}$/);
+  assert.ok(env.iv.length < 64, 'fits the iv column');
+  const salts = new Set<string>();
+  for (let i = 0; i < 200; i++) {
+    const e = await encryptMessage(alice, raw, id, CHANNEL, 1, { v: 1, text: 'same text', sentAt: 1 });
+    salts.add(e.iv.split(':')[2]);
+  }
+  assert.equal(salts.size, 200, 'no repeated per-message keys');
+  // the salt is signed: swapping it (to force another key) is rejected
+  const [, ivPart] = env.iv.split(':');
+  const other = (await encryptMessage(alice, raw, id, CHANNEL, 1, { v: 1, text: 'x', sentAt: 1 })).iv.split(':')[2];
+  await assert.rejects(decryptMessage(got, alice.signPublic, id, CHANNEL, ALICE, alice.keyId, 1, { ...env, iv: `v2:${ivPart}:${other}` }));
+  // messages sent before per-message keys still open
+  const old = await encryptMessageV1ForTests(alice, raw, id, CHANNEL, 1, { v: 1, text: 'old one', sentAt: 1 });
+  assert.equal((await decryptMessage(got, alice.signPublic, id, CHANNEL, ALICE, alice.keyId, 1, old)).text, 'old one');
 });
 
 test('signatures', async () => {

@@ -395,6 +395,51 @@ do $t$ begin
   assert (select count(*) from public.channels where server_id = current_setting('t.bobserver')::uuid) = 0, 'closed server unreadable';
 end $t$;
 
+
+-- message requests + reports -------------------------------------------------
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000e2', false);
+select set_config('t.req1', public.open_dm('00000000-0000-0000-0000-0000000000e1')::text, false);
+select set_config('t.req2', public.open_dm('00000000-0000-0000-0000-00000000000b')::text, false);
+do $t$ begin
+  assert (select request_to from public.channels where id = current_setting('t.req1')::uuid) = '00000000-0000-0000-0000-0000000000e1', 'stranger DM is a request';
+end $t$;
+-- only the recipient can accept / decline
+select pg_temp.must_fail($$select public.decline_message_request(current_setting('t.req1')::uuid)$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000e1', false);
+select public.decline_message_request(current_setting('t.req1')::uuid);
+do $t$ begin
+  assert not exists (select 1 from public.channels where id = current_setting('t.req1')::uuid), 'declined request is gone';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
+select public.accept_message_request(current_setting('t.req2')::uuid);
+do $t$ begin
+  assert (select request_to from public.channels where id = current_setting('t.req2')::uuid) is null, 'accepted';
+  -- friends / shared servers are never requests (bob and dave are friends)
+  assert (select request_to from public.channels where id = public.open_dm('00000000-0000-0000-0000-00000000000d')) is null;
+end $t$;
+
+-- reports: anyone can file, only admins+ see them all and handle them
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000e2', false);
+insert into public.reports (reporter_id, kind, target_user, reason, evidence)
+  values (auth.uid(), 'user', '00000000-0000-0000-0000-00000000000b', 'spam', '[{"id":"x","author":"bob","text":"buy now","at":"2026-01-01"}]');
+select pg_temp.must_fail($$insert into public.reports (reporter_id, kind, target_user, reason) values ('00000000-0000-0000-0000-00000000000b', 'user', '00000000-0000-0000-0000-00000000000d', 'framed')$$);
+select pg_temp.must_fail($$insert into public.reports (reporter_id, kind, target_user, reason, status) values (auth.uid(), 'user', '00000000-0000-0000-0000-00000000000d', 'x', 'dismissed')$$);
+do $t$ begin
+  assert (select count(*) from public.reports) = 1, 'reporter sees own report';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
+do $t$ begin
+  assert (select count(*) from public.reports) = 0, 'reported user cannot see reports';
+end $t$;
+select pg_temp.must_fail($$select public.handle_report((select id from public.reports limit 1), 'dismissed')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+select public.handle_report((select id from public.reports limit 1), 'actioned', 'warned');
+do $t$ begin
+  assert (select status from public.reports limit 1) = 'actioned';
+  assert 'founder' = any (public.all_badges());
+end $t$;
+select pg_temp.must_fail($$update public.reports set status = 'dismissed'$$);
+
 -- signup limit: 6 accounts per IP
 reset role;
 do $t$

@@ -14,7 +14,8 @@ import { containsSlur } from '../lib/automod';
 import { Avatar, Icon } from './ui';
 import { Badges } from './Badges';
 import { copyText, openMenu, type Entry } from './ContextMenu';
-import { askConfirm } from './Dialogs';
+import { askConfirm, askText } from './Dialogs';
+import { loadMyReports, myReports, reportMessage } from '../lib/reports';
 import { Embed, findEmbeds, isBareGif, Markdown, mentionsMe, type MentionContext } from './Markdown';
 import { GifPicker, toggleGifFavorite } from './GifPicker';
 import { openProfile, ServerTag, userMenu } from './People';
@@ -108,6 +109,10 @@ export function ChatView({
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [messages, joins]);
+
+  useEffect(() => {
+    loadMyReports();
+  }, []);
 
   useEffect(() => {
     stick.current = true;
@@ -328,6 +333,21 @@ export function ChatView({
                 onCancelEdit={() => setEditing(null)}
                 onSaveEdit={(t) => saveEdit(m, t)}
                 onDelete={(skip) => remove(m, skip)}
+                onReport={async () => {
+                  const reason = await askText({
+                    title: 'Report message',
+                    label: 'What’s wrong with it?',
+                    placeholder: 'Harassment, spam, threats…',
+                    hint: 'This message and a few around it are shared with Venband staff so they can review it.',
+                    maxLength: 1000,
+                  });
+                  if (!reason?.trim()) return;
+                  try {
+                    await reportMessage(m, messages, reason.trim(), data?.server?.id ?? null);
+                  } catch (e) {
+                    alert(errorMessage(e));
+                  }
+                }}
               />
             </Fragment>
           );
@@ -364,6 +384,7 @@ function MessageItem({
   ctx,
   data,
   onReply,
+  onReport,
   onEdit,
   onCancelEdit,
   onSaveEdit,
@@ -385,6 +406,7 @@ function MessageItem({
   ctx: MentionContext;
   data?: ServerData;
   onReply: () => void;
+  onReport: () => void;
   onEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: (t: string) => Promise<void>;
@@ -398,6 +420,7 @@ function MessageItem({
   const [translation, setTranslation] = useState<Translation | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const [trError, setTrError] = useState<string | null>(null);
+  const reportStatus = myReports.use((s) => s.byMessage[m.row.id]);
   const text = m.payload?.text ?? '';
   const flagged = automod && !mine && containsSlur(text);
 
@@ -442,6 +465,7 @@ function MessageItem({
       { type: 'sep' },
       canDelete && { label: 'Delete Message', icon: 'trash', danger: true, hint: 'shift-click skips', onClick: () => onDelete(e.shiftKey) },
       { type: 'sep' },
+      !mine && m.payload && !reportStatus && { label: 'Report Message', icon: 'flag', danger: true, onClick: onReport },
       { label: 'Copy Message ID', icon: 'copy', onClick: () => copyText(m.row.id) },
     ];
     openMenu(e, items);
@@ -538,6 +562,11 @@ function MessageItem({
                   <div className="message-text">
                     <Markdown text={shownText} ctx={ctx} />
                     {m.row.edited_at && <span className="edited">(edited)</span>}
+                    {reportStatus && (
+                      <span className={`report-tag ${reportStatus}`}>
+                        <Icon name="flag" size={11} /> Reported · {reportStatus === 'under_review' ? 'under review' : reportStatus === 'actioned' ? 'action taken' : 'reviewed'}
+                      </span>
+                    )}
                   </div>
                 )}
                 {translation && (
@@ -733,6 +762,8 @@ function Composer({
   const tokens = useRef(new Map<string, string>());
   // caret position to restore right after the next render (keeps fast typing in order)
   const pendingCaret = useRef<number | null>(null);
+  const pendingSelection = useRef<[number, number] | null>(null);
+  const [fmt, setFmt] = useState<{ x: number; y: number } | null>(null);
   const sendTyping = useTypingSender(channelId);
 
   useEffect(() => {
@@ -753,6 +784,12 @@ function Composer({
       el.setSelectionRange(pendingCaret.current, pendingCaret.current);
       setCaret(pendingCaret.current);
       pendingCaret.current = null;
+    }
+    if (pendingSelection.current) {
+      el.focus();
+      el.setSelectionRange(...pendingSelection.current);
+      pendingSelection.current = null;
+      requestAnimationFrame(updateFmt);
     }
   }, [text]);
 
@@ -793,6 +830,52 @@ function Composer({
   }, [query, mentionables]);
 
   useEffect(() => setSel(0), [query?.q, query?.trigger]);
+
+  /** Show the formatting bar above the selected text (double-click a word, or drag-select). */
+  function updateFmt() {
+    const el = textarea.current;
+    const wrap = el?.closest('.composer-wrap') as HTMLElement | null;
+    if (!el || !wrap || el.selectionStart === el.selectionEnd || document.activeElement !== el) return setFmt(null);
+    const at = caretCoords(el, el.selectionStart);
+    const end = caretCoords(el, el.selectionEnd);
+    const box = el.getBoundingClientRect();
+    const wbox = wrap.getBoundingClientRect();
+    const x = box.left - wbox.left + (at.top === end.top ? (at.left + end.left) / 2 : at.left);
+    setFmt({ x: Math.max(150, Math.min(wbox.width - 150, x)), y: box.top - wbox.top + at.top - 6 });
+  }
+
+  function applyFormat(kind: 'wrap' | 'line', marker: string) {
+    const el = textarea.current;
+    if (!el) return;
+    const a = el.selectionStart;
+    const b = el.selectionEnd;
+    if (kind === 'wrap') {
+      const sel = text.slice(a, b);
+      // toggle off if it's already wrapped
+      if (text.slice(a - marker.length, a) === marker && text.slice(b, b + marker.length) === marker) {
+        setText(text.slice(0, a - marker.length) + sel + text.slice(b + marker.length));
+        pendingSelection.current = [a - marker.length, b - marker.length];
+        return;
+      }
+      setText(text.slice(0, a) + marker + sel + marker + text.slice(b));
+      pendingSelection.current = [a + marker.length, b + marker.length];
+      return;
+    }
+    // headings / small text apply to whole lines
+    const lineStart = text.lastIndexOf('\n', a - 1) + 1;
+    const nextBreak = text.indexOf('\n', b);
+    const lineEnd = nextBreak === -1 ? text.length : nextBreak;
+    const lines = text.slice(lineStart, lineEnd).split('\n');
+    const prefix = marker + ' ';
+    const allHave = lines.every((l) => l.startsWith(prefix));
+    const next = lines.map((l) => {
+      const bare = l.replace(/^(#{1,3}|-#) /, '');
+      return allHave ? bare : prefix + bare;
+    });
+    const joined = next.join('\n');
+    setText(text.slice(0, lineStart) + joined + text.slice(lineEnd));
+    pendingSelection.current = [lineStart, lineStart + joined.length];
+  }
 
   function pick(s: Suggestion) {
     if (!query) return;
@@ -884,6 +967,41 @@ function Composer({
           onFile={(f) => submit('', [f])}
         />
       )}
+      {fmt && !disabled && (
+        <div className="fmt-bar" style={{ left: fmt.x, top: fmt.y }} onMouseDown={(e) => e.preventDefault()} role="toolbar" aria-label="Formatting">
+          <button title="Bold (Ctrl+B)" onClick={() => applyFormat('wrap', '**')}>
+            <b>B</b>
+          </button>
+          <button title="Italic (Ctrl+I)" onClick={() => applyFormat('wrap', '*')}>
+            <i>I</i>
+          </button>
+          <button title="Underline (Ctrl+U)" onClick={() => applyFormat('wrap', '__')}>
+            <u>U</u>
+          </button>
+          <button title="Strikethrough" onClick={() => applyFormat('wrap', '~~')}>
+            <s>S</s>
+          </button>
+          <button title="Code" className="mono" onClick={() => applyFormat('wrap', '`')}>
+            {'</>'}
+          </button>
+          <button title="Spoiler" onClick={() => applyFormat('wrap', '||')}>
+            <Icon name="eyeOff" size={14} />
+          </button>
+          <span className="fmt-sep" />
+          <button title="Big heading" onClick={() => applyFormat('line', '#')}>
+            H1
+          </button>
+          <button title="Medium heading" onClick={() => applyFormat('line', '##')}>
+            H2
+          </button>
+          <button title="Small heading" onClick={() => applyFormat('line', '###')}>
+            H3
+          </button>
+          <button title="Small grey text" onClick={() => applyFormat('line', '-#')}>
+            <small>-#</small>
+          </button>
+        </div>
+      )}
       <div className={`composer${disabled ? ' disabled' : ''}`}>
         <button className="icon-btn" disabled={disabled} onClick={() => fileInput.current?.click()} title="Attach encrypted file">
           <Icon name="plus" />
@@ -916,7 +1034,12 @@ function Composer({
               sendTyping();
             }
           }}
-          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+          onSelect={(e) => {
+            setCaret(e.currentTarget.selectionStart ?? 0);
+            updateFmt();
+          }}
+          onBlur={() => setTimeout(() => document.activeElement !== textarea.current && setFmt(null), 150)}
+          onScroll={() => setFmt(null)}
           onPaste={(e) => {
             const pasted = [...e.clipboardData.files];
             if (pasted.length) setFiles((f) => [...f, ...pasted.filter((x) => x.size <= MAX_FILE)].slice(0, 10));
@@ -938,8 +1061,14 @@ function Composer({
                 return;
               }
             }
+            if ((e.ctrlKey || e.metaKey) && ['b', 'i', 'u'].includes(e.key.toLowerCase()) && e.currentTarget.selectionStart !== e.currentTarget.selectionEnd) {
+              e.preventDefault();
+              applyFormat('wrap', { b: '**', i: '*', u: '__' }[e.key.toLowerCase() as 'b' | 'i' | 'u']);
+              return;
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
+              setFmt(null);
               submit();
             }
           }}
@@ -1050,4 +1179,24 @@ function EmojiButton({ onPick, disabled }: { onPick: (e: string) => void; disabl
       )}
     </div>
   );
+}
+
+/** Pixel position of a character inside a textarea (mirror-div technique). */
+function caretCoords(el: HTMLTextAreaElement, index: number): { top: number; left: number } {
+  const div = document.createElement('div');
+  const cs = getComputedStyle(el);
+  for (const p of ['boxSizing', 'width', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderLeftWidth', 'whiteSpace', 'wordWrap', 'tabSize'] as const)
+    div.style[p] = cs[p];
+  div.style.position = 'absolute';
+  div.style.visibility = 'hidden';
+  div.style.whiteSpace = 'pre-wrap';
+  div.style.overflowWrap = 'break-word';
+  div.textContent = el.value.slice(0, index);
+  const mark = document.createElement('span');
+  mark.textContent = el.value.slice(index) || '.';
+  div.appendChild(mark);
+  document.body.appendChild(div);
+  const out = { top: mark.offsetTop - el.scrollTop, left: mark.offsetLeft - el.scrollLeft };
+  div.remove();
+  return out;
 }
