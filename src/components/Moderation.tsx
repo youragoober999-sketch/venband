@@ -111,7 +111,7 @@ export function ModerationCenter() {
       active: 'Restore',
       limited: 'Make Limited',
       very_limited: 'Make Very Limited',
-      banned: 'Ban Account',
+      banned: 'Ban Nigger Account',
     };
     const reason = await askText({
       title: `${verbs[status]}: @${u.username}`,
