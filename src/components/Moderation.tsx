@@ -219,7 +219,7 @@ export function ModerationCenter() {
                       )}
                       {u.account_status !== 'banned' && (
                         <button className="btn danger small" onClick={() => setStatus(u, 'banned')}>
-                          <Icon name="gavel" size={14} /> Ban Account
+                          <Icon name="gavel" size={14} /> Ban Nigger Account
                         </button>
                       )}
                     </>
@@ -499,7 +499,7 @@ export function ReportCentre() {
               {r.status === 'under_review' ? (
                 <>
                   <button className="btn danger small" onClick={() => resolve(r, 'actioned', 'banned')}>
-                    <Icon name="gavel" size={14} /> Ban Account
+                    <Icon name="gavel" size={14} /> Ban Nigger Account
                   </button>
                   <button className="btn secondary small" onClick={() => resolve(r, 'actioned', 'very_limited')}>
                     Make Very Limited
