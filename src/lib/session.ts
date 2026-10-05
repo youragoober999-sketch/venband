@@ -444,6 +444,7 @@ export type ProfilePatch = Partial<
     Profile,
     | 'display_name' | 'avatar_color' | 'about' | 'pronouns' | 'status_text' | 'status_emoji' | 'presence'
     | 'banner_color' | 'banner_color2' | 'accent_color' | 'nameplate' | 'language' | 'onboarded'
+    | 'avatar_url' | 'banner_url' | 'avatar_frame' | 'name_style' | 'nameplate_style'
   >
 >;
 

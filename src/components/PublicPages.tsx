@@ -629,6 +629,19 @@ export function GuidelinesPage() {
 
 export const CHANGELOG: { date: string; title: string; items: string[] }[] = [
   {
+    date: '2026-10-08',
+    title: 'Make it yours',
+    items: [
+      'Profile pictures and banners with crop and zoom',
+      'Animated profile frames, name fonts, gradient names and name animations',
+      'Longer statuses, shown as a speech bubble',
+      'Build your own nameplate and publish it — plus a Marketplace in your DMs for themes, nameplates, name styles and CSS',
+      'Custom CSS with templates, an animated tutorial and safe mode',
+      'Use any picture from your files as the background',
+      'Group chats now hold 15 people; owners can remove people; invite links for people who aren’t your friends yet',
+    ],
+  },
+  {
     date: '2026-10-07',
     title: 'Safer by default',
     items: [

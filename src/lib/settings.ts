@@ -63,6 +63,10 @@ export interface Settings {
   };
   /** sites you chose to trust in the "Leaving Venband" dialog */
   trustedDomains: string[];
+  /** a picture from your files behind the app (the picture itself stays on each device) */
+  background: { enabled: boolean; dim: number; blur: number };
+  /** your own CSS, cleaned before use */
+  customCss: { enabled: boolean; code: string };
   /** how often each emoji was used (for autocomplete ranking) */
   emojiUsage: Record<string, number>;
   /** most recent reactions first */
@@ -112,6 +116,8 @@ export const DEFAULT_SETTINGS: Settings = {
     linkWarnings: 'always',
   },
   trustedDomains: [],
+  background: { enabled: false, dim: 35, blur: 18 },
+  customCss: { enabled: false, code: '' },
   emojiUsage: {},
   recentReactions: [],
   dms: { pinned: [], archived: [], folders: [], mutedUntil: {} },
@@ -151,6 +157,11 @@ function merge(raw: unknown): Settings {
     rail: {
       order: Array.isArray(r.rail?.order) ? r.rail!.order.filter((x) => typeof x === 'string').slice(0, 300) : [],
       folders: Array.isArray(r.rail?.folders) ? r.rail!.folders.slice(0, 50) : [],
+    },
+    background: { ...DEFAULT_SETTINGS.background, ...(r.background ?? {}) },
+    customCss: {
+      enabled: Boolean(r.customCss?.enabled),
+      code: typeof r.customCss?.code === 'string' ? r.customCss.code.slice(0, 16_000) : '',
     },
     trustedDomains: Array.isArray(r.trustedDomains) ? r.trustedDomains.filter((x) => typeof x === 'string').slice(0, 200) : [],
     serverThemes: r.serverThemes === 'merge' || r.serverThemes === 'never' ? r.serverThemes : 'override',

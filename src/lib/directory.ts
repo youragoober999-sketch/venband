@@ -48,6 +48,26 @@ export async function loadProfiles(ids: Iterable<string>, force = false): Promis
   await Promise.all(waits);
 }
 
+// Profile changes (new picture, name style, status…) show up live for people
+// who already have that profile loaded. Row security decides who gets them.
+let watching: string | null = null;
+export function watchProfiles(me: string) {
+  if (watching === me) return;
+  watching = me;
+  const cols = PROFILE_COLUMNS.split(',').map((c) => c.trim());
+  supabase
+    .channel(`dbu:${me}:profiles`, { config: { private: true } })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
+      const row = payload.new as Record<string, unknown>;
+      const id = row.id as string;
+      if (!profiles.has(id)) return;
+      const next = Object.fromEntries(cols.filter((c) => c in row).map((c) => [c, row[c]])) as unknown as Profile;
+      profiles.set(id, { ...profiles.get(id)!, ...next });
+      emit();
+    })
+    .subscribe();
+}
+
 let personalNickname: (id: string) => string | null = () => null;
 /** Lets the friends module supply private nicknames you gave people. */
 export function setPersonalNicknames(fn: (id: string) => string | null) {

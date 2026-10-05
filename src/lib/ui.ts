@@ -29,7 +29,7 @@ export const uiStore = createStore<{
   /** open search panel */
   search: { q: string; serverId: string | null } | null;
   /** which page Home shows when no conversation is open */
-  homeTab: 'friends' | 'requests' | 'donate' | 'saved';
+  homeTab: 'friends' | 'requests' | 'donate' | 'saved' | 'market';
 }>({ settings: null, modQuery: '', profile: null, drawer: null, switcher: false, jump: null, search: null, homeTab: 'friends' });
 
 export function openSearch(q = '', serverId: string | null = null) {

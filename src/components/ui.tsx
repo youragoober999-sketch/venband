@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { isValidElement, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import type { Profile } from '../lib/types';
 import { LOGO_PATH, LOGO_VIEWBOX } from './logoPath';
 
@@ -41,25 +41,74 @@ export function Avatar({
   size = 40,
   online,
   speaking,
+  frame = true,
 }: {
-  profile: (Pick<Profile, 'display_name' | 'avatar_color'> & { presence?: Profile['presence'] }) | null | undefined;
+  profile: (Pick<Profile, 'display_name' | 'avatar_color'> & { presence?: Profile['presence']; avatar_url?: string | null; avatar_frame?: Profile['avatar_frame'] }) | null | undefined;
   size?: number;
   online?: boolean;
   speaking?: boolean;
+  /** show the profile frame (hidden in tight spots like mentions) */
+  frame?: boolean;
 }) {
   const name = profile?.display_name ?? '?';
   // online + their chosen status (idle / do not disturb); invisible looks offline
   const status = online === undefined ? null : !online || profile?.presence === 'invisible' ? 'offline' : (profile?.presence ?? 'online');
+  const fr = frame && size >= 24 && profile?.avatar_frame && profile.avatar_frame !== 'none' ? profile.avatar_frame : null;
   return (
     <div
-      className={`avatar${speaking ? ' speaking' : ''}`}
-      style={{ width: size, height: size, background: profile?.avatar_color ?? '#555', fontSize: size * 0.38 }}
+      className={`avatar${speaking ? ' speaking' : ''}${profile?.avatar_url ? ' has-picture' : ''}${fr ? ` framed frame-${fr}` : ''}`}
+      style={{ width: size, height: size, background: profile?.avatar_url ? undefined : (profile?.avatar_color ?? '#555'), fontSize: size * 0.38 }}
       aria-hidden
     >
-      {initials(name)}
+      {profile?.avatar_url ? <img className="avatar-img" src={profile.avatar_url} alt="" loading="lazy" draggable={false} /> : initials(name)}
+      {fr && <span className="avatar-frame" />}
       {status && <span className={`status-dot ${status}`} />}
     </div>
   );
+}
+
+const NAME_FONTS: Record<string, string> = {
+  serif: 'Georgia, "Times New Roman", serif',
+  mono: 'var(--mono)',
+  rounded: 'ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif',
+  handwritten: '"Segoe Script", "Bradley Hand", "Brush Script MT", "Comic Sans MS", cursive',
+  display: 'Impact, Haettenschweiler, "Arial Black", sans-serif',
+  pixel: '"Courier New", ui-monospace, monospace',
+};
+
+/** A display name in the person's chosen font, colours and effect. */
+export function StyledName({ style, children, fallbackColor }: { style?: Profile['name_style'] | null; children: ReactNode; fallbackColor?: string }) {
+  const s = style ?? {};
+  const colors = (s.colors ?? []).filter((c) => /^#[0-9a-fA-F]{3,8}$/.test(c)).slice(0, 3);
+  const css: CSSProperties = {};
+  if (s.font && NAME_FONTS[s.font]) css.fontFamily = NAME_FONTS[s.font];
+  if (colors.length === 1) css.color = colors[0];
+  else if (colors.length > 1) css.backgroundImage = `linear-gradient(90deg, ${[...colors, colors[0]].join(', ')})`;
+  else if (fallbackColor) css.color = fallbackColor;
+  const cls = ['styled-name', colors.length > 1 ? 'gradient' : '', s.effect && s.effect !== 'none' ? `fx-${s.effect}` : '', s.font === 'pixel' ? 'font-pixel' : ''].filter(Boolean).join(' ');
+  if (!s.font && !colors.length && (!s.effect || s.effect === 'none')) return <span style={fallbackColor ? { color: fallbackColor } : undefined}>{children}</span>;
+  return (
+    <span className={cls} style={{ ...css, ['--glow' as string]: colors[0] ?? fallbackColor ?? 'currentColor' }}>
+      {children}
+    </span>
+  );
+}
+
+/** Inline style for a custom nameplate. */
+export function nameplateVars(p?: Pick<Profile, 'nameplate' | 'nameplate_style'> | null): CSSProperties | undefined {
+  if (p?.nameplate !== 'custom') return undefined;
+  const c = (p.nameplate_style?.colors ?? []).filter((x) => /^#[0-9a-fA-F]{6}$/.test(x)).slice(0, 3);
+  if (!c.length) return undefined;
+  const a = c.map((x) => `${x}66`);
+  const img =
+    p.nameplate_style?.pattern === 'stripes'
+      ? `repeating-linear-gradient(115deg, ${a[0]} 0 8px, transparent 8px 18px), linear-gradient(100deg, transparent, ${a[a.length - 1]}, transparent)`
+      : p.nameplate_style?.pattern === 'dots'
+        ? `radial-gradient(${a[0]} 1.5px, transparent 2px) 0 0 / 10px 10px, linear-gradient(100deg, transparent, ${a[a.length - 1]}, transparent)`
+        : p.nameplate_style?.pattern === 'waves'
+          ? `radial-gradient(ellipse at 20% 120%, ${a[0]}, transparent 60%), radial-gradient(ellipse at 80% -20%, ${a[a.length - 1]}, transparent 60%)`
+          : `linear-gradient(100deg, transparent 15%, ${a.join(', ')}, transparent 85%)`;
+  return { ['--np' as string]: img };
 }
 
 // Stack of open modals, so Escape only closes the top one.
@@ -219,6 +268,7 @@ const ICONS: Record<string, string> = {
   code: 'M16 18l6-6-6-6M8 6l-6 6 6 6',
   external: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3',
   play: 'M6 3l14 9-14 9z',
+  pause: 'M7 4h3v16H7zM14 4h3v16h-3z',
   calendar: 'M3 4h18v18H3zM16 2v4M8 2v4M3 10h18',
   compass: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM16.2 7.8l-2.1 6.4-6.4 2.1 2.1-6.4z',
 };
@@ -247,22 +297,34 @@ export function Field({
   children,
   hint,
   aside,
+  group,
 }: {
   label: string;
   error?: string | null;
   hint?: ReactNode;
   aside?: ReactNode;
   children: ReactNode;
+  /** several buttons / pickers rather than one input: don't wrap them in a <label> */
+  group?: boolean;
 }) {
+  // A <label> names whatever is inside it, buttons included, so only wrap a
+  // single input / textarea / select in one; groups of controls get a div.
+  const single = isValidElement(children) && typeof children.type === 'string' && ['input', 'textarea', 'select'].includes(children.type);
   return (
     <div className="field">
       <div className="field-top">
         <label className="field-label">{label}</label>
         {aside}
       </div>
-      <label className="field-control" aria-label={label}>
-        {children}
-      </label>
+      {group || !single ? (
+        <div className="field-control" role="group" aria-label={label}>
+          {children}
+        </div>
+      ) : (
+        <label className="field-control" aria-label={label}>
+          {children}
+        </label>
+      )}
       {error ? <span className="field-error">{error}</span> : hint ? <span className="field-hint">{hint}</span> : null}
     </div>
   );

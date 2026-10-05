@@ -1080,7 +1080,7 @@ await alice.page.locator('.modal').getByRole('button', { name: 'Apply' }).click(
 await alice.page.locator('.badge-designer input').first().fill(`event_${run}`);
 await alice.page.locator('.badge-designer input').nth(1).fill('Summer Event');
 await alice.page.getByRole('button', { name: 'Save badge' }).click();
-await alice.page.locator('.badge-choice', { hasText: 'Summer Event' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.badge-choice', { hasText: `c_event_${run}` }).waitFor({ timeout: 15000 });
 log('✅ the Venband owner can design badges with an uploaded picture');
 
 // ---- security centre: data export, two-factor sign-in
@@ -1139,6 +1139,90 @@ if (!(await execSync(`psql ${DB} -Atc "select status from public.servers where i
 await alice.page.goto(APP + `channels/${hqId}`);
 await alice.page.locator('.server-header').waitFor({ timeout: 20000 });
 log('✅ deleted servers wait in Settings → Security and can be restored');
+
+// ---- profiles: picture, frame, animated gradient name, long status bubble (live for others)
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Profiles' }).click();
+const [picChooser] = await Promise.all([alice.page.waitForEvent('filechooser'), alice.page.getByRole('button', { name: 'Profile picture' }).click()]);
+await picChooser.setFiles({ name: 'me.png', mimeType: 'image/png', buffer: png });
+await alice.page.locator('.modal').getByRole('button', { name: 'Apply' }).click();
+await alice.page.locator('.profile-editor-preview .avatar.has-picture').first().waitFor({ timeout: 15000 });
+await alice.page.locator('.frame-option[aria-label="Neon"]').click();
+await alice.page.getByRole('button', { name: '+ Colour' }).first().click();
+await alice.page.getByRole('button', { name: '+ Colour' }).first().click();
+await alice.page.getByRole('button', { name: 'Animation' }).click().catch(async () => {
+  await alice.page.locator('.name-style-editor .vselect').nth(1).click();
+});
+await alice.page.getByRole('option', { name: 'Shimmer' }).click();
+const longStatus = 'Working on the Venband desktop app all week, then a road trip with friends — send memes, I’ll reply when I’m back online. '.repeat(2).slice(0, 240);
+await alice.page.getByLabel('Custom status').fill(longStatus);
+await alice.page.getByRole('button', { name: 'Save Changes' }).click();
+await alice.page.locator('.notice', { hasText: 'Profile saved' }).waitFor({ timeout: 15000 });
+await alice.page.getByRole('button', { name: 'Publish to the Marketplace' }).first().click();
+await alice.page.locator('.modal input').fill(`Shimmer Pop ${run}`);
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await alice.page.locator('.notice', { hasText: 'Published' }).waitFor({ timeout: 15000 });
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/40-profile-editor.png` });
+await alice.page.locator('.sp-close').click();
+const aliceRow = bob.page.locator('.members .member', { hasText: 'Alice' }).first();
+await aliceRow.locator('.avatar.has-picture.frame-neon').waitFor({ timeout: 20000 });
+await aliceRow.locator('.styled-name.gradient.fx-shimmer').waitFor({ timeout: 20000 });
+await aliceRow.click();
+await bob.page.locator('.modal .status-bubble', { hasText: 'road trip' }).waitFor({ timeout: 10000 });
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/41-profile-card.png` });
+await bob.page.keyboard.press('Escape');
+log('✅ profile picture, frame, gradient name and status bubble show up live for others');
+
+// ---- marketplace in DMs: use someone's published name style
+await bob.page.locator('.rail-item.home').click();
+await bob.page.locator('.nav-item', { hasText: 'Marketplace' }).click();
+await bob.page.locator('.market-view .tabs button', { hasText: 'Name styles' }).click();
+const card = bob.page.locator('.market-card', { hasText: `Shimmer Pop ${run}` });
+await card.waitFor({ timeout: 15000 });
+await card.getByRole('button', { name: 'Use' }).click();
+await bob.page.locator('.market-view .form-notice', { hasText: 'Now using' }).waitFor({ timeout: 10000 });
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/42-marketplace.png` });
+log('✅ the Marketplace in DMs lets people use published name styles');
+
+// ---- custom CSS from a template, with the tutorial
+await bob.page.locator('.user-panel [title="User settings"]').click();
+await bob.page.locator('.sp-tab', { hasText: 'Appearance' }).click();
+await bob.page.locator('.tabs button', { hasText: 'Background & CSS' }).click();
+await bob.page.getByRole('button', { name: 'Watch the tutorial' }).click();
+await bob.page.locator('.css-tutorial .css-tut-code pre').waitFor({ timeout: 5000 });
+await bob.page.waitForTimeout(800);
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/43-css-tutorial.png` });
+await bob.page.locator('.css-tutorial').getByRole('button', { name: 'Close' }).click();
+await bob.page.locator('.css-template', { hasText: 'Bigger messages' }).click();
+await bob.page.waitForFunction(() => document.getElementById('venband-custom-css')?.textContent?.includes('font-size: 17px'), null, { timeout: 10000 });
+await bob.page.locator('.css-editor').fill('@import url(https://evil.example/x.css); .message-text { background: url(https://evil.example/t.png) }');
+await bob.page.getByRole('button', { name: 'Apply' }).click();
+const applied = await bob.page.evaluate(() => document.getElementById('venband-custom-css')?.textContent ?? '');
+if (/evil\.example/.test(applied)) throw new Error('custom CSS was not cleaned: ' + applied);
+await bob.page.locator('.toggle-row', { hasText: 'Use my custom CSS' }).locator('input').uncheck();
+await bob.page.locator('.sp-close').click();
+log('✅ custom CSS: templates apply, outside links and @import are stripped, tutorial plays');
+
+// ---- group chats: invite links, owner removes people
+await alice.page.locator('.rail-item.home').click();
+await alice.page.locator('.channel.dm', { hasText: 'Test crew' }).click({ timeout: 20000 });
+await alice.page.getByTitle(/Group settings/).click();
+await alice.page.getByRole('button', { name: 'Create invite link' }).click();
+const groupLink = await alice.page.getByLabel('Group invite link').inputValue();
+await alice.page.keyboard.press('Escape');
+await bob.page.goto(groupLink);
+await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).waitFor({ timeout: 20000 });
+await bob.page.locator('.chat-header', { hasText: 'Test crew' }).waitFor({ timeout: 20000 });
+log('✅ group invite links let people join (up to 15)');
+await alice.page.getByTitle(/Group settings/).click();
+await alice.page.locator('.modal .group-members .member', { hasText: 'Bob' }).getByRole('button', { name: 'Remove' }).click();
+await alice.page.locator('.modal').last().getByRole('button', { name: 'Remove', exact: true }).click();
+await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).waitFor({ state: 'detached', timeout: 20000 });
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.server-header').waitFor({ timeout: 20000 });
+await bob.page.goto(APP + `channels/${hqId}`);
+await bob.page.locator('.server-header').waitFor({ timeout: 20000 });
+log('✅ the group owner can remove people');
 
 // ---- phone layout
 await bob.page.setViewportSize({ width: 390, height: 844 });

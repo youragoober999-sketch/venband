@@ -876,3 +876,35 @@ do $t$ begin
 end $t$;
 select set_config('request.jwt.claim.aal', '', false);
 reset role;
+
+-- ============================================ profiles & groups (Batch F) ====
+set role authenticated;
+select set_config('request.jwt.claim.aal', '', false);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+-- pictures must be in Venband's own storage, in your own folder
+select pg_temp.must_fail($$update public.profiles set avatar_url = 'https://evil.example/a.png' where id = auth.uid()$$);
+select pg_temp.must_fail($$update public.profiles set avatar_url = 'https://x/storage/v1/object/public/avatars/00000000-0000-0000-0000-0000000000b2/a.webp' where id = auth.uid()$$);
+update public.profiles set avatar_url = 'https://x/storage/v1/object/public/avatars/00000000-0000-0000-0000-0000000000b1/a.webp',
+  avatar_frame = 'neon', name_style = '{"font": "serif", "colors": ["#ff0000", "#00ff00"], "effect": "shimmer"}',
+  status_text = repeat('s', 250) where id = auth.uid();
+select pg_temp.must_fail($$update public.profiles set avatar_frame = 'nope' where id = auth.uid()$$);
+-- marketplace items of other kinds
+insert into public.themes (author_id, name, data, kind) values (auth.uid(), 'Lava plate', '{"colors": ["#f00", "#ff0"]}', 'nameplate');
+-- groups: up to 15, the owner removes people, invite links
+select set_config('t.grp', public.create_group(array['00000000-0000-0000-0000-0000000000b2'::uuid], 'Crew')::text, false);
+select set_config('t.ginv', public.create_group_invite(current_setting('t.grp')::uuid), false);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+do $t$ begin
+  assert (select members from public.group_invite_preview(current_setting('t.ginv'))) = 2, 'invite preview';
+end $t$;
+select public.join_group(current_setting('t.ginv'));
+select pg_temp.must_fail($$select public.remove_group_member(current_setting('t.grp')::uuid, '00000000-0000-0000-0000-0000000000b2')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+select public.remove_group_member(current_setting('t.grp')::uuid, '00000000-0000-0000-0000-0000000000b3');
+select public.leave_group(current_setting('t.grp')::uuid);
+reset role;
+do $t$ begin
+  assert (select count(*) from public.dm_participants where channel_id = current_setting('t.grp')::uuid) = 1, 'owner removed one, then left';
+  assert (select owner_id from public.channels where id = current_setting('t.grp')::uuid) = '00000000-0000-0000-0000-0000000000b2', 'ownership passed on';
+  assert (select count(*) from public.channels where id = current_setting('t.grp')::uuid and key_rotation_needed) = 1, 'removal rotates the key';
+end $t$;

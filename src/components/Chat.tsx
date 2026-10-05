@@ -23,7 +23,7 @@ import { languageName, translate, translationSupported, type Translation } from 
 import { containsSlur } from '../lib/automod';
 import { has, P } from '../lib/permissions';
 import { isSaved, loadSavedIds, setPinned, setSaved, useChannelExtras, type PollState, type ReactionGroup, type ThreadInfo } from '../lib/chatExtras';
-import { Avatar, Icon } from './ui';
+import { Avatar, Icon, StyledName } from './ui';
 import { Badges } from './Badges';
 import { copyText, openMenu, type Entry } from './ContextMenu';
 import { askConfirm, askText } from './Dialogs';
@@ -1224,7 +1224,9 @@ function MessageItem({
                 onClick={() => openProfile(m.row.author_id, data?.server?.id)}
                 onContextMenu={(e) => openMenu(e, userMenu(m.row.author_id, { data }))}
               >
-                {name}
+                <StyledName style={author?.name_style} fallbackColor={color}>
+                  {name}
+                </StyledName>
               </button>
               <Badges ids={author?.badges} max={4} size={15} />
               <ServerTag tag={author?.server_tag} serverId={author?.tag_server_id} />
@@ -1300,6 +1302,9 @@ function MessageItem({
                 {m.payload.preview && <LinkPreviewCard p={m.payload.preview} />}
                 {invites.map((c) => (
                   <InviteEmbed key={c.code} code={c.code} voice={c.voice} />
+                ))}
+                {[...new Set([...text.matchAll(/\/join-group\/([A-Za-z0-9]{10})\b/g)].map((x) => x[1]))].slice(0, 3).map((code) => (
+                  <GroupInviteEmbed key={code} code={code} />
                 ))}
                 {translation && (
                   <div className="translated-note">
@@ -1596,6 +1601,44 @@ function GifGuard({ url, active, serverId, children }: { url: string; active: bo
           https://www.venband.com/tos
         </a>
       </span>
+    </div>
+  );
+}
+
+/** A group chat invite link in a message. */
+function GroupInviteEmbed({ code }: { code: string }) {
+  const [g, setG] = useState<{ channel_id: string; name: string; members: number; joined: boolean } | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.rpc('group_invite_preview', { p_code: code }).then(({ data }) => setG(((data ?? []) as NonNullable<typeof g>[])[0] ?? null));
+  }, [code]);
+  if (g === undefined) return null;
+  return (
+    <div className="invite-embed">
+      <div className="invite-embed-label">You’ve been invited to a group chat</div>
+      <div className="invite-embed-row">
+        <span className="invite-icon" style={{ width: 50, height: 50, background: 'var(--accent)' }}>
+          <Icon name="users" size={22} />
+        </span>
+        <div className="grow invite-embed-text">
+          <b className="ellipsis">{g ? g.name : 'This invite has expired'}</b>
+          {g && <div className="small muted">{g.members} / 15 people · end-to-end encrypted</div>}
+        </div>
+        {g && (
+          <button
+            className={`btn ${g.joined ? 'secondary' : 'success'}`}
+            onClick={async () => {
+              if (g.joined) return openChannel('@me', g.channel_id);
+              const { data, error } = await supabase.rpc('join_group', { p_code: code });
+              if (error) return setError(errorMessage(error));
+              openChannel('@me', data as string);
+            }}
+          >
+            {g.joined ? 'Open' : 'Join'}
+          </button>
+        )}
+      </div>
+      {error && <div className="small danger-text">{error}</div>}
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { removeFriend, respondFriend, sendFriendRequest, setRelation, socialStor
 import { openSettings, uiStore } from '../lib/ui';
 import type { Profile } from '../lib/types';
 import { openChannel, openServer, useDirectory, type ServerData } from '../hooks/data';
-import { Avatar, Icon, Modal } from './ui';
+import { Avatar, Icon, Modal, nameplateVars, StyledName } from './ui';
 import { Badges } from './Badges';
 import { copyText, type Entry } from './ContextMenu';
 import { askConfirm, askText } from './Dialogs';
@@ -50,6 +50,7 @@ export function ServerTag({ tag, serverId }: { tag?: string | null; serverId?: s
 }
 
 export function bannerStyle(p?: Partial<Profile> | null) {
+  if (p?.banner_url) return { backgroundImage: `url("${p.banner_url}")`, backgroundSize: 'cover', backgroundPosition: 'center' };
   const a = p?.banner_color ?? p?.avatar_color ?? '#2a2a2e';
   const b = p?.banner_color2;
   return { background: b ? `linear-gradient(135deg, ${a}, ${b})` : a };
@@ -300,7 +301,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
   const name = displayName(userId, member?.nickname);
   return (
     <Modal title="" onClose={onClose}>
-      <div className={`profile-card nameplate-${shown?.nameplate ?? 'none'}`}>
+      <div className={`profile-card nameplate-${shown?.nameplate ?? 'none'}`} style={nameplateVars(shown)}>
         <div className="profile-banner" style={bannerStyle(shown)} />
         <div className="profile-head">
           <div className="profile-avatar">
@@ -334,7 +335,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
         <div className="profile-body">
           <div className="profile-names">
             <h2>
-              {name}
+              <StyledName style={shown?.name_style}>{name}</StyledName>
               <Badges ids={shown?.badges} size={18} />
             </h2>
             <div className="muted">
@@ -343,8 +344,8 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
               <ServerTag tag={shown?.server_tag} serverId={shown?.tag_server_id} />
             </div>
             {(shown?.status_text || shown?.status_emoji) && (
-              <div className="profile-status">
-                {shown.status_emoji} {shown.status_text}
+              <div className="status-bubble" role="note" aria-label="Status">
+                {shown.status_emoji && <span className="status-bubble-emoji">{shown.status_emoji}</span>} {shown.status_text}
               </div>
             )}
             {rel?.blocked && <div className="notice small">You blocked this person.</div>}

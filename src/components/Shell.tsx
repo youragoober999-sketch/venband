@@ -1,4 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { watchProfiles } from '../lib/directory';
+import { MarketplaceView } from './Marketplace';
+import { applyCustomCss, safeMode, setSafeMode } from '../lib/customCss';
+import { startBackground } from '../lib/background';
 import { DeletionBanner } from './Security';
 import { useApps, useServerBots } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
@@ -38,7 +42,7 @@ import {
   useServerData,
   type ServerData,
 } from '../hooks/data';
-import { Avatar, Icon, Logo, initials } from './ui';
+import { Avatar, Icon, Logo, initials, nameplateVars, StyledName } from './ui';
 import { ChatView } from './Chat';
 import { CallAudio, VoiceView } from './Voice';
 import { ChannelSettingsModal, CreateChannelModal, CreateJoinModal, createCategory, GroupSettingsModal, InviteModal, NewDmModal, NewGroupModal, startDm } from './Modals';
@@ -183,6 +187,13 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
           startDm(r.target).catch(() => go('channels/@me', { replace: true }));
         }
       }
+    } else if (r.kind === 'group-invite') {
+      const code = r.code;
+      go('channels/@me', { replace: true });
+      supabase.rpc('join_group', { p_code: code }).then(({ data, error }) => {
+        if (error) return alert(errorMessage(error));
+        openChannel('@me', data as string);
+      });
     } else {
       go('channels/@me', { replace: true, keepQuery: true });
     }
@@ -250,6 +261,8 @@ export function Shell() {
   const { servers, dms, loaded, reload } = useMyServers(onMessage);
   const me = sessionStore.use((s) => s.me)!;
   useEffect(() => setServersForAlerts(servers), [servers]);
+  useLooks();
+  useEffect(() => watchProfiles(me.id), [me.id]);
   const serverId = nav.use((s) => s.serverId);
   const discover = nav.use((s) => s.discover);
   useEffect(() => {
@@ -326,6 +339,7 @@ export function Shell() {
   return (
     <div className={`shell${drawer ? ` drawer-${drawer}` : ''}`}>
       <AppBanner />
+      <SafeModeBanner />
       <DeletionBanner />
       <WarningsNotice />
       <TopBar servers={servers} dms={dms} />
@@ -836,6 +850,10 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
             <Icon name="bookmark" size={20} />
             <span className="channel-name">Saved Messages</span>
           </button>
+          <button className={`channel nav-item${!current && homeTab === 'market' ? ' active' : ''}`} onClick={() => (setHomeTab('market'), openFriends())}>
+            <Icon name="sparkles" size={20} />
+            <span className="channel-name">Marketplace</span>
+          </button>
           <button className={`channel nav-item${!current && homeTab === 'donate' ? ' active' : ''}`} onClick={() => (setHomeTab('donate'), openFriends())}>
             <Icon name="star" size={20} />
             <span className="channel-name">Donate</span>
@@ -960,6 +978,8 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           <MessageRequestsView requests={requests} onOpen={(d) => openChannel('@me', d.channel.id)} />
         ) : homeTab === 'donate' ? (
           <DonateView />
+        ) : homeTab === 'market' ? (
+          <MarketplaceView />
         ) : homeTab === 'saved' ? (
           <SavedView
             header={
@@ -1549,18 +1569,21 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
               <button
                 key={m.user_id}
                 className={`member nameplate-row nameplate-${p?.nameplate ?? 'none'}${on ? '' : ' offline'}`}
+                style={nameplateVars(p)}
                 onClick={() => openProfile(m.user_id, data.server!.id)}
                 onContextMenu={(e) => openMenu(e, userMenu(m.user_id, { data }))}
               >
                 <Avatar profile={p} size={32} online={on} />
                 <span className="member-text">
                   <span className="member-name" style={{ color: top?.color }}>
-                    {displayName(m.user_id, m.nickname)}
+                    <StyledName style={p?.name_style} fallbackColor={top?.color}>
+                      {displayName(m.user_id, m.nickname)}
+                    </StyledName>
                     <Badges ids={p?.badges} max={2} size={13} />
                     <ServerTag tag={p?.server_tag} serverId={p?.tag_server_id} />
                   </span>
                   {p?.status_text && (
-                    <span className="member-status">
+                    <span className="member-status" title={p.status_text}>
                       {p.status_emoji} {p.status_text}
                     </span>
                   )}
@@ -1981,5 +2004,44 @@ function ConvoAvatar({ dm, size }: { dm: DmChannel; size: number }) {
       <Avatar profile={a} size={size * 0.68} />
       {b && <Avatar profile={b} size={size * 0.68} />}
     </span>
+  );
+}
+
+/** Custom CSS and your background picture (both off in safe mode). */
+function useLooks() {
+  const css = useSettings((s) => s.customCss);
+  useEffect(() => applyCustomCss(css.enabled, css.code), [css.enabled, css.code]);
+  useEffect(() => {
+    startBackground();
+    const onKey = (e: KeyboardEvent) => {
+      // Ctrl+Shift+Alt+S: safe mode, in case your own CSS hides everything
+      if (e.ctrlKey && e.shiftKey && e.altKey && e.key.toLowerCase() === 's') {
+        setSafeMode(!safeMode());
+        window.location.reload();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+}
+
+function SafeModeBanner() {
+  if (!safeMode()) return null;
+  return (
+    <div className="app-banner">
+      <Icon name="shield" size={16} />
+      <span>Safe mode: your custom CSS and background picture are switched off for this tab.</span>
+      <button
+        className="btn small secondary"
+        onClick={() => {
+          setSafeMode(false);
+          const u = new URL(window.location.href);
+          u.searchParams.delete('safe');
+          window.location.replace(u.toString());
+        }}
+      >
+        Turn off safe mode
+      </button>
+    </div>
   );
 }

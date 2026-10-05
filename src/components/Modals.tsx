@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
-import { loadProfiles, putProfile } from '../lib/directory';
+import { getProfile, loadProfiles, putProfile } from '../lib/directory';
+import { socialStore } from '../lib/social';
 import type { Channel, DmChannel, Profile } from '../lib/types';
 import { openChannel, openServer, type ServerData } from '../hooks/data';
 import { Avatar, ColorPicker, Field, Icon, Modal, randomColor } from './ui';
@@ -644,7 +645,7 @@ export function NewGroupModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   return (
     <Modal title="New group chat" onClose={onClose}>
-      <p className="muted small">Up to 10 people. Everything in the group is end-to-end encrypted.</p>
+      <p className="muted small">Up to 15 people. Everything in the group is end-to-end encrypted.</p>
       {error && <div className="form-error">{error}</div>}
       <Field label="Group name (optional)">
         <input maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder="Weekend plans" />
@@ -676,7 +677,23 @@ export function GroupSettingsModal({ dm, onClose }: { dm: DmChannel; onClose: ()
   const [name, setName] = useState(dm.channel.name);
   const [picked, setPicked] = useState<Profile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [link, setLink] = useState<string | null>(null);
   const me = sessionStore.use((s) => s.me)!;
+  const friends = socialStore.use((s) => s.friends);
+  const owner = dm.channel.owner_id ?? null;
+  const isOwner = owner === me.id;
+  const inGroup = new Set([me.id, ...dm.members.map((m) => m.id)]);
+  const full = inGroup.size >= 15;
+  const addable = Object.values(friends)
+    .filter((f) => f.accepted && !inGroup.has(f.other))
+    .map((f) => getProfile(f.other))
+    .filter((p): p is Profile => Boolean(p));
+  const add = async (ids: string[]) => {
+    const { error } = await supabase.rpc('add_group_members', { p_channel: dm.channel.id, p_members: ids });
+    if (error) return setError(errorMessage(error));
+    await sessionStore.get().keyring?.distribute(dm.channel.id);
+    setError(null);
+  };
   return (
     <Modal title="Group settings" onClose={onClose}>
       {error && <div className="form-error">{error}</div>}
@@ -695,30 +712,95 @@ export function GroupSettingsModal({ dm, onClose }: { dm: DmChannel; onClose: ()
           </button>
         </div>
       </Field>
-      <div className="field-label">Members — {dm.members.length + 1}</div>
+      <div className="field-label">Members — {dm.members.length + 1} / 15</div>
       <div className="group-members">
         {[me, ...dm.members].map((p) => (
           <div key={p.id} className="member">
             <Avatar profile={p} size={28} />
-            <span className="member-name">{p.display_name}</span>
+            <span className="member-name grow">
+              {p.display_name}
+              {p.id === owner && (
+                <span className="owner-crown" title="Group owner">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="#ffd60a">
+                    <path d="M3 18h18l-2-11-5 4-2-6-2 6-5-4z" />
+                  </svg>
+                </span>
+              )}
+            </span>
             {p.id === me.id && <span className="tag-soft accent">you</span>}
+            {isOwner && p.id !== me.id && (
+              <>
+                <button
+                  className="btn link small"
+                  onClick={async () => {
+                    if (!(await askConfirm({ title: `Make ${p.display_name} the owner?`, body: 'They’ll be able to remove people. You stay in the group.', confirm: 'Make owner' }))) return;
+                    const { error } = await supabase.rpc('transfer_group', { p_channel: dm.channel.id, p_user: p.id });
+                    setError(error ? errorMessage(error) : null);
+                    if (!error) onClose();
+                  }}
+                >
+                  Make owner
+                </button>
+                <button
+                  className="btn link small danger-text"
+                  onClick={async () => {
+                    if (!(await askConfirm({ title: `Remove ${p.display_name}?`, body: 'They stop getting new messages. The group’s key is changed so they can’t read anything new.', confirm: 'Remove', danger: true }))) return;
+                    const { error } = await supabase.rpc('remove_group_member', { p_channel: dm.channel.id, p_user: p.id });
+                    setError(error ? errorMessage(error) : null);
+                    if (!error) onClose();
+                  }}
+                >
+                  Remove
+                </button>
+              </>
+            )}
           </div>
         ))}
       </div>
+      {addable.length > 0 && !full && (
+        <>
+          <div className="field-label">Add friends</div>
+          <div className="group-members add-friends">
+            {addable.slice(0, 50).map((p) => (
+              <div key={p.id} className="member">
+                <Avatar profile={p} size={28} />
+                <span className="member-name grow">{p.display_name}</span>
+                <button className="btn secondary small" onClick={() => add([p.id])}>
+                  Add to {dm.title.length > 18 ? 'group' : dm.title}
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       <PeoplePicker picked={picked} setPicked={setPicked} exclude={dm.members.map((m) => m.id)} />
       {picked.length > 0 && (
-        <button
-          className="btn primary full"
-          onClick={async () => {
-            const { error } = await supabase.rpc('add_group_members', { p_channel: dm.channel.id, p_members: picked.map((p) => p.id) });
-            if (error) return setError(errorMessage(error));
-            await sessionStore.get().keyring?.distribute(dm.channel.id);
-            onClose();
-          }}
-        >
+        <button className="btn primary full" onClick={() => add(picked.map((p) => p.id)).then(() => setPicked([]))}>
           Add {picked.length} {picked.length === 1 ? 'person' : 'people'}
         </button>
       )}
+      <Field label="Invite link" hint="For people who aren’t your friends yet. Works for 7 days.">
+        {link ? (
+          <div className="copy-row">
+            <input readOnly value={link} onFocus={(e) => e.target.select()} aria-label="Group invite link" />
+            <button className="btn primary" onClick={() => navigator.clipboard.writeText(link)}>
+              Copy
+            </button>
+          </div>
+        ) : (
+          <button
+            className="btn secondary"
+            disabled={full}
+            onClick={async () => {
+              const { data, error } = await supabase.rpc('create_group_invite', { p_channel: dm.channel.id });
+              if (error) return setError(errorMessage(error));
+              setLink(`${window.location.origin}${import.meta.env.BASE_URL}join-group/${data as string}`);
+            }}
+          >
+            {full ? 'The group is full' : 'Create invite link'}
+          </button>
+        )}
+      </Field>
       <hr />
       <button
         className="btn danger"

@@ -82,7 +82,7 @@ export function AuthScreen() {
   useEffect(() => {
     const r = parseRoute();
     // deep link while logged out: show the login form at /sign-in
-    if (r.kind === 'home' || r.kind === 'server' || r.kind === 'discover') {
+    if (r.kind === 'home' || r.kind === 'server' || r.kind === 'discover' || r.kind === 'group-invite') {
       try {
         sessionStorage.setItem('venband:return-to', currentPath());
       } catch {

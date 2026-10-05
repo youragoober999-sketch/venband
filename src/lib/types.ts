@@ -24,11 +24,30 @@ export interface Profile {
   account_status?: AccountStatus;
   language?: string;
   onboarded?: boolean;
+  avatar_url?: string | null;
+  banner_url?: string | null;
+  avatar_frame?: AvatarFrame;
+  name_style?: NameStyle;
+  nameplate_style?: NameplateStyle;
+}
+
+export type AvatarFrame = 'none' | 'neon' | 'flame' | 'frost' | 'rainbow' | 'gold' | 'sakura' | 'pixel' | 'orbit' | 'hearts' | 'glitch';
+export type NameFont = 'default' | 'serif' | 'mono' | 'rounded' | 'handwritten' | 'display' | 'pixel';
+export type NameEffect = 'none' | 'shimmer' | 'glow' | 'rainbow' | 'pulse';
+export interface NameStyle {
+  font?: NameFont;
+  /** 1–3 colours; two or more make a gradient */
+  colors?: string[];
+  effect?: NameEffect;
+}
+export interface NameplateStyle {
+  colors?: string[];
+  pattern?: 'sweep' | 'stripes' | 'dots' | 'waves';
 }
 
 /** Columns other people may read (keep in sync with directory.loadProfiles). */
 export const PROFILE_COLUMNS =
-  'id, username, display_name, avatar_color, about, created_at, pronouns, status_text, status_emoji, presence, banner_color, banner_color2, accent_color, nameplate, tag_server_id, server_tag, badges, platform_role, account_status';
+  'id, username, display_name, avatar_color, about, created_at, pronouns, status_text, status_emoji, presence, banner_color, banner_color2, accent_color, nameplate, tag_server_id, server_tag, badges, platform_role, account_status, avatar_url, banner_url, avatar_frame, name_style, nameplate_style';
 
 export type ServerStatus = 'active' | 'review' | 'closed' | 'banned' | 'deleted';
 
@@ -95,6 +114,8 @@ export interface Channel {
   created_at: string;
   settings?: { bitrate?: number; user_limit?: number; video?: boolean; tags?: string[]; sort?: 'recent' | 'created'; guidelines?: string };
   color?: string | null;
+  /** groups: the person who can remove members */
+  owner_id?: string | null;
 }
 
 export interface Role {
