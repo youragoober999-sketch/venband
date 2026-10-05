@@ -188,17 +188,19 @@ function Roles({ data }: { data: ServerData }) {
   // highest position first, like the editor's "higher = more powerful"
   const ordered = [...data.roles].sort((a, b) => b.position - a.position);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
 
   async function create() {
+    setListError(null);
     const maxBelow = Math.max(0, ...data.roles.filter((r) => r.position < myTop).map((r) => r.position));
     const position = Math.min(maxBelow + 1, myTop === Infinity ? maxBelow + 1 : myTop - 1);
-    if (position < 1) return alert('You cannot create roles above your own highest role.');
+    if (position < 1) return setListError('You cannot create roles above your own highest role.');
     const { data: r, error } = await supabase
       .from('roles')
       .insert({ server_id: data.server!.id, name: 'new role', color: '#99aab5', permissions: 0, position })
       .select()
       .single();
-    if (error) return alert(errorMessage(error));
+    if (error) return setListError(errorMessage(error));
     data.reload();
     setSelected(r.id);
   }
@@ -211,7 +213,7 @@ function Roles({ data }: { data: ServerData }) {
     // only reorder roles you're allowed to edit (below your own highest role)
     if (draggedRole.position >= myTop || targetRole.position >= myTop) {
       setDragId(null);
-      return alert('You can only reorder roles below your own highest role.');
+      return setListError('You can only reorder roles below your own highest role.');
     }
     const next = ordered.filter((r) => r.id !== dragId);
     const targetIndex = next.findIndex((r) => r.id === targetId);
@@ -227,13 +229,14 @@ function Roles({ data }: { data: ServerData }) {
     const { error } = await Promise.all(updates.map((u) => supabase.from('roles').update({ position: u.position }).eq('id', u.id))).then(
       (results) => ({ error: results.find((r) => r.error)?.error ?? null }),
     );
-    if (error) alert(errorMessage(error));
+    if (error) setListError(errorMessage(error));
     data.reload();
   }
 
   return (
     <div className="roles-layout">
       <div className="roles-list">
+        {listError && <div className="form-error">{listError}</div>}
         <button className="btn secondary small full" onClick={create}>
           + Create Role
         </button>
@@ -678,6 +681,7 @@ function OverridesEditor({
 function Members({ data }: { data: ServerData }) {
   const me = sessionStore.use((s) => s.me)!;
   const [filter, setFilter] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
   const canRoles = has(data.myPermissions, P.MANAGE_ROLES);
   const myTop = data.server!.owner_id === me.id ? Infinity : (data.topRole(me.id)?.position ?? 0);
   const assignable = data.roles.filter((r) => !r.is_default && r.position < myTop);
@@ -696,14 +700,14 @@ function Members({ data }: { data: ServerData }) {
     const res = on
       ? await supabase.from('member_roles').insert({ server_id: data.server!.id, user_id: userId, role_id: roleId })
       : await supabase.from('member_roles').delete().eq('server_id', data.server!.id).eq('user_id', userId).eq('role_id', roleId);
-    if (res.error) alert(errorMessage(res.error));
+    setMsg(res.error ? errorMessage(res.error) : null);
     data.reload();
   }
 
   async function kick(userId: string) {
     if (!confirm(`Kick ${displayName(userId)}?`)) return;
     const { error } = await supabase.from('server_members').delete().eq('server_id', data.server!.id).eq('user_id', userId);
-    if (error) alert(errorMessage(error));
+    setMsg(error ? errorMessage(error) : null);
     data.reload();
   }
 
@@ -711,12 +715,13 @@ function Members({ data }: { data: ServerData }) {
     const reason = prompt(`Ban ${displayName(userId)}? Optional reason:`);
     if (reason === null) return;
     const { error } = await supabase.from('bans').insert({ server_id: data.server!.id, user_id: userId, banned_by: me.id, reason });
-    if (error) alert(errorMessage(error));
+    setMsg(error ? errorMessage(error) : null);
     data.reload();
   }
 
   return (
     <div>
+      {msg && <div className="form-error">{msg}</div>}
       <input className="search" placeholder="Search members" value={filter} onChange={(e) => setFilter(e.target.value)} />
       <div className="member-table">
         {list.map((m) => {

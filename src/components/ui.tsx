@@ -42,7 +42,10 @@ export function Avatar({
   online,
   speaking,
 }: {
-  profile: (Pick<Profile, 'display_name' | 'avatar_color'> & { presence?: Profile['presence'] }) | null | undefined;
+  profile:
+    | (Pick<Profile, 'display_name' | 'avatar_color'> & Partial<Pick<Profile, 'avatar_url'>> & { presence?: Profile['presence'] })
+    | null
+    | undefined;
   size?: number;
   online?: boolean;
   speaking?: boolean;
@@ -53,10 +56,10 @@ export function Avatar({
   return (
     <div
       className={`avatar${speaking ? ' speaking' : ''}`}
-      style={{ width: size, height: size, background: profile?.avatar_color ?? '#555', fontSize: size * 0.38 }}
+      style={{ width: size, height: size, background: profile?.avatar_url ? undefined : (profile?.avatar_color ?? '#555'), fontSize: size * 0.38 }}
       aria-hidden
     >
-      {initials(name)}
+      {profile?.avatar_url ? <img className="avatar-img" src={profile.avatar_url} alt="" /> : initials(name)}
       {status && <span className={`status-dot ${status}`} />}
     </div>
   );
