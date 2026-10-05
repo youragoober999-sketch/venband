@@ -1,19 +1,23 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
-import { has, P, PERMISSION_INFO } from '../lib/permissions';
+import { has, OVERRIDABLE_PERMISSIONS, P, PERMISSION_INFO } from '../lib/permissions';
 import type { Ban, Invite, Role } from '../lib/types';
+
+type ChannelRow = ServerData['channels'][number];
+type Override = { role_id: string; allow: number; deny: number };
 import { openServer, type ServerData } from '../hooks/data';
 import { Avatar, ColorPicker, Field, Modal } from './ui';
 
-type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans';
+type Tab = 'overview' | 'roles' | 'channels' | 'members' | 'invites' | 'bans';
 
 export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClose: () => void }) {
   const p = data.myPermissions;
   const tabs: [Tab, string, boolean][] = [
     ['overview', 'Overview', has(p, P.MANAGE_SERVER)],
     ['roles', 'Roles', has(p, P.MANAGE_ROLES)],
+    ['channels', 'Channels', has(p, P.MANAGE_CHANNELS)],
     ['members', 'Members', true],
     ['invites', 'Invites', has(p, P.MANAGE_SERVER)],
     ['bans', 'Bans', has(p, P.BAN_MEMBERS)],
@@ -33,6 +37,7 @@ export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClo
         <div className="settings-content">
           {tab === 'overview' && <Overview data={data} onClose={onClose} />}
           {tab === 'roles' && <Roles data={data} />}
+          {tab === 'channels' && <Channels data={data} />}
           {tab === 'members' && <Members data={data} />}
           {tab === 'invites' && <Invites data={data} />}
           {tab === 'bans' && <Bans data={data} />}
@@ -179,6 +184,10 @@ function Roles({ data }: { data: ServerData }) {
   const [selected, setSelected] = useState<string | null>(data.roles[0]?.id ?? null);
   const role = data.roles.find((r) => r.id === selected) ?? null;
   const myTop = data.server!.owner_id === me.id ? Infinity : (data.topRole(me.id)?.position ?? 0);
+  const canReorder = has(data.myPermissions, P.MANAGE_ROLES);
+  // highest position first, like the editor's "higher = more powerful"
+  const ordered = [...data.roles].sort((a, b) => b.position - a.position);
+  const [dragId, setDragId] = useState<string | null>(null);
 
   async function create() {
     const maxBelow = Math.max(0, ...data.roles.filter((r) => r.position < myTop).map((r) => r.position));
@@ -194,14 +203,55 @@ function Roles({ data }: { data: ServerData }) {
     setSelected(r.id);
   }
 
+  async function dropOn(targetId: string) {
+    if (!dragId || dragId === targetId || !canReorder) return setDragId(null);
+    const draggedRole = data.roles.find((r) => r.id === dragId);
+    const targetRole = data.roles.find((r) => r.id === targetId);
+    if (!draggedRole || !targetRole || draggedRole.is_default || targetRole.is_default) return setDragId(null);
+    // only reorder roles you're allowed to edit (below your own highest role)
+    if (draggedRole.position >= myTop || targetRole.position >= myTop) {
+      setDragId(null);
+      return alert('You can only reorder roles below your own highest role.');
+    }
+    const next = ordered.filter((r) => r.id !== dragId);
+    const targetIndex = next.findIndex((r) => r.id === targetId);
+    next.splice(targetIndex, 0, draggedRole);
+    // re-number from the top, skipping @everyone which always stays at 0
+    const movable = next.filter((r) => !r.is_default);
+    const top = movable.length;
+    const updates = movable
+      .map((r, i) => ({ id: r.id, position: top - i }))
+      .filter((u) => data.roles.find((r) => r.id === u.id)!.position !== u.position);
+    setDragId(null);
+    if (!updates.length) return;
+    const { error } = await Promise.all(updates.map((u) => supabase.from('roles').update({ position: u.position }).eq('id', u.id))).then(
+      (results) => ({ error: results.find((r) => r.error)?.error ?? null }),
+    );
+    if (error) alert(errorMessage(error));
+    data.reload();
+  }
+
   return (
     <div className="roles-layout">
       <div className="roles-list">
         <button className="btn secondary small full" onClick={create}>
           + Create Role
         </button>
-        {data.roles.map((r) => (
-          <button key={r.id} className={`role-item${selected === r.id ? ' active' : ''}`} onClick={() => setSelected(r.id)}>
+        {ordered.map((r) => (
+          <button
+            key={r.id}
+            className={`role-item${selected === r.id ? ' active' : ''}${dragId === r.id ? ' dragging' : ''}`}
+            draggable={canReorder && !r.is_default}
+            onClick={() => setSelected(r.id)}
+            onDragStart={() => setDragId(r.id)}
+            onDragOver={(e) => canReorder && !r.is_default && e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              dropOn(r.id);
+            }}
+            onDragEnd={() => setDragId(null)}
+          >
+            {canReorder && !r.is_default && <span className="drag-handle" aria-hidden>⠿</span>}
             <span className="role-dot" style={{ background: r.color }} />
             {r.name}
           </button>
@@ -293,6 +343,335 @@ function RoleEditor({ role, data, editable }: { role: Role; data: ServerData; ed
         </div>
       </fieldset>
     </div>
+  );
+}
+
+type CatGroup = { category: string; channels: ChannelRow[] };
+
+function groupByCategory(channels: ChannelRow[]): CatGroup[] {
+  const sorted = [...channels].sort((a, b) => a.position - b.position);
+  const groups: CatGroup[] = [];
+  for (const c of sorted) {
+    let g = groups.find((g) => g.category === (c.category || ''));
+    if (!g) {
+      g = { category: c.category || '', channels: [] };
+      groups.push(g);
+    }
+    g.channels.push(c);
+  }
+  return groups;
+}
+
+function flattenPositions(groups: CatGroup[]): { id: string; category: string; position: number }[] {
+  const out: { id: string; category: string; position: number }[] = [];
+  let pos = 0;
+  for (const g of groups) for (const c of g.channels) out.push({ id: c.id, category: g.category, position: pos++ });
+  return out;
+}
+
+function Channels({ data }: { data: ServerData }) {
+  const canManage = has(data.myPermissions, P.MANAGE_CHANNELS);
+  const [groups, setGroups] = useState<CatGroup[]>(() => groupByCategory(data.channels));
+  const [dirty, setDirty] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [overrideTarget, setOverrideTarget] = useState<{ kind: 'channel' | 'category'; id: string; label: string } | null>(null);
+  const dragItem = useRef<{ type: 'channel' | 'category'; catIndex: number; chanIndex?: number } | null>(null);
+
+  useEffect(() => {
+    if (!dirty) setGroups(groupByCategory(data.channels));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.channels]);
+
+  function moveChannel(fromCat: number, fromChan: number, toCat: number, toChan: number) {
+    setGroups((prev) => {
+      const next = prev.map((g) => ({ ...g, channels: [...g.channels] }));
+      const [moved] = next[fromCat].channels.splice(fromChan, 1);
+      next[toCat].channels.splice(toChan, 0, moved);
+      return next;
+    });
+    setDirty(true);
+  }
+
+  function moveCategory(from: number, to: number) {
+    setGroups((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setDirty(true);
+  }
+
+  async function save() {
+    const updates = flattenPositions(groups);
+    const changed = updates.filter((u) => {
+      const orig = data.channels.find((c) => c.id === u.id)!;
+      return orig.position !== u.position || (orig.category || '') !== u.category;
+    });
+    if (!changed.length) return setDirty(false);
+    const results = await Promise.all(
+      changed.map((u) => supabase.from('channels').update({ position: u.position, category: u.category }).eq('id', u.id)),
+    );
+    const error = results.find((r) => r.error)?.error;
+    setMsg(error ? errorMessage(error) : 'Saved.');
+    setDirty(false);
+    data.reload();
+  }
+
+  return (
+    <div>
+      {msg && <div className="notice">{msg}</div>}
+      {!canManage && <div className="warning-box">You need Manage Channels to reorder or edit permissions here.</div>}
+      <p className="small muted">
+        Drag the handle to reorder categories and channels, or move a channel into a different category. Click the lock icon to set
+        which roles can do what inside a category or channel — these overrides sit on top of the role's server-wide permissions.
+      </p>
+      <div className="channels-tree">
+        {groups.map((g, ci) => (
+          <div
+            key={g.category || `__none_${ci}`}
+            className="category-block"
+            onDragOver={(e) => {
+              if (dragItem.current?.type === 'category') e.preventDefault();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragItem.current?.type === 'category' && canManage) moveCategory(dragItem.current.catIndex, ci);
+              dragItem.current = null;
+            }}
+          >
+            <div className="category-header">
+              {canManage && (
+                <span
+                  className="drag-handle"
+                  draggable
+                  onDragStart={() => (dragItem.current = { type: 'category', catIndex: ci })}
+                  aria-hidden
+                >
+                  ⠿
+                </span>
+              )}
+              <b>{g.category || 'No category'}</b>
+              {canManage && g.category && (
+                <button
+                  className="icon-btn small"
+                  title="Permission overrides for this category"
+                  onClick={() => setOverrideTarget({ kind: 'category', id: g.category, label: g.category })}
+                >
+                  🔒
+                </button>
+              )}
+            </div>
+            <div
+              className="category-channels"
+              onDragOver={(e) => {
+                if (dragItem.current?.type === 'channel') e.preventDefault();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const item = dragItem.current;
+                if (item?.type === 'channel' && canManage && item.chanIndex !== undefined) {
+                  moveChannel(item.catIndex, item.chanIndex, ci, g.channels.length);
+                }
+                dragItem.current = null;
+              }}
+            >
+              {!g.channels.length && <div className="small muted empty-cat">Drop a channel here</div>}
+              {g.channels.map((c, chi) => (
+                <div
+                  key={c.id}
+                  className="channel-row"
+                  onDragOver={(e) => {
+                    if (dragItem.current?.type === 'channel') e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const item = dragItem.current;
+                    if (item?.type === 'channel' && canManage && item.chanIndex !== undefined) {
+                      moveChannel(item.catIndex, item.chanIndex, ci, chi);
+                    }
+                    dragItem.current = null;
+                  }}
+                >
+                  {canManage && (
+                    <span
+                      className="drag-handle"
+                      draggable
+                      onDragStart={() => (dragItem.current = { type: 'channel', catIndex: ci, chanIndex: chi })}
+                      aria-hidden
+                    >
+                      ⠿
+                    </span>
+                  )}
+                  <span className="channel-type-icon">{c.type === 'voice' ? '🔊' : '#'}</span>
+                  <span className="grow">{c.name}</span>
+                  {c.is_private && <span className="small muted">private</span>}
+                  {canManage && (
+                    <button
+                      className="icon-btn small"
+                      title="Permission overrides for this channel"
+                      onClick={() => setOverrideTarget({ kind: 'channel', id: c.id, label: c.name })}
+                    >
+                      🔒
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {canManage && dirty && (
+        <div className="modal-actions">
+          <button className="btn secondary" onClick={() => (setGroups(groupByCategory(data.channels)), setDirty(false))}>
+            Discard
+          </button>
+          <button className="btn primary" onClick={save}>
+            Save Order
+          </button>
+        </div>
+      )}
+      {overrideTarget && <OverridesEditor data={data} target={overrideTarget} onClose={() => setOverrideTarget(null)} />}
+    </div>
+  );
+}
+
+/** Per-role allow/deny editor for one channel or category, Discord-style. */
+function OverridesEditor({
+  data,
+  target,
+  onClose,
+}: {
+  data: ServerData;
+  target: { kind: 'channel' | 'category'; id: string; label: string };
+  onClose: () => void;
+}) {
+  const table = target.kind === 'channel' ? 'channel_overrides' : 'category_overrides';
+  const [rows, setRows] = useState<Record<string, Override>>({});
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const q =
+        target.kind === 'channel'
+          ? supabase.from('channel_overrides').select('role_id, allow, deny').eq('channel_id', target.id)
+          : supabase.from('category_overrides').select('role_id, allow, deny').eq('server_id', data.server!.id).eq('category', target.id);
+      const { data: res, error } = await q;
+      if (cancelled) return;
+      if (error) setMsg(errorMessage(error));
+      const map: Record<string, Override> = {};
+      for (const r of res ?? []) map[r.role_id] = r as Override;
+      setRows(map);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [target.id, target.kind, data.server]);
+
+  function stateOf(roleId: string, bit: number): 'inherit' | 'allow' | 'deny' {
+    const r = rows[roleId];
+    if (!r) return 'inherit';
+    if (r.allow & bit) return 'allow';
+    if (r.deny & bit) return 'deny';
+    return 'inherit';
+  }
+
+  function cycle(roleId: string, bit: number) {
+    setRows((prev) => {
+      const cur = prev[roleId] ?? { role_id: roleId, allow: 0, deny: 0 };
+      const state = stateOf(roleId, bit);
+      // inherit -> allow -> deny -> inherit
+      const next =
+        state === 'inherit'
+          ? { ...cur, allow: cur.allow | bit, deny: cur.deny & ~bit }
+          : state === 'allow'
+            ? { ...cur, allow: cur.allow & ~bit, deny: cur.deny | bit }
+            : { ...cur, allow: cur.allow & ~bit, deny: cur.deny & ~bit };
+      return { ...prev, [roleId]: next };
+    });
+  }
+
+  async function save() {
+    const payload = Object.values(rows);
+    const base = target.kind === 'channel' ? { channel_id: target.id } : { server_id: data.server!.id, category: target.id };
+    const toUpsert = payload.filter((r) => r.allow || r.deny).map((r) => ({ ...base, role_id: r.role_id, allow: r.allow, deny: r.deny }));
+    const toDelete = payload.filter((r) => !r.allow && !r.deny).map((r) => r.role_id);
+    const onConflict = target.kind === 'channel' ? 'channel_id,role_id' : 'server_id,category,role_id';
+    if (toUpsert.length) {
+      const { error } = await supabase.from(table).upsert(toUpsert, { onConflict });
+      if (error) return setMsg(errorMessage(error));
+    }
+    for (const roleId of toDelete) {
+      const q =
+        target.kind === 'channel'
+          ? supabase.from('channel_overrides').delete().eq('channel_id', target.id).eq('role_id', roleId)
+          : supabase.from('category_overrides').delete().eq('server_id', data.server!.id).eq('category', target.id).eq('role_id', roleId);
+      const { error } = await q;
+      if (error) return setMsg(errorMessage(error));
+    }
+    setMsg('Saved.');
+    data.reload();
+  }
+
+  return (
+    <Modal title={`Permission overrides — ${target.kind === 'channel' ? '#' : ''}${target.label}`} onClose={onClose} wide>
+      {msg && <div className="notice">{msg}</div>}
+      {loading ? (
+        <p className="muted">Loading…</p>
+      ) : (
+        <div className="overrides-table">
+          <p className="small muted">
+            Click a cell to cycle: inherit (role's server permission) → allow → deny → inherit. {target.kind === 'category' ? 'Category overrides apply before, and get overridden by, that channel\'s own overrides.' : 'Channel overrides apply last and win.'}
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Role</th>
+                {OVERRIDABLE_PERMISSIONS.map((pi) => (
+                  <th key={pi.bit} title={pi.description}>
+                    {pi.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.roles.map((r) => (
+                <tr key={r.id}>
+                  <td>
+                    <span className="role-dot" style={{ background: r.color }} />
+                    {r.name}
+                  </td>
+                  {OVERRIDABLE_PERMISSIONS.map((pi) => {
+                    const s = stateOf(r.id, pi.bit);
+                    return (
+                      <td key={pi.bit}>
+                        <button
+                          type="button"
+                          className={`override-cell ${s}`}
+                          title={s}
+                          onClick={() => cycle(r.id, pi.bit)}
+                        >
+                          {s === 'allow' ? '✓' : s === 'deny' ? '✕' : '—'}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="modal-actions">
+            <button className="btn primary" onClick={save}>
+              Save Overrides
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 
