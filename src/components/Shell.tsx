@@ -152,6 +152,14 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
   useEffect(() => {
     const path = currentPath();
     const waiting = pending.current !== null && !pending.current.startsWith('tried:');
+    if (waiting && path === lastRoute.current) {
+      // still waiting to open a link, but the person already clicked somewhere else: their click wins
+      const n = nav.get();
+      if (n.serverId || n.discover || (n.channelByServer['@me'] && n.channelByServer['@me'] !== pending.current)) {
+        pending.current = null;
+        return;
+      }
+    }
     if (path === lastRoute.current && !waiting) return;
     lastRoute.current = path;
     const r = parseRoute();
@@ -1873,7 +1881,19 @@ function openCallChannel(scopeId: string, channelId: string) {
 }
 
 /** Shows a "is calling you" toast when the other DM participant is in a call we're not in. */
+function usePhone() {
+  const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 700px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 700px)');
+    const on = () => setPhone(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return phone;
+}
+
 function IncomingCall({ dm }: { dm: DmChannel }) {
+  const phone = usePhone();
   const presence = useScopePresence(dm.channel.id);
   const identity = sessionStore.use((s) => s.identity)!;
   const me = sessionStore.use((s) => s.me)!;
@@ -1916,6 +1936,37 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
   // you just hung up and they stayed: no pop-up (it looked like they were
   // calling you again). The DM header's "Join call" button rejoins.
   if (!active || leftRecently(dm.channel.id)) return null;
+  const accept = () => {
+    openChannel('@me', dm.channel.id);
+    joinCall(identity, dm.channel.id, dm.channel.id, name);
+  };
+  if (phone)
+    return (
+      <div className="phone-call-screen" role="alertdialog" aria-label={`${name} is calling you`}>
+        <div className="pcs-top">
+          <span className="pcs-label">
+            <Icon name="lock" size={12} /> Venband {dm.channel.is_group ? 'group call' : 'call'} · end-to-end encrypted
+          </span>
+          <ConvoAvatar dm={dm} size={112} />
+          <h2>{name}</h2>
+          <span className="pcs-status">{quiet ? 'is in a call' : 'is calling you…'}</span>
+        </div>
+        <div className="pcs-actions">
+          <div className="pcs-action">
+            <button className="round-btn hangup big" aria-label="Decline" onClick={() => setDismissedAt(Date.now())}>
+              <Icon name="phoneOff" size={30} />
+            </button>
+            <span>Decline</span>
+          </div>
+          <div className="pcs-action">
+            <button className="round-btn accept big" aria-label="Accept" onClick={accept}>
+              <Icon name="phone" size={30} />
+            </button>
+            <span>Accept</span>
+          </div>
+        </div>
+      </div>
+    );
   return (
     <div className="toast incoming-call" role="alert">
       <ConvoAvatar dm={dm} size={40} />
@@ -1929,10 +1980,7 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
       <button
         className="round-btn accept small"
         title="Join call"
-        onClick={() => {
-          openChannel('@me', dm.channel.id);
-          joinCall(identity, dm.channel.id, dm.channel.id, name);
-        }}
+        onClick={accept}
       >
         <Icon name="phone" size={18} />
       </button>

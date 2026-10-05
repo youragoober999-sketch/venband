@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Venband</string>
+    <string name="title_activity_main">Venband</string>
+    <string name="package_name">com.venband.app</string>
+    <string name="custom_url_scheme">com.venband.app</string>
+</resources>

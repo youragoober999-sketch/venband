@@ -60,6 +60,8 @@ function updateTitle() {
       .filter(([id]) => !serverOf[id])
       .reduce((a, [, v]) => a + v, 0) + Object.values(mentions).reduce((a, v) => a + v, 0);
   document.title = n ? `(${n}) Venband` : 'Venband';
+  // the desktop app shows the same count on the taskbar / dock
+  (window as unknown as { venbandDesktop?: { setBadge: (n: number) => void } }).venbandDesktop?.setBadge(n);
 }
 
 // --------------------------------------------------- desktop notifications --

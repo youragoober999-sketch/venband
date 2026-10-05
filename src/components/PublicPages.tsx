@@ -629,6 +629,16 @@ export function GuidelinesPage() {
 
 export const CHANGELOG: { date: string; title: string; items: string[] }[] = [
   {
+    date: '2026-10-09',
+    title: 'Venband apps',
+    items: [
+      'Venband for Windows (installer and portable), macOS and Linux with automatic updates, a tray icon, taskbar badges and venband:// links',
+      'Android and iOS apps (coming to Google Play and the App Store)',
+      'A phone-style incoming call screen and bigger call buttons on phones',
+      'Bigger tap targets on touch screens, plus tablet and foldable layouts',
+    ],
+  },
+  {
     date: '2026-10-08',
     title: 'Make it yours',
     items: [

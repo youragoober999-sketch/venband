@@ -1,0 +1,82 @@
+name: Mobile apps
+
+# Android: builds a debug APK on every change to mobile/, and on tags like
+# "mobile-v1.0.0" a signed release bundle (.aab) for Google Play.
+# iOS: compiles the app for the simulator to make sure it builds. Release
+# builds for the App Store need a Mac with Xcode and your Apple certificates
+# (see mobile/README.md).
+#
+# Secrets for signed Android releases:
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+# Secrets for the web build inside the app:
+#   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (and optionally VITE_KLIPY_API_KEY)
+
+on:
+  push:
+    tags: ['mobile-v*']
+  pull_request:
+    paths: ['mobile/**']
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_KLIPY_API_KEY: ${{ secrets.VITE_KLIPY_API_KEY }}
+      - run: npm ci && npx cap sync android
+        working-directory: mobile
+      - name: Debug APK
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug
+      - name: Signed release bundle
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        working-directory: mobile/android
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > release.keystore
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file=$PWD/release.keystore \
+            -Pandroid.injected.signing.store.password='${{ secrets.ANDROID_KEYSTORE_PASSWORD }}' \
+            -Pandroid.injected.signing.key.alias='${{ secrets.ANDROID_KEY_ALIAS }}' \
+            -Pandroid.injected.signing.key.password='${{ secrets.ANDROID_KEY_PASSWORD }}'
+          rm release.keystore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: venband-android
+          path: |
+            mobile/android/app/build/outputs/apk/debug/*.apk
+            mobile/android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: ignore
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      - run: npm ci && npx cap sync ios
+        working-directory: mobile
+      - name: Build for the simulator (no signing)
+        working-directory: mobile/ios/App
+        run: xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build

@@ -2260,3 +2260,39 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 @keyframes seg-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @media (max-width: 640px) { .css-tutorial-screen { grid-template-columns: 1fr; } }
 .add-friends { max-height: 180px; overflow-y: auto; }
+
+/* ===================================================== phones & tablets ==== */
+.phone-call-screen { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; justify-content: space-between; align-items: center;
+  padding: calc(48px + env(safe-area-inset-top)) 24px calc(56px + env(safe-area-inset-bottom));
+  background: radial-gradient(120% 80% at 50% 0%, #2b3a55 0%, #11141c 55%, #050507 100%); color: #fff; animation: fade-in 0.25s; }
+.pcs-top { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.pcs-top h2 { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; margin: 8px 0 0; }
+.pcs-label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: #ffffffb3; margin-bottom: 18px; }
+.pcs-status { color: #ffffffb3; font-size: 17px; }
+.pcs-top .avatar { box-shadow: 0 0 0 0 #34c75966; animation: call-halo 2s ease-out infinite; }
+@keyframes call-halo { 0% { box-shadow: 0 0 0 0 #ffffff33; } 100% { box-shadow: 0 0 0 28px #ffffff00; } }
+.pcs-actions { display: flex; justify-content: space-around; width: 100%; max-width: 360px; }
+.pcs-action { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 15px; color: #ffffffd9; }
+.round-btn.big { width: 76px; height: 76px; }
+.round-btn.accept { background: #34c759; color: #fff; }
+.pcs-action .round-btn.accept { animation: ringpulse 1.4s ease-in-out infinite; }
+@media (max-width: 700px) {
+  .call-controls { position: sticky; bottom: 0; width: calc(100% - 16px); justify-content: space-evenly; padding: 12px 10px calc(12px + env(safe-area-inset-bottom)); border-radius: 28px; margin-bottom: 8px; }
+  .call-controls .round-btn { width: 58px; height: 58px; }
+  .voice-view .tile { border-radius: 22px; }
+}
+/* bigger tap targets for fingers */
+@media (pointer: coarse) {
+  .icon-btn { min-width: 40px; min-height: 40px; }
+  .channel, .member { min-height: 40px; }
+  .ctx-item { min-height: 44px; }
+  .btn.small { min-height: 36px; }
+}
+/* tablets: keep the channel list visible next to the chat */
+@media (min-width: 701px) and (max-width: 1000px) and (orientation: landscape) {
+  .sidebar { width: 240px; }
+}
+/* dual-screen foldables: channel list on one screen, chat on the other */
+@media (horizontal-viewport-segments: 2) {
+  .sidebar { width: env(viewport-segment-width 0 0, 320px); }
+}
