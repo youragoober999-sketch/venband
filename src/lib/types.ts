@@ -56,6 +56,7 @@ export interface Server {
   rules?: string[];
   onboarding?: { questions?: { title: string; multi?: boolean; options: { label: string; emoji?: string; role_ids: string[] }[] }[] };
   verification?: { level?: 'none' | 'email' | 'account_age' | 'voogle'; min_account_days?: number };
+  voogle?: import('./voogle').VoogleSettings;
   join_mode?: 'open' | 'invite' | 'discovery' | 'private';
   joins_paused?: boolean;
   public_preview?: boolean;

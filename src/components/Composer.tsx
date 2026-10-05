@@ -26,6 +26,8 @@ export interface Mentionables {
   channels: { id: string; label: string }[];
   everyone: boolean;
   emoji?: CustomEmoji[];
+  /** slash commands from the server's bots */
+  commands?: { app_id: string; app_name: string; name: string; description: string }[];
 }
 
 export interface PendingFile {
@@ -183,6 +185,8 @@ export function Composer({
 
   const query = useMemo(() => {
     const before = text.slice(0, caret);
+    const slash = before.match(/^\/([a-z0-9_-]{0,32})$/i);
+    if (slash && mentionables.commands?.length) return { trigger: '/', q: slash[1].toLowerCase(), start: 0 };
     const m = before.match(/(^|\s)([@#])([^\s@#]{0,32})$/);
     if (m) return { trigger: m[2], q: m[3].toLowerCase(), start: caret - m[3].length - 1 };
     const e = before.match(/(^|[\s(])(:)([a-z0-9_+-]{2,32})$/i);
@@ -206,6 +210,11 @@ export function Composer({
             },
       );
     }
+    if (query.trigger === '/')
+      return (mentionables.commands ?? [])
+        .filter((c) => c.name.startsWith(query.q))
+        .slice(0, 8)
+        .map((c) => ({ key: `${c.app_id}:${c.name}`, insert: `/${c.name}`, token: null, label: <><span className="sugg-slash">/</span>{c.name}</>, sub: `${c.description ? `${c.description} · ` : ''}${c.app_name}` }));
     if (query.trigger === '#')
       return mentionables.channels
         .filter((c) => c.label.toLowerCase().includes(query.q))
@@ -474,7 +483,7 @@ export function Composer({
       )}
       {suggestions.length > 0 && (
         <div className="mention-pop" role="listbox">
-          <div className="mention-pop-title">{query?.trigger === ':' ? `Emoji matching :${query.q}` : query?.trigger === '#' ? 'Channels' : 'Members & roles'}</div>
+          <div className="mention-pop-title">{query?.trigger === ':' ? `Emoji matching :${query.q}` : query?.trigger === '#' ? 'Channels' : query?.trigger === '/' ? 'Commands' : 'Members & roles'}</div>
           {suggestions.map((s, i) => (
             <button
               key={s.key}

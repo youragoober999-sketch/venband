@@ -35,6 +35,9 @@
 - **Reports:** anyone can report a message or a person. Because messages are end-to-end encrypted, the report carries the messages the reporter chose to share. Administrators and the owner review them in **Settings → Report Centre** and can ban or limit the account right there.
 - **Message requests:** DMs from people you share no server or friendship with wait in Message Requests until you accept them.
 - **Moderation (Venband staff):** search any user or server; apply badges; make an account limited, very limited or banned; put a server in review (frozen), pass or fail the review, verify it or ban it. Every action is written to an audit log.
+- **Bots and the developer portal:** make bots at `/applications` from presets (Verification, Server management, Connect a site) or write your own with the token-based bot API (`POST /api/bot`), slash commands and webhooks (`POST /api/hooks`). Paste an invite in a bot's dashboard to add it to a server. Bots can't read end-to-end encrypted messages; what they post is plain text and carries a BOT tag.
+- **Voogle verification:** servers can require members to verify before they talk. Voogle blocks too many accounts from one device or network and catches ban evasion. Only peppered hashes are stored, and moderators only ever see "99% sure alt" / "Likely alt" — never IP addresses or device details. Look up alts at `/voogle`.
+- **Public pages:** `/status` (live checks plus incidents staff can post), `/tos`, `/privacy`, `/guidelines`, `/changelog` and `/discovery` work without an account.
 - **Quality of life:** right-click menus everywhere, per-person and per-stream volume up to 200%, stream attenuation, resizable panels, and real URLs (`/sign-in`, `/register`, `/channels/@me/<user>`, `/channels/<server>/<channel>`).
 
 ## How it runs (no PC required)

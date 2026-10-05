@@ -685,3 +685,114 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a2
 do $t$ begin
   assert (select count(*) from public.my_expressions() where name = 'hype') = 1, 'members can use server emoji';
 end $t$;
+
+-- ============================================== apps, status, Voogle ====
+reset role;
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000b1', 'b1@example.com', '{"username":"botdev"}'),
+  ('00000000-0000-0000-0000-0000000000b2', 'b2@example.com', '{"username":"altone"}'),
+  ('00000000-0000-0000-0000-0000000000b3', 'b3@example.com', '{"username":"alttwo"}');
+insert into auth.sessions (id, user_id, ip) values
+  ('00000000-0000-0000-0000-00000000b5e2', '00000000-0000-0000-0000-0000000000b2', '203.0.113.7'),
+  ('00000000-0000-0000-0000-00000000b5e3', '00000000-0000-0000-0000-0000000000b3', '203.0.113.9');
+set role anon;
+do $t$ begin
+  assert (public.status_ping() ->> 'ok')::boolean, 'status ping works signed out';
+  perform * from public.public_discover('', null);
+end $t$;
+select pg_temp.must_fail($$select public.post_status_update(null, 'Down', 'major', 'investigating', 'x', '{}')$$);
+select pg_temp.must_fail($$select public.bot_api('vb_nope', 'me', '{}')$$);
+reset role;
+set role authenticated;
+-- members can't post status incidents
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+select pg_temp.must_fail($$select public.post_status_update(null, 'Down', 'major', 'investigating', 'x', '{}')$$);
+-- a developer makes a management bot and gets a token
+select set_config('t.app', public.create_application('Helper', 'management')::text, false);
+select set_config('t.token', public.reset_bot_token(current_setting('t.app')::uuid), false);
+do $t$ begin
+  assert current_setting('t.token') like 'vb_%', 'token format';
+  assert (select token_hint from public.applications where id = current_setting('t.app')::uuid) is not null;
+end $t$;
+select pg_temp.must_fail($$select token_hash from public.applications$$);  -- never readable
+select pg_temp.must_fail($$update public.applications set preset = 'custom' where id = current_setting('t.app')::uuid$$);
+-- not a manager of the server: the invite only creates a request
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+update public.invites set paused = false where code = current_setting('t.inv');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+do $t$ begin
+  assert (public.bot_join_server(current_setting('t.app')::uuid, 'https://venband.com/invite/' || current_setting('t.inv')) ->> 'status') = 'requested';
+end $t$;
+-- other people can't use someone else's app
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a2', false);
+select pg_temp.must_fail($$select public.bot_join_server(current_setting('t.app')::uuid, current_setting('t.inv'))$$);
+select pg_temp.must_fail($$select public.reset_bot_token(current_setting('t.app')::uuid)$$);
+-- the server owner approves; the bot then welcomes new members
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.review_bot_request((select id from public.bot_join_requests limit 1), true);
+select set_config('t.install', (select id::text from public.server_bots where app_id = current_setting('t.app')::uuid), false);
+select public.update_bot_settings(current_setting('t.install')::uuid, jsonb_build_object(
+  'welcome_channel', (select id from public.channels where server_id = current_setting('t.gs')::uuid and type = 'text' order by position limit 1),
+  'welcome_text', 'Hi {user}!'));
+select set_config('t.botch', (select id::text from public.channels where server_id = current_setting('t.gs')::uuid and type = 'text' and not is_private order by position limit 1), false);
+reset role;
+set role anon;
+-- the bot API, with its token
+do $t$ declare v jsonb; begin
+  v := public.bot_api(current_setting('t.token'), 'me', '{}');
+  assert jsonb_array_length(v -> 'servers') = 1, 'bot sees its server';
+  perform public.bot_api(current_setting('t.token'), 'send', jsonb_build_object(
+    'channel', current_setting('t.botch'),
+    'content', 'hello from the API', 'embed', jsonb_build_object('title', 'T', 'url', 'javascript:alert(1)')));
+end $t$;
+select pg_temp.must_fail($$select public.bot_api(current_setting('t.token') || 'x', 'me', '{}')$$);
+reset role;
+do $t$ begin
+  assert (select embed ->> 'url' from public.bot_messages where content = 'hello from the API') is null, 'unsafe links are dropped';
+end $t$;
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+select public.join_server(current_setting('t.inv'));
+select public.complete_onboarding(current_setting('t.gs')::uuid, true, '{}'::jsonb);
+do $t$ begin
+  assert exists (select 1 from public.bot_messages where content like 'Hi <@00000000-0000-0000-0000-0000000000b2>!'), 'welcome message posted';
+  assert (select count(*) from public.bot_messages) >= 2, 'members read bot messages';
+  assert (public.use_bot_command((select channel_id from public.bot_messages limit 1), current_setting('t.app')::uuid, 'serverinfo') ->> 'status') = 'handled';
+end $t$;
+-- outsiders can't read bot messages
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+do $t$ begin
+  assert (select count(*) from public.bot_messages) = 0, 'bot messages stay in the server';
+end $t$;
+
+-- Voogle: verification required, max 1 account per device
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.set_voogle_settings(current_setting('t.gs')::uuid, '{"enabled": true, "required": true, "max_accounts": 1}');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+select set_config('request.jwt.claim.session_id', '00000000-0000-0000-0000-00000000b5e2', false);
+select public.complete_onboarding(current_setting('t.gs')::uuid, true, '{}'::jsonb);
+do $t$ begin
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 0, 'no talking until verified';
+  assert (public.voogle_verify(current_setting('t.gs')::uuid, 'devicetoken_aaaaaaaaaaaa', repeat('a', 64)) ->> 'result') = 'passed';
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 128, 'verified members can talk';
+end $t$;
+select pg_temp.must_fail($$select * from public.voogle_signals$$);
+-- the same device on another account is blocked
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+select set_config('request.jwt.claim.session_id', '00000000-0000-0000-0000-00000000b5e3', false);
+select public.join_server(current_setting('t.inv'));
+select public.complete_onboarding(current_setting('t.gs')::uuid, true, '{}'::jsonb);
+do $t$ begin
+  assert (public.voogle_verify(current_setting('t.gs')::uuid, 'devicetoken_aaaaaaaaaaaa', repeat('b', 64)) ->> 'result') = 'blocked';
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 0;
+end $t$;
+-- members can't look up alts; the owner can, without any IP or device data
+select pg_temp.must_fail($$select public.voogle_lookup('00000000-0000-0000-0000-0000000000b2', current_setting('t.gs')::uuid)$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+do $t$ declare v jsonb; begin
+  v := public.voogle_lookup('00000000-0000-0000-0000-0000000000b3', current_setting('t.gs')::uuid);
+  assert (v -> 'alts' -> 0 ->> 'confidence') = '99% sure alt', 'device match is a 99% alt';
+  assert v::text !~ '203\.0\.113', 'no IP addresses in lookups';
+  assert v::text !~ 'devicetoken', 'no device tokens in lookups';
+end $t$;
+reset role;

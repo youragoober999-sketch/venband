@@ -34,6 +34,8 @@ import { Composer, useTyping, type Mentionables, type PendingFile, type SendOpti
 import { EditHistoryModal, PollView, QuickReactBar, quickReactionSet, Reactions, ThreadSummary } from './MessageParts';
 import { EmojiPicker } from './EmojiPicker';
 import { toggleReaction } from '../lib/chatExtras';
+import { useApps, useBotMessages, useServerCommands, type Application, type BotMessage } from '../lib/bots';
+import { BotTag, PresetLogo } from './Apps';
 
 interface JoinEvent {
   id: string;
@@ -164,6 +166,9 @@ export function ChatView({
   const isThread = Boolean(threadRoot);
   const isWelcome = !isThread && Boolean(data?.server?.welcome_channel_id && data.server.welcome_channel_id === channel.id);
   const joins = useJoinEvents(isWelcome && showJoins ? (data?.server?.id ?? null) : null);
+  const botMessages = useBotMessages(data && !isThread ? channel.id : null);
+  const botApps = useApps(botMessages.map((b) => b.app_id));
+  const botCommands = useServerCommands(!isThread ? (data?.server?.id ?? null) : null);
   const [replyTo, setReplyTo] = useState<DecryptedMessage | null>(null);
   const [quote, setQuote] = useState<DecryptedMessage | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -188,7 +193,7 @@ export function ChatView({
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [messages, joins]);
+  }, [messages, joins, botMessages]);
 
   useEffect(() => {
     loadMyReports();
@@ -285,6 +290,14 @@ export function ChatView({
   }
 
   async function sendPayload(text: string, files: PendingFile[], opts: SendOptions) {
+    const slash = !files.length && !opts.scheduleAt && text.trim().match(/^\/([a-z0-9_-]{1,32})(?:\s+([\s\S]*))?$/i);
+    const command = slash && botCommands.find((c) => c.name === slash[1].toLowerCase());
+    if (slash && command) {
+      // commands go to the bot in plain text (bots can't read encrypted messages)
+      const { error } = await supabase.rpc('use_bot_command', { p_channel: channel.id, p_app: command.app_id, p_command: command.name, p_args: slash[2] ?? '' });
+      if (error) throw error;
+      return;
+    }
     if (automod && containsSlur(text)) throw new Error('AutoMod blocked this message: it contains a slur this server doesn’t allow.');
     if (files.length && !can(P.ATTACH_FILES)) throw new Error('You can’t upload files here: your roles don’t have the “Attach Files” permission.');
     if (opts.poll && !can(P.CREATE_POLLS)) throw new Error('You can’t post polls here: your roles don’t have the “Create Polls” permission.');
@@ -385,15 +398,16 @@ export function ChatView({
   }
 
   const timeline = useMemo(() => {
-    const items: ({ kind: 'msg'; m: DecryptedMessage; at: string } | { kind: 'join'; e: JoinEvent; at: string })[] = messages.map((m) => ({
+    const items: ({ kind: 'msg'; m: DecryptedMessage; at: string } | { kind: 'join'; e: JoinEvent; at: string } | { kind: 'bot'; b: BotMessage; at: string })[] = messages.map((m) => ({
       kind: 'msg' as const,
       m,
       at: m.row.created_at,
     }));
     const oldest = messages[0]?.row.created_at;
     for (const e of joins) if (!hasMore || !oldest || e.created_at >= oldest) items.push({ kind: 'join', e, at: e.created_at });
+    for (const b of botMessages) if (!hasMore || !oldest || b.created_at >= oldest) items.push({ kind: 'bot', b, at: b.created_at });
     return items.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
-  }, [messages, joins, hasMore]);
+  }, [messages, joins, botMessages, hasMore]);
 
   // first unread message (from someone else) when you opened the conversation
   const firstUnread = useMemo(() => {
@@ -412,9 +426,10 @@ export function ChatView({
       channels: (data?.channels ?? []).filter((c) => c.type === 'text').map((c) => ({ id: c.id, label: c.name })),
       everyone: Boolean(data) && can(P.MENTION_EVERYONE),
       emoji: customEmoji(expressions),
+      commands: botCommands,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, dmMembers, me, expressions]);
+  }, [data, dmMembers, me, expressions, botCommands]);
 
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File[]>([]);
@@ -591,6 +606,13 @@ export function ChatView({
                 <span>{new Date(item.at).toLocaleDateString(undefined, { dateStyle: 'long' })}</span>
               </div>
             );
+            if (item.kind === 'bot')
+              return (
+                <Fragment key={item.b.id}>
+                  {divider}
+                  <BotMessageItem b={item.b} app={botApps[item.b.app_id]} ctx={mentionCtx} canManage={canManage} />
+                </Fragment>
+              );
             if (item.kind === 'join') {
               const line = JOIN_LINES[parseInt(item.e.id.slice(0, 4), 16) % JOIN_LINES.length];
               return (
@@ -1474,5 +1496,66 @@ function ForwardModal({ m, onClose }: { m: DecryptedMessage; onClose: () => void
       <input placeholder="Add a message (optional)" maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
       <p className="small muted">Forwarded messages are re-encrypted for the new conversation.</p>
     </Modal>
+  );
+}
+
+/** A bot's post: plain text (not end-to-end encrypted) with an optional embed. */
+function BotMessageItem({ b, app, ctx, canManage }: { b: BotMessage; app?: Application; ctx: MentionContext; canManage: boolean }) {
+  return (
+    <div
+      className="message bot-message"
+      onContextMenu={(e) =>
+        openMenu(e, [
+          { type: 'header', label: app?.name ?? 'Bot' },
+          { label: 'Copy Text', icon: 'copy', onClick: () => navigator.clipboard.writeText(b.content) },
+          ...(canManage ? [{ label: 'Delete Message', icon: 'trash', danger: true, onClick: () => supabase.from('bot_messages').delete().eq('id', b.id).then(() => {}) }] : []),
+        ])
+      }
+    >
+      <span className="bot-avatar">{app ? <PresetLogo preset={app.preset} color={app.color} size={40} /> : <Icon name="bot" size={22} />}</span>
+      <div className="message-body">
+        <div className="message-head">
+          <span className="author">{b.username ?? app?.name ?? 'Bot'}</span>
+          <BotTag />
+          <time dateTime={b.created_at}>{friendlyTime(new Date(b.created_at))}</time>
+          <span className="bot-plain" title="Bots can’t use end-to-end encryption, so this message is stored as plain text.">
+            <Icon name="unlock" size={12} />
+          </span>
+        </div>
+        {b.content && (
+          <div className="message-text">
+            <Markdown text={b.content} ctx={ctx} />
+          </div>
+        )}
+        {b.embed && (
+          <div className="bot-embed" style={{ borderColor: b.embed.color ?? app?.color }}>
+            {b.embed.title &&
+              (b.embed.url ? (
+                <a className="bot-embed-title" href={b.embed.url} target="_blank" rel="noopener noreferrer nofollow">
+                  {b.embed.title}
+                </a>
+              ) : (
+                <div className="bot-embed-title">{b.embed.title}</div>
+              ))}
+            {b.embed.description && (
+              <div className="small">
+                <Markdown text={b.embed.description} ctx={ctx} />
+              </div>
+            )}
+            {b.embed.fields && (
+              <div className="bot-embed-fields">
+                {b.embed.fields.map((f, i) => (
+                  <div key={i}>
+                    <b className="small">{f.name}</b>
+                    <div className="small">{f.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {b.embed.footer && <div className="small muted">{b.embed.footer}</div>}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

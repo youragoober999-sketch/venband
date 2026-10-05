@@ -227,16 +227,19 @@ export function useServerData(serverId: string | null): ServerData {
     members: [] as Member[],
     memberRoles: [] as MemberRole[],
     channelAccess: [] as { channel_id: string; role_id: string }[],
+    serverPermissions: null as number | null,
   });
 
   const load = useCallback(async () => {
     if (!serverId) return;
-    const [s, c, r, m, mr] = await Promise.all([
+    const [s, c, r, m, mr, sp] = await Promise.all([
       supabase.from('servers').select('*').eq('id', serverId).maybeSingle(),
       supabase.from('channels').select('*').eq('server_id', serverId).order('position').order('created_at'),
       supabase.from('roles').select('*').eq('server_id', serverId).order('position', { ascending: false }),
       supabase.from('server_members').select('*').eq('server_id', serverId),
       supabase.from('member_roles').select('*').eq('server_id', serverId),
+      // the server's own answer also covers read-only states (rules not accepted, Voogle not passed)
+      supabase.rpc('server_permissions', { p_server: serverId }),
     ]);
     const channels = (c.data ?? []) as Channel[];
     const ca = channels.length
@@ -250,11 +253,12 @@ export function useServerData(serverId: string | null): ServerData {
       members: (m.data ?? []) as Member[],
       memberRoles: (mr.data ?? []) as MemberRole[],
       channelAccess: (ca.data ?? []) as { channel_id: string; role_id: string }[],
+      serverPermissions: typeof sp.data === 'number' ? sp.data : null,
     });
   }, [serverId]);
 
   useEffect(() => {
-    setState({ server: null, channels: [], roles: [], members: [], memberRoles: [], channelAccess: [] });
+    setState({ server: null, channels: [], roles: [], members: [], memberRoles: [], channelAccess: [], serverPermissions: null });
     load();
   }, [load]);
 
@@ -283,7 +287,8 @@ export function useServerData(serverId: string | null): ServerData {
         .sort((a, b) => b.position - a.position);
     const myPermissions =
       me && state.server
-        ? computePermissions(me.id, state.server.owner_id, state.roles, new Set(rolesOf(me.id).map((r) => r.id)))
+        ? computePermissions(me.id, state.server.owner_id, state.roles, new Set(rolesOf(me.id).map((r) => r.id))) &
+          (state.serverPermissions ?? 0x7fffffff)
         : 0;
     return {
       ...state,

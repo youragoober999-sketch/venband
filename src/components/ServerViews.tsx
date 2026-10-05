@@ -16,6 +16,7 @@ import { Markdown } from './Markdown';
 import { askText } from './Dialogs';
 import { Avatar, Field, Icon, Modal } from './ui';
 import type { ThreadInfo } from '../lib/chatExtras';
+import { voogleVerify } from '../lib/voogle';
 
 // ---------------------------------------------------------------- welcome --
 
@@ -468,6 +469,56 @@ export function StageView({ channel, data }: { channel: Channel; data: ServerDat
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** "Verify with Voogle" bar for servers that require it, until you pass. */
+export function VoogleGate({ data }: { data: ServerData }) {
+  const server = data.server!;
+  const [state, setState] = useState<{ result: string; reason?: string } | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const exempt = has(data.myPermissions, P.MANAGE_SERVER) || has(data.myPermissions, P.KICK_MEMBERS) || has(data.myPermissions, P.BAN_MEMBERS) || has(data.myPermissions, P.MODERATE_MEMBERS);
+  useEffect(() => {
+    supabase
+      .from('voogle_verifications')
+      .select('result, reason')
+      .eq('server_id', server.id)
+      .eq('user_id', sessionStore.get().identity!.userId)
+      .maybeSingle()
+      .then(({ data: row }) => setState((row as { result: string; reason: string } | null) ?? null));
+  }, [server.id]);
+  if (exempt || state === undefined || state?.result === 'passed') return null;
+  return (
+    <div className={`voogle-gate ${state?.result ?? 'todo'}`}>
+      <Icon name="shield" size={18} />
+      <span className="grow">
+        {state?.result === 'review'
+          ? 'Thanks! A moderator will check your verification shortly.'
+          : state?.result === 'blocked'
+            ? `Verification didn’t pass. ${state.reason ?? ''}`
+            : `${server.name} uses Voogle to keep alt accounts out. Verify to start talking — it takes a second and never shares your IP.`}
+      </span>
+      {state?.result !== 'review' && (
+        <button
+          className="btn success small"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const r = await voogleVerify(server.id);
+              setState(r);
+              if (r.result === 'passed') data.reload();
+            } catch (e) {
+              setState({ result: 'blocked', reason: errorMessage(e) });
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? 'Checking…' : state ? 'Try again' : 'Verify'}
+        </button>
       )}
     </div>
   );

@@ -7,7 +7,11 @@ import { Logo } from './components/ui';
 import { Onboarding } from './components/Onboarding';
 import { ContextMenuHost } from './components/ContextMenu';
 import { InvitePage } from './components/Invite';
-import { parseRoute, useRoute } from './lib/router';
+import { parseRoute, useRoute, type Route } from './lib/router';
+import { ChangelogPage, GuidelinesPage, PrivacyPage, PublicDiscovery, StatusPage, TermsPage } from './components/PublicPages';
+import { ApplicationsPage } from './components/Apps';
+import { VooglePage } from './components/Voogle';
+import { DialogHost } from './components/Dialogs';
 
 export default function App() {
   const status = sessionStore.use((s) => s.status);
@@ -18,6 +22,14 @@ export default function App() {
   }, []);
 
   const route = parseRoute(useRoute());
+  if (route.kind === 'page')
+    return (
+      <>
+        <PublicRoute route={route} />
+        <DialogHost />
+        <ContextMenuHost />
+      </>
+    );
   if (!configured) return <NotConfigured />;
   // invite links work signed in or out
   if (route.kind === 'invite' && (status === 'signed-out' || (status === 'ready' && hasProfile && !needsOnboarding))) return <InvitePage code={route.code} />;
@@ -47,6 +59,27 @@ export default function App() {
     case 'ready':
       if (!hasProfile) return <SetupErrorScreen />;
       return needsOnboarding ? <Onboarding /> : <Shell />;
+  }
+}
+
+function PublicRoute({ route }: { route: Extract<Route, { kind: 'page' }> }) {
+  switch (route.page) {
+    case 'status':
+      return <StatusPage />;
+    case 'tos':
+      return <TermsPage />;
+    case 'privacy':
+      return <PrivacyPage />;
+    case 'guidelines':
+      return <GuidelinesPage />;
+    case 'changelog':
+      return <ChangelogPage />;
+    case 'discovery':
+      return <PublicDiscovery />;
+    case 'applications':
+      return <ApplicationsPage id={route.id} />;
+    case 'voogle':
+      return <VooglePage />;
   }
 }
 

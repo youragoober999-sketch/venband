@@ -1,4 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useApps, useServerBots } from '../lib/bots';
+import { BotTag, PresetLogo } from './Apps';
 import { sessionStore, updateMyProfile } from '../lib/session';
 import { supabase, errorMessage } from '../lib/supabase';
 import { activeCallVersion, getActiveCall, joinCall, leaveCall, leftRecently, subscribeActiveCall } from '../lib/call';
@@ -50,7 +52,7 @@ import { Resizer } from './Resizer';
 import { showUndo, UndoToast } from './Undo';
 import { GlobalModals, openGlobalModal } from './GlobalModals';
 import { themeVars } from './ServerSettingsExtra';
-import { ForumView, StageView, WelcomeScreen } from './ServerViews';
+import { ForumView, StageView, VoogleGate, WelcomeScreen } from './ServerViews';
 import { SavedView, SearchPanel } from './Search';
 import { mentionsMe } from './Markdown';
 
@@ -1067,6 +1069,7 @@ function ServerView({ serverId }: { serverId: string }) {
                 : 'This server was banned by Venband staff.'}
           </div>
         )}
+        {data.server.voogle?.enabled && data.server.voogle.required && <VoogleGate data={data} />}
         {welcome === 'show' && (
           <WelcomeScreen
             data={data}
@@ -1563,7 +1566,32 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
           })}
         </div>
       ))}
+      <BotMembers serverId={data.server!.id} />
     </aside>
+  );
+}
+
+function BotMembers({ serverId }: { serverId: string }) {
+  const bots = useServerBots(serverId);
+  const apps = useApps(bots.map((b) => b.app_id));
+  if (!bots.length) return null;
+  return (
+    <div>
+      <div className="members-title">Bots — {bots.length}</div>
+      {bots.map((b) => {
+        const a = apps[b.app_id];
+        return (
+          <div key={b.id} className="member bot-member" title={a?.description || undefined}>
+            {a ? <PresetLogo preset={a.preset} color={a.color} size={32} /> : <Icon name="bot" size={22} />}
+            <span className="member-text">
+              <span className="member-name">
+                {a?.name ?? 'Bot'} <BotTag />
+              </span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

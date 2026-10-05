@@ -62,7 +62,19 @@ function devApi(env: Record<string, string>): Plugin {
           const mod = await import(/* @vite-ignore */ `${process.cwd()}/api/${m[1]}.js?t=${Date.now()}`);
           const headers = new Headers();
           for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v);
-          const response: Response = await mod.GET(new Request(`http://localhost${req.url}`, { headers }));
+          const method = (req.method ?? 'GET').toUpperCase();
+          const handler = mod[method];
+          if (!handler) {
+            res.statusCode = 405;
+            return res.end('method not allowed');
+          }
+          let body: Buffer | undefined;
+          if (method === 'POST') {
+            const chunks: Buffer[] = [];
+            for await (const c of req) chunks.push(c as Buffer);
+            body = Buffer.concat(chunks);
+          }
+          const response: Response = await handler(new Request(`http://localhost${req.url}`, { method, headers, body: body ? new Uint8Array(body) : undefined }));
           res.statusCode = response.status;
           response.headers.forEach((v, k) => res.setHeader(k, v));
           res.end(Buffer.from(await response.arrayBuffer()));

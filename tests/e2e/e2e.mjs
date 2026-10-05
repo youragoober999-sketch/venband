@@ -853,18 +853,19 @@ log('✅ invite links show an embed with the server name and a Join button');
 await alice.page.locator('.rail-item[aria-label="Add a server"]').click();
 await alice.page.locator('.modal .template-card', { hasText: 'Gaming' }).click();
 await alice.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
-await alice.page.locator('.modal input').first().fill('Frag Squad');
+const fragName = `Frag Squad ${run}`;
+await alice.page.locator('.modal input').first().fill(fragName);
 await alice.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
 await alice.page.locator('.modal .check-row input[type=checkbox]').check();
 await alice.page.locator('.modal textarea').first().fill('We play every night');
 await alice.page.locator('.modal .chip', { hasText: 'Gaming' }).first().click();
 await alice.page.locator('.modal').getByRole('button', { name: 'Create server' }).click();
-await alice.page.locator('.server-header', { hasText: 'Frag Squad' }).waitFor({ timeout: 20000 });
+await alice.page.locator('.server-header', { hasText: fragName }).waitFor({ timeout: 20000 });
 for (const ch of ['looking-for-group', 'game-guides', 'Lobby', 'Tournament Stage']) await alice.page.locator('.channel .channel-name').getByText(ch, { exact: true }).waitFor({ timeout: 15000 });
 log('✅ server templates create their channels (forum, stage, voice included)');
 await alice.page.locator('.user-panel [title="User settings"]').click();
 await alice.page.locator('.sp-tab', { hasText: 'Discovery Applications' }).click();
-const app = alice.page.locator('.queue-card', { hasText: 'Frag Squad' });
+const app = alice.page.locator('.queue-card', { hasText: fragName });
 await app.waitFor({ timeout: 15000 });
 await app.getByRole('button', { name: 'Approve' }).click();
 await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
@@ -878,13 +879,119 @@ log('✅ discovery applications reach the staff queue and can be approved');
 
 // ---- server folders: drop a server on another
 const hqBtn = alice.page.locator('.rail-item[aria-label="Venband HQ"]');
-const fragBtn = alice.page.locator('.rail-item[aria-label="Frag Squad"]');
+const fragBtn = alice.page.locator(`.rail-item[aria-label="${fragName}"]`);
 await fragBtn.dragTo(hqBtn);
 await alice.page.locator('.rail-item.folder').waitFor({ timeout: 10000 });
 await alice.page.locator('.rail-item.folder').click();
-await alice.page.locator('.folder-panel .rail-item[aria-label="Frag Squad"]').waitFor({ timeout: 10000 });
+await alice.page.locator(`.folder-panel .rail-item[aria-label="${fragName}"]`).waitFor({ timeout: 10000 });
 await alice.page.locator('.folder-panel [aria-label="Close folder"]').click();
 log('✅ dragging a server onto another makes a folder');
+
+// ---- public pages work signed out
+{
+  const anonCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const anon = await anonCtx.newPage();
+  await anon.goto(APP + 'status');
+  await anon.locator('.status-row').nth(5).waitFor({ timeout: 15000 });
+  await anon.locator('.status-pill.ok', { hasText: 'Operational' }).first().waitFor({ timeout: 20000 });
+  if (SHOTS) await anon.screenshot({ path: `${SHOTS}/20-status.png` });
+  await anon.goto(APP + 'Tos');
+  await anon.getByRole('heading', { name: 'Terms of Service' }).waitFor({ timeout: 10000 });
+  await anon.goto(APP + 'discovery');
+  await anon.locator(`.public-server[data-server-id="${hqId}"]`).waitFor({ timeout: 15000 });
+  if (SHOTS) await anon.screenshot({ path: `${SHOTS}/21-discovery.png` });
+  await anon.goto(APP + 'applications');
+  await anon.getByText('Log in to make applications').waitFor({ timeout: 10000 });
+  await anon.goto(APP + 'Voogle');
+  await anon.getByRole('heading', { name: 'Voogle', exact: true }).waitFor({ timeout: 10000 });
+  await anonCtx.close();
+  log('✅ /status, /tos, /discovery, /applications and /voogle work signed out');
+}
+
+// ---- bots: a management bot joins by invite, posts through the API, answers /serverinfo
+const hqChat = execSync(`psql ${DB} -Atc "select id from public.channels where server_id = '${hqId}' and name = 'chat'"`).toString().trim();
+await alice.page.goto(APP + 'applications');
+await alice.page.locator('.preset-card', { hasText: 'Server management' }).click();
+await alice.page.locator('.create-app input').fill('HQ Helper');
+await alice.page.getByRole('button', { name: 'Create bot' }).click();
+await alice.page.locator('.app-dash-head h1', { hasText: 'HQ Helper' }).waitFor({ timeout: 15000 });
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/22-bot-dashboard.png` });
+await alice.page.getByLabel('Server invite').fill(invite2);
+await alice.page.getByRole('button', { name: 'Add bot' }).click();
+await alice.page.locator('.form-notice', { hasText: 'joined the server' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.app-dash .tabs button', { hasText: 'Token' }).click();
+await alice.page.getByRole('button', { name: 'Make a token' }).click();
+const botToken = await alice.page.getByLabel('Bot token').inputValue();
+if (!/^vb_[0-9a-f]{32}_/.test(botToken)) throw new Error('unexpected token ' + botToken.slice(0, 12));
+const apiRes = await fetch(APP + 'api/bot', {
+  method: 'POST',
+  headers: { authorization: `Bot ${botToken}`, 'content-type': 'application/json' },
+  body: JSON.stringify({ action: 'send', channel: hqChat, content: 'hello from the **bot API**', embed: { title: 'Release notes', description: 'v2 is out', color: '#3ba55d' } }),
+});
+if (apiRes.status !== 200) throw new Error('bot API failed: ' + (await apiRes.text()));
+const badRes = await fetch(APP + 'api/bot', { method: 'POST', headers: { authorization: 'Bot vb_nope', 'content-type': 'application/json' }, body: '{"action":"me"}' });
+if (badRes.status !== 401) throw new Error('bad token should be 401, got ' + badRes.status);
+await bob.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+const botMsg = bob.page.locator('.bot-message', { hasText: 'hello from the' });
+await botMsg.waitFor({ timeout: 20000 });
+await botMsg.locator('.bot-tag').waitFor();
+await botMsg.locator('.bot-embed', { hasText: 'Release notes' }).waitFor();
+await bob.page.locator('.members .bot-member', { hasText: 'HQ Helper' }).waitFor({ timeout: 10000 }).catch(() => {});
+log('✅ bots: added by pasting an invite, token API posts with a BOT tag and embed (bad tokens get 401)');
+await bob.page.locator('.composer textarea:not([disabled])').fill('/server');
+await bob.page.locator('.mention-pop', { hasText: 'serverinfo' }).waitFor({ timeout: 10000 });
+await bob.page.keyboard.press('Enter');
+await bob.page.keyboard.press('Enter');
+await bob.page.locator('.bot-message .bot-embed', { hasText: 'Members' }).waitFor({ timeout: 20000 });
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/23-bot-command.png` });
+log('✅ slash commands autocomplete and preset bots answer them');
+
+// ---- connect a site: webhook URL posts into a channel
+await alice.page.goto(APP + 'applications');
+await alice.page.locator('.preset-card', { hasText: 'Connect a site' }).click();
+await alice.page.locator('.create-app input').fill('Shop Feed');
+await alice.page.getByRole('button', { name: 'Create bot' }).click();
+await alice.page.getByLabel('Server invite').fill(invite2);
+await alice.page.getByRole('button', { name: 'Add bot' }).click();
+await alice.page.locator('.form-notice', { hasText: 'joined the server' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.bot-settings .vselect').first().click();
+await alice.page.getByRole('option', { name: '#chat' }).click();
+await alice.page.getByRole('button', { name: 'Create webhook URL' }).click();
+const hookUrl = await alice.page.locator('.secret-box input').inputValue();
+const hookRes = await fetch(hookUrl.replace(/^https?:\/\/[^/]+\//, APP), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: 'New order #1042', username: 'Shop' }) });
+if (hookRes.status !== 200) throw new Error('webhook failed: ' + (await hookRes.text()));
+await bob.page.locator('.bot-message', { hasText: 'New order #1042' }).waitFor({ timeout: 20000 });
+log('✅ connect-a-site webhooks post into the chosen channel');
+
+// ---- Voogle: required verification, then alt lookup without any IP data
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.server-header').click();
+await alice.page.getByRole('button', { name: /Server Settings/ }).click();
+await alice.page.locator('.settings-nav button', { hasText: 'Voogle' }).click();
+await alice.page.locator('.check-row', { hasText: 'Use Voogle in this server' }).locator('input').check();
+await alice.page.locator('.check-row', { hasText: 'must verify' }).locator('input').check();
+await alice.page.locator('.settings-content').getByRole('button', { name: 'Save' }).click();
+await alice.page.locator('.settings-content .form-notice', { hasText: 'Saved' }).waitFor({ timeout: 10000 });
+await alice.page.keyboard.press('Escape');
+await bob.page.reload();
+const gate = bob.page.locator('.voogle-gate');
+await gate.waitFor({ timeout: 20000 });
+if (await bob.page.locator('.composer textarea:not([disabled])').count()) throw new Error('should not be able to talk before verifying');
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/24-voogle-gate.png` });
+await gate.getByRole('button', { name: 'Verify' }).click();
+await gate.waitFor({ state: 'detached', timeout: 20000 });
+await bob.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
+log('✅ Voogle: members verify before talking, then the composer unlocks');
+await alice.page.goto(APP + 'voogle');
+await alice.page.getByLabel('User').fill('@bob_' + run);
+await alice.page.getByRole('button', { name: 'Look up' }).click();
+await alice.page.locator('.risk-badge').waitFor({ timeout: 15000 });
+const lookupText = await alice.page.locator('.lookup-result').innerText();
+if (/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(lookupText)) throw new Error('lookup leaked an IP address');
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/25-voogle-lookup.png` });
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.server-header').waitFor({ timeout: 20000 });
+log('✅ Voogle lookups show a risk score and likely alts, never IPs');
 
 // ---- phone layout
 await bob.page.setViewportSize({ width: 390, height: 844 });

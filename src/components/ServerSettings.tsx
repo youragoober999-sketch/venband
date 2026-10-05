@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { IntegrationsTab, VoogleTab } from './ServerSettingsBots';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
@@ -11,7 +12,7 @@ import { showUndo } from './Undo';
 import { DiscoveryTab, ExpressionsTab, InvitesTab, JoiningTab, ThemeTab } from './ServerSettingsExtra';
 import { Select } from './Select';
 
-type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'expressions' | 'theme' | 'joining' | 'discovery';
+type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'expressions' | 'theme' | 'joining' | 'discovery' | 'integrations' | 'voogle';
 
 export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClose: () => void }) {
   const p = data.myPermissions;
@@ -24,6 +25,8 @@ export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClo
     ['members', 'Members', true],
     ['invites', 'Invites', has(p, P.MANAGE_SERVER)],
     ['discovery', 'Discovery', has(p, P.MANAGE_SERVER)],
+    ['integrations', 'Integrations & Bots', has(p, P.MANAGE_INTEGRATIONS) || has(p, P.MANAGE_SERVER)],
+    ['voogle', 'Voogle', has(p, P.MANAGE_SERVER)],
     ['bans', 'Bans', has(p, P.BAN_MEMBERS)],
   ];
   const visible = tabs.filter((t) => t[2]);
@@ -45,6 +48,8 @@ export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClo
           {tab === 'invites' && <InvitesTab data={data} />}
           {tab === 'expressions' && <ExpressionsTab data={data} />}
           {tab === 'theme' && <ThemeTab data={data} />}
+          {tab === 'integrations' && <IntegrationsTab data={data} />}
+          {tab === 'voogle' && <VoogleTab data={data} />}
           {tab === 'joining' && <JoiningTab data={data} />}
           {tab === 'discovery' && <DiscoveryTab data={data} />}
           {tab === 'bans' && <Bans data={data} />}
