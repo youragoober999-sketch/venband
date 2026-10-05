@@ -1085,6 +1085,7 @@ function MessageItem({
   const link = linkTo(`channels/${data?.server?.id ?? '@me'}/${m.row.channel_id}/${m.row.id}`);
   const react = (emoji: string) => toggleReaction(m.row, emoji, reactions.find((g) => g.emoji === emoji)?.mine ?? null).catch((e) => alert(errorMessage(e)));
 
+
   function menu(e: React.MouseEvent) {
     const anchor = e.currentTarget as HTMLElement;
     const items: Entry[] = [
