@@ -1,0 +1,47 @@
+name: Vix Api
+
+on:
+  pull_request:
+    paths: ['vix-api/**', '.github/workflows/vix-api.yml']
+  push:
+    paths: ['vix-api/**', '.github/workflows/vix-api.yml']
+
+defaults:
+  run:
+    working-directory: vix-api
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vix-api/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Schema applies cleanly (twice) and stays locked to the secret key
+        run: |
+          psql -v ON_ERROR_STOP=1 -d postgres -c "create database vix"
+          psql -v ON_ERROR_STOP=1 -d vix -f ../tests/db/supabase_stub.sql
+          psql -v ON_ERROR_STOP=1 -d vix -q -f supabase/schema.sql
+          psql -v ON_ERROR_STOP=1 -d vix -q -f supabase/schema.sql
+          psql -v ON_ERROR_STOP=1 -d vix -c "set role anon; select count(*) from vix_users;" && exit 1 || echo "anon is denied, as expected"
+          psql -v ON_ERROR_STOP=1 -d vix -c "set role service_role; select count(*) from vix_users;"
+      - run: npm run build

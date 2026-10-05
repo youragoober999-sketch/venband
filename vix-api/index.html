@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Vix Api - build and host APIs in any language</title>
+    <meta name="description" content="Vix Api: write APIs in JavaScript, Python, Rust, Batch, Java, C# and 50+ languages, test them in a built-in sandbox, and keep them online 24/7 with API keys. Plug them into AI agents, Unity, Unreal, Godot, Roblox and more." />
+    <meta name="theme-color" content="#0b0b14" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <script>
+      // Apply the saved theme before first paint so there is no flash.
+      try {
+        var s = JSON.parse(localStorage.getItem('vix:settings') || '{}');
+        var t = s.theme || 'system';
+        if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        document.documentElement.dataset.theme = t;
+      } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+    </script>
+  </head>
+  <body>
+    <noscript>Vix Api needs JavaScript turned on.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

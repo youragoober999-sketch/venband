@@ -1,0 +1,31 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/router.js": { "maxDuration": 30, "includeFiles": "{shared/**,node_modules/@jitl/quickjs-wasmfile-release-sync/dist/**}" },
+    "api/run.js": { "maxDuration": 30, "includeFiles": "{shared/**,node_modules/@jitl/quickjs-wasmfile-release-sync/dist/**}" },
+    "api/cron.js": { "maxDuration": 60, "includeFiles": "{shared/**,node_modules/@jitl/quickjs-wasmfile-release-sync/dist/**}" }
+  },
+  "crons": [{ "path": "/api/cron", "schedule": "17 4 * * *" }],
+  "rewrites": [
+    { "source": "/v1/:path*", "destination": "/api/run?__path=:path*" },
+    { "source": "/api/:path((?!run$|cron$|router$).*)", "destination": "/api/router?__path=:path" },
+    { "source": "/((?!api/|v1/|assets/|favicon|icon|robots\\.txt|site\\.webmanifest).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/((?!v1/).*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=()" }
+      ]
+    },
+    { "source": "/assets/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] }
+  ]
+}

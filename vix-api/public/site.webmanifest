@@ -1,0 +1,9 @@
+{
+  "name": "Vix Api",
+  "short_name": "Vix Api",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0b0b14",
+  "theme_color": "#0b0b14",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
