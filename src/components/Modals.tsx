@@ -1,31 +1,81 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { supabase, appUrl, errorMessage } from '../lib/supabase';
+import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { loadProfiles, putProfile } from '../lib/directory';
 import type { Channel, DmChannel, Profile } from '../lib/types';
 import { openChannel, openServer, type ServerData } from '../hooks/data';
 import { Avatar, ColorPicker, Field, Icon, Modal, randomColor } from './ui';
 import { Select } from './Select';
+import { ImageCropper } from './ImageCropper';
+import { askConfirm } from './Dialogs';
+import { InviteFriendsList } from './Invite';
+import { inviteCodeFrom, inviteUrl } from '../lib/dmSend';
 
 // ------------------------------------------------------ create/join server --
 
+export const SERVER_TEMPLATES = [
+  { id: 'default', emoji: '✨', name: 'Start from scratch', desc: 'A welcome channel, a chat and a voice channel.' },
+  { id: 'gaming', emoji: '🎮', name: 'Gaming', desc: 'LFG, clips, guides forum, voice lobbies and a tournament stage.' },
+  { id: 'friends', emoji: '🫶', name: 'Friends', desc: 'General, memes, photos, plans and a hangout call.' },
+  { id: 'hangout', emoji: '🛋️', name: 'Hangout Server', desc: 'Introductions, music, pets, food and chill voice rooms.' },
+  { id: 'school', emoji: '🎒', name: 'School Club', desc: 'Announcements, homework help, resources, Q&A forum, meeting stage.' },
+  { id: 'community', emoji: '🏘️', name: 'Local Community', desc: 'Local news, events, marketplace, suggestions and a town hall.' },
+  { id: 'creators', emoji: '🎨', name: 'Artists & Creators', desc: 'Showcase, work-in-progress, feedback forum, commissions, live workshop.' },
+] as const;
+
+const DISCOVERY_CATEGORIES = ['Gaming', 'Music', 'Art', 'Education', 'Science & Tech', 'Entertainment', 'Community', 'Anime', 'Sports', 'Creators'];
+
+async function uploadServerPicture(serverId: string, kind: 'icon' | 'banner', blob: Blob) {
+  const path = `${serverId}/${kind}-${crypto.randomUUID()}.webp`;
+  const { error } = await supabase.storage.from('server-assets').upload(path, blob, { contentType: blob.type || 'image/webp', upsert: true });
+  if (error) throw error;
+  const url = supabase.storage.from('server-assets').getPublicUrl(path).data.publicUrl;
+  const { error: e2 } = await supabase.from('servers').update(kind === 'icon' ? { icon_url: url } : { banner_url: url }).eq('id', serverId);
+  if (e2) throw e2;
+}
+
 export function CreateJoinModal({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<'create' | 'join'>('create');
+  const [step, setStep] = useState(0);
+  const [template, setTemplate] = useState<string>('default');
   const [name, setName] = useState('');
   const [color, setColor] = useState(randomColor());
+  const [icon, setIcon] = useState<{ blob: Blob; url: string } | null>(null);
+  const [banner, setBanner] = useState<{ blob: Blob; url: string } | null>(null);
+  const [cropping, setCropping] = useState<{ file: File; kind: 'icon' | 'banner' } | null>(null);
+  const [description, setDescription] = useState('');
+  const [apply, setApply] = useState(false);
+  const [pitch, setPitch] = useState('');
+  const [cats, setCats] = useState<string[]>([]);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const me = sessionStore.use((s) => s.me)!;
 
-  async function create(e: FormEvent) {
-    e.preventDefault();
+  async function create() {
     setBusy(true);
     setError(null);
-    const { data, error } = await supabase.rpc('create_server', { p_name: name || `${me.display_name}'s server`, p_icon_color: color });
+    const { data, error } = await supabase.rpc('create_server', { p_name: name.trim() || `${me.display_name}'s server`, p_icon_color: color, p_template: template });
+    if (error) {
+      setBusy(false);
+      return setError(errorMessage(error));
+    }
+    const id = data as string;
+    const problems: string[] = [];
+    try {
+      if (icon) await uploadServerPicture(id, 'icon', icon.blob);
+      if (banner) await uploadServerPicture(id, 'banner', banner.blob);
+    } catch (e) {
+      problems.push(`pictures: ${errorMessage(e)}`);
+    }
+    if (description.trim()) await supabase.from('servers').update({ description: description.trim().slice(0, 300) }).eq('id', id);
+    if (apply) {
+      const { error: ae } = await supabase.rpc('apply_for_discovery', { p_server: id, p_pitch: pitch.trim(), p_categories: cats, p_language: navigator.language.split('-')[0] });
+      if (ae) problems.push(`discovery: ${errorMessage(ae)}`);
+    }
     setBusy(false);
-    if (error) return setError(errorMessage(error));
-    openServer(data as string);
+    openServer(id);
+    if (problems.length) alert(`Your server was created, but: ${problems.join('; ')}`);
     onClose();
   }
 
@@ -34,7 +84,7 @@ export function CreateJoinModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     const raw = code.trim();
-    const parsed = raw.includes('invite=') ? new URL(raw).searchParams.get('invite') ?? raw : raw.split('/').pop() ?? raw;
+    const parsed = inviteCodeFrom(raw) ?? raw.replace(/\/+$/, '').split('/').pop() ?? raw;
     const { data, error } = await supabase.rpc('join_server', { p_code: parsed });
     setBusy(false);
     if (error) return setError(errorMessage(error));
@@ -42,8 +92,29 @@ export function CreateJoinModal({ onClose }: { onClose: () => void }) {
     onClose();
   }
 
+  const pick = (kind: 'icon' | 'banner') => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => input.files?.[0] && setCropping({ file: input.files[0], kind });
+    input.click();
+  };
+
   return (
-    <Modal title={tab === 'create' ? 'Create a server' : 'Join a server'} onClose={onClose}>
+    <Modal title={tab === 'create' ? 'Create a server' : 'Join a server'} onClose={onClose} wide={tab === 'create' && step === 0}>
+      {cropping && (
+        <ImageCropper
+          file={cropping.file}
+          opts={cropping.kind === 'icon' ? { aspect: 1, size: 512, round: true, title: 'Server icon' } : { aspect: 16 / 9, size: 1280, title: 'Server banner' }}
+          onCancel={() => setCropping(null)}
+          onDone={(blob) => {
+            const v = { blob, url: URL.createObjectURL(blob) };
+            if (cropping.kind === 'icon') setIcon(v);
+            else setBanner(v);
+            setCropping(null);
+          }}
+        />
+      )}
       <div className="tabs">
         <button className={tab === 'create' ? 'active' : ''} onClick={() => setTab('create')}>
           Create
@@ -54,21 +125,104 @@ export function CreateJoinModal({ onClose }: { onClose: () => void }) {
       </div>
       {error && <div className="form-error">{error}</div>}
       {tab === 'create' ? (
-        <form onSubmit={create}>
-          <p className="muted">Your server is where you and your friends hang out. Everything in it is end-to-end encrypted.</p>
-          <Field label="Server name">
-            <input maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder={`${me.display_name}'s server`} />
-          </Field>
-          <Field label="Icon color">
-            <ColorPicker value={color} onChange={setColor} />
-          </Field>
-          <button className="btn primary full" disabled={busy}>
-            Create
-          </button>
-        </form>
+        <>
+          <div className="steps" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <span key={i} className={i <= step ? 'on' : ''} />
+            ))}
+          </div>
+          {step === 0 && (
+            <>
+              <p className="muted">Pick a starting point. You can change every channel later.</p>
+              <div className="template-grid" role="radiogroup" aria-label="Template">
+                {SERVER_TEMPLATES.map((t) => (
+                  <button key={t.id} type="button" role="radio" aria-checked={template === t.id} className={`template-card${template === t.id ? ' selected' : ''}`} onClick={() => setTemplate(t.id)}>
+                    <span className="tpl-emoji">{t.emoji}</span>
+                    <b>{t.name}</b>
+                    <span className="tpl-desc">{t.desc}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="modal-actions">
+                <button className="btn primary" onClick={() => setStep(1)}>
+                  Next
+                </button>
+              </div>
+            </>
+          )}
+          {step === 1 && (
+            <>
+              <div className="create-pictures">
+                <button type="button" className={`pic-slot icon${icon ? ' has' : ''}`} style={icon ? { backgroundImage: `url(${icon.url})` } : { background: color }} onClick={() => pick('icon')} aria-label="Upload server icon">
+                  <Icon name="upload" size={20} /> Icon
+                </button>
+                <button type="button" className={`pic-slot${banner ? ' has' : ''}`} style={banner ? { backgroundImage: `url(${banner.url})` } : undefined} onClick={() => pick('banner')} aria-label="Upload server banner">
+                  <Icon name="image" size={20} /> Banner (optional)
+                </button>
+              </div>
+              <Field label="Server name">
+                <input autoFocus maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder={`${me.display_name}'s server`} />
+              </Field>
+              <Field label="Description" hint="Shown on invites and in discovery">
+                <textarea maxLength={300} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What's this server about?" />
+              </Field>
+              {!icon && (
+                <Field label="Icon color">
+                  <ColorPicker value={color} onChange={setColor} />
+                </Field>
+              )}
+              <div className="modal-actions">
+                <button className="btn secondary" onClick={() => setStep(0)}>
+                  Back
+                </button>
+                <button className="btn primary" onClick={() => setStep(2)}>
+                  Next
+                </button>
+              </div>
+            </>
+          )}
+          {step === 2 && (
+            <>
+              <label className="check-row">
+                <input type="checkbox" checked={apply} onChange={(e) => setApply(e.target.checked)} /> <b>Apply for Server Discovery</b>
+              </label>
+              <p className="small muted">Venband staff review applications. Approved servers appear on the Discover page where anyone can find and join them.</p>
+              {apply && (
+                <>
+                  <Field label="Why should people join?">
+                    <textarea maxLength={1000} rows={3} value={pitch} onChange={(e) => setPitch(e.target.value)} placeholder="A friendly place for…" />
+                  </Field>
+                  <Field label="Categories" hint="up to 3">
+                    <div className="chip-row">
+                      {DISCOVERY_CATEGORIES.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          className={`chip${cats.includes(c) ? ' on' : ''}`}
+                          aria-pressed={cats.includes(c)}
+                          onClick={() => setCats((x) => (x.includes(c) ? x.filter((y) => y !== c) : [...x, c].slice(0, 3)))}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                </>
+              )}
+              <div className="modal-actions">
+                <button className="btn secondary" onClick={() => setStep(1)}>
+                  Back
+                </button>
+                <button className="btn primary" disabled={busy} onClick={create}>
+                  {busy ? 'Creating…' : 'Create server'}
+                </button>
+              </div>
+            </>
+          )}
+        </>
       ) : (
         <form onSubmit={join}>
-          <p className="muted">Enter an invite code or link.</p>
+          <p className="muted">Enter an invite code or link, like venband.com/invite/abc123 or a custom link.</p>
           <Field label="Invite">
             <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. Ab3dEf9hIjKl" />
           </Field>
@@ -92,16 +246,17 @@ export function InviteModal({ serverId, serverName, onClose }: { serverId: strin
 
   useEffect(() => {
     setCode(null);
-    supabase.rpc('create_invite', { p_server: serverId, p_max_uses: maxUses, p_expires_in_hours: hours }).then(({ data, error }) => {
+    supabase.rpc('create_invite', { p_server: serverId, p_max_uses: maxUses, p_expires_in_hours: hours, p_min_account_days: 0, p_label: null }).then(({ data, error }) => {
       if (error) setError(errorMessage(error));
       else setCode(data as string);
     });
   }, [serverId, hours, maxUses]);
 
-  const link = code ? appUrl(`?invite=${code}`) : '';
+  const link = code ? inviteUrl(code) : '';
   return (
     <Modal title={`Invite friends to ${serverName}`} onClose={onClose}>
       {error && <div className="form-error">{error}</div>}
+      <InviteFriendsList serverId={serverId} serverName={serverName} />
       <Field label="Invite link">
         <div className="copy-row">
           <input readOnly value={link || 'Generating…'} onFocus={(e) => e.target.select()} />
@@ -177,6 +332,16 @@ export async function createCategory(data: ServerData, name: string) {
   data.reload();
 }
 
+export type NewChannelType = 'text' | 'voice' | 'forum' | 'announcement' | 'stage';
+
+export const CHANNEL_TYPES: { id: NewChannelType; label: string; icon: string; desc: string }[] = [
+  { id: 'text', label: 'Text', icon: 'hash', desc: 'Encrypted messages, files, threads and polls' },
+  { id: 'voice', label: 'Voice', icon: 'speaker', desc: 'Encrypted voice, video, screen share and a side chat' },
+  { id: 'forum', label: 'Forum', icon: 'thread', desc: 'Posts with tags; each post is its own discussion' },
+  { id: 'announcement', label: 'Announcement', icon: 'megaphone', desc: 'Everyone reads, only moderators post' },
+  { id: 'stage', label: 'Stage', icon: 'stage', desc: 'Speakers talk, the audience listens and raises hands' },
+];
+
 export function CreateChannelModal({
   data,
   onClose,
@@ -186,10 +351,10 @@ export function CreateChannelModal({
   data: ServerData;
   onClose: () => void;
   initialCategory?: string;
-  initialType?: 'text' | 'voice';
+  initialType?: NewChannelType;
 }) {
   const categories = serverCategories(data);
-  const [type, setType] = useState<'text' | 'voice'>(initialType);
+  const [type, setType] = useState<NewChannelType>(initialType);
   const [name, setName] = useState('');
   const [category, setCategory] = useState(initialCategory ?? categories.find((c) => /text/i.test(c)) ?? categories[0] ?? '');
   const [newCategory, setNewCategory] = useState('');
@@ -201,7 +366,7 @@ export function CreateChannelModal({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const clean = type === 'text' ? name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') : name.trim();
+    const clean = type === 'text' || type === 'forum' || type === 'announcement' ? name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') : name.trim();
     if (!clean) return setError('Name required');
     const cat = category === NEW ? newCategory.trim().slice(0, 100) : category;
     if (category === NEW && !cat) return setError('Name the new category');
@@ -239,13 +404,13 @@ export function CreateChannelModal({
       <form onSubmit={submit}>
         {error && <div className="form-error">{error}</div>}
         <div className="type-picker">
-          {(['text', 'voice'] as const).map((t) => (
-            <label key={t} className={`type-option${type === t ? ' selected' : ''}`}>
-              <input type="radio" checked={type === t} onChange={() => setType(t)} />
-              <Icon name={t === 'text' ? 'hash' : 'speaker'} />
+          {CHANNEL_TYPES.map((t) => (
+            <label key={t.id} className={`type-option${type === t.id ? ' selected' : ''}`}>
+              <input type="radio" checked={type === t.id} onChange={() => setType(t.id)} />
+              <Icon name={t.icon} />
               <div>
-                <b>{t === 'text' ? 'Text' : 'Voice'}</b>
-                <div className="small muted">{t === 'text' ? 'Encrypted messages, files and replies' : 'Encrypted voice, video, screen share and a side chat'}</div>
+                <b>{t.label}</b>
+                <div className="small muted">{t.desc}</div>
               </div>
             </label>
           ))}
@@ -340,7 +505,7 @@ export function ChannelSettingsModal({ channel, data, onClose }: { channel: Chan
   }
 
   async function remove() {
-    if (!confirm(`Delete #${channel.name}? All its encrypted messages are deleted too.`)) return;
+    if (!(await askConfirm({ title: `Delete #${channel.name}`, body: 'All of its encrypted messages are deleted too.', confirm: 'Delete Channel', danger: true }))) return;
     const { error } = await supabase.from('channels').delete().eq('id', channel.id);
     if (error) return setError(errorMessage(error));
     onClose();
@@ -558,7 +723,7 @@ export function GroupSettingsModal({ dm, onClose }: { dm: DmChannel; onClose: ()
       <button
         className="btn danger"
         onClick={async () => {
-          if (!confirm(`Leave “${dm.title}”? You won’t see new messages unless someone adds you back.`)) return;
+          if (!(await askConfirm({ title: `Leave ${dm.title}`, body: 'You won’t see new messages unless someone adds you back.', confirm: 'Leave Group', danger: true }))) return;
           const { error } = await supabase.rpc('leave_group', { p_channel: dm.channel.id });
           if (error) return setError(errorMessage(error));
           openChannel('@me', '');

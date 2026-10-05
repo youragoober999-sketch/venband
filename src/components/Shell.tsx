@@ -21,7 +21,7 @@ import {
 import { currentPath, go, linkTo, parseRoute, useRoute } from '../lib/router';
 import { socialStore } from '../lib/social';
 import { RING_MS, ringFor, subscribeRings } from '../lib/presence';
-import { getSettings, updateLayout, updateSettings, useSettings } from '../lib/settings';
+import { getSettings, updateLayout, updateSettings, useSettings, type ServerFolder } from '../lib/settings';
 import { isPhone, openSearch, openSettings, setDrawer, uiStore } from '../lib/ui';
 import {
   nav,
@@ -47,6 +47,10 @@ import { Badges, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
 import { DiscoveryView, DonateView, FriendsView, MessageRequestsView, RequestBanner } from './Friends';
 import { Resizer } from './Resizer';
+import { showUndo, UndoToast } from './Undo';
+import { GlobalModals, openGlobalModal } from './GlobalModals';
+import { themeVars } from './ServerSettingsExtra';
+import { ForumView, StageView, WelcomeScreen } from './ServerViews';
 import { SavedView, SearchPanel } from './Search';
 import { mentionsMe } from './Markdown';
 
@@ -101,6 +105,7 @@ function useMessageAlerts(servers: Server[]) {
     const mention = !isDm && mentionsMe(text, me.id, myRolesByServer.get(meta.server_id ?? '') ?? []);
     addUnread(row.channel_id, meta.server_id, mention);
     if ((getSettings().dms.mutedUntil[row.channel_id] ?? 0) > Date.now()) return;
+    if (meta.server_id && getSettings().rail.folders.some((f) => f.muted && f.servers.includes(meta.server_id!))) return;
     if ((!isDm && !mention) || rel?.muted || me.presence === 'dnd' || meta.request_to === me.id) return;
     playMessageSound();
     await loadProfiles([row.author_id]);
@@ -272,6 +277,30 @@ export function Shell() {
     knownServers.current = now;
   }, [loaded, servers, serverId]);
 
+  // came from a voice invite: jump into that voice channel once we're in the server
+  useEffect(() => {
+    let pending: { server: string; channel: string } | null = null;
+    try {
+      pending = JSON.parse(sessionStorage.getItem('venband:join-voice') ?? 'null');
+    } catch {
+      /* ignore */
+    }
+    if (!pending || !servers.some((x) => x.id === pending!.server)) return;
+    sessionStorage.removeItem('venband:join-voice');
+    const { server, channel } = pending;
+    supabase
+      .from('channels')
+      .select('id, name, type')
+      .eq('id', channel)
+      .maybeSingle()
+      .then(({ data: ch }) => {
+        if (!ch) return openServer(server);
+        openChannel(server, ch.id);
+        const id = sessionStore.get().identity;
+        if (id && (ch.type === 'voice' || ch.type === 'stage')) joinCall(id, ch.id, server, ch.name);
+      });
+  }, [servers]);
+
   // accept ?invite=CODE links
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get('invite');
@@ -303,6 +332,8 @@ export function Shell() {
       </div>
       {switcher && <QuickSwitcher servers={servers} dms={dms} onClose={() => uiStore.set({ switcher: false })} onCreateServer={() => setModal('create-join')} />}
       {search && <SearchPanel servers={servers} />}
+      <UndoToast />
+      <GlobalModals />
       <CallAudio />
       <div className="toasts">
         {dms
@@ -371,6 +402,145 @@ function ServerRail({
     openMenu(e, items);
   }
 
+  // ---- order + folders (saved in your synced settings)
+  const rail = useSettings((s) => s.rail);
+  const railFolders = rail.folders;
+  const [openFolder, setOpenFolder] = useState<string | null>(null);
+  const [railDnd, setRailDnd] = useState<{ drag: string | null; over: string | null; where: 'before' | 'after' | 'into' }>({ drag: null, over: null, where: 'into' });
+  const inFolder = new Set(railFolders.flatMap((f) => f.servers));
+  type RailItem = { kind: 'server'; key: string; server: Server } | { kind: 'folder'; key: string; folder: ServerFolder };
+  const railItems: RailItem[] = useMemo(() => {
+    const all: RailItem[] = [
+      ...railFolders.map((f) => ({ kind: 'folder' as const, key: `f:${f.id}`, folder: { ...f, servers: f.servers.filter((id) => servers.some((x) => x.id === id)) } })),
+      ...servers.filter((x) => !inFolder.has(x.id)).map((x) => ({ kind: 'server' as const, key: x.id, server: x })),
+    ].filter((i) => i.kind === 'server' || i.folder.servers.length > 0);
+    const rank = (k: string) => {
+      const i = rail.order.indexOf(k);
+      return i === -1 ? 10_000 : i;
+    };
+    return all.sort((x, y) => {
+      const px = x.kind === 'folder' && x.folder.pinned ? 0 : 1;
+      const py = y.kind === 'folder' && y.folder.pinned ? 0 : 1;
+      return px - py || rank(x.key) - rank(y.key);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servers, rail]);
+
+  const saveRail = (order: string[], folders: ServerFolder[]) => {
+    const prev = getSettings().rail;
+    updateSettings({ rail: { order, folders } });
+    return prev;
+  };
+
+  function railDragStart(e: React.DragEvent, key: string) {
+    e.dataTransfer.setData('application/x-venband-server', key);
+    e.dataTransfer.effectAllowed = 'move';
+    setRailDnd({ drag: key, over: null, where: 'into' });
+  }
+  function railDragOver(e: React.DragEvent, key: string) {
+    if (!railDnd.drag || railDnd.drag === key) return;
+    e.preventDefault();
+    const r = e.currentTarget.getBoundingClientRect();
+    const y = (e.clientY - r.top) / r.height;
+    // folders can't go inside folders: only before / after
+    const where = y < 0.28 ? 'before' : y > 0.72 ? 'after' : railDnd.drag.startsWith('f:') ? (y < 0.5 ? 'before' : 'after') : 'into';
+    setRailDnd((d) => ({ ...d, over: key, where }));
+  }
+  function railDrop(e: React.DragEvent, target: string) {
+    e.preventDefault();
+    const { drag, where } = railDnd;
+    setRailDnd({ drag: null, over: null, where: 'into' });
+    if (!drag || drag === target) return;
+    let folders = railFolders.map((f) => ({ ...f, servers: f.servers.filter((id) => id !== drag) })).filter((f) => f.servers.length > 0 || `f:${f.id}` === drag);
+    let order = railItems.map((i) => i.key).filter((k) => k !== drag);
+    let undoText = 'Moved server';
+    if (where === 'into') {
+      if (target.startsWith('f:')) {
+        folders = folders.map((f) => (`f:${f.id}` === target ? { ...f, servers: [...f.servers, drag] } : f));
+        undoText = 'Added to folder';
+      } else {
+        // dropping a server on a server makes a folder of both
+        const f: ServerFolder = { id: crypto.randomUUID(), name: 'New folder', color: '#5865f2', servers: [target, drag] };
+        folders = [...folders.map((x) => ({ ...x, servers: x.servers.filter((id) => id !== target) })), f];
+        order = order.map((k) => (k === target ? `f:${f.id}` : k));
+        undoText = 'Folder created';
+      }
+    } else {
+      const i = order.indexOf(target);
+      order.splice(where === 'before' ? i : i + 1, 0, drag);
+    }
+    const prev = saveRail(order, folders);
+    showUndo(undoText, () => updateSettings({ rail: prev }));
+  }
+
+  function folderMenu(e: React.MouseEvent, f: ServerFolder) {
+    const set = (patch: Partial<ServerFolder>) => updateSettings((st) => ({ rail: { ...st.rail, folders: st.rail.folders.map((x) => (x.id === f.id ? { ...x, ...patch } : x)) } }));
+    openMenu(e, [
+      { type: 'header', label: f.name },
+      {
+        label: 'Rename Folder',
+        icon: 'edit',
+        onClick: async () => {
+          const name = await askText({ title: 'Rename folder', label: 'Folder name', initial: f.name, maxLength: 40 });
+          if (name?.trim()) set({ name: name.trim() });
+        },
+      },
+      { label: f.pinned ? 'Unpin Folder' : 'Pin to Top', icon: 'pin', onClick: () => set({ pinned: !f.pinned }) },
+      { label: f.muted ? 'Unmute Folder' : 'Mute Folder', icon: f.muted ? 'bell' : 'bellOff', hint: f.muted ? '' : 'no sounds or pings', onClick: () => set({ muted: !f.muted }) },
+      {
+        type: 'custom',
+        render: (close) => (
+          <div className="ctx-colors">
+            {['#5865f2', '#eb459e', '#57f287', '#fee75c', '#ed4245', '#ffffff', '#9b59b6', '#1abc9c'].map((c) => (
+              <button key={c} style={{ background: c }} aria-label={`Color ${c}`} onClick={() => (set({ color: c }), close())} />
+            ))}
+          </div>
+        ),
+      },
+      { type: 'sep' },
+      { label: 'Remove Folder', icon: 'folder', danger: true, hint: 'servers stay', onClick: () => updateSettings((st) => ({ rail: { ...st.rail, folders: st.rail.folders.filter((x) => x.id !== f.id) } })) },
+    ]);
+  }
+
+  const serverButton = (s: Server, inPanel = false) => {
+    const st = serverState(s.id);
+    const folder = railFolders.find((f) => f.servers.includes(s.id));
+    return (
+      <button
+        key={s.id}
+        className={`rail-item${current === s.id ? ' active' : ''}${s.status && s.status !== 'active' ? ' frozen' : ''}${railDnd.over === s.id ? ` drop-${railDnd.where}` : ''}${railDnd.drag === s.id ? ' dragging' : ''}`}
+        onClick={() => {
+          openServer(s.id);
+          if (inPanel) setOpenFolder(null);
+        }}
+        onContextMenu={(e) => serverMenu(e, s)}
+        data-tip={s.name}
+        aria-label={s.name}
+        style={{ background: current === s.id ? s.icon_color : undefined }}
+        draggable
+        onDragStart={(e) => railDragStart(e, s.id)}
+        onDragOver={(e) => railDragOver(e, s.id)}
+        onDrop={(e) => railDrop(e, s.id)}
+        onDragEnd={() => setRailDnd({ drag: null, over: null, where: 'into' })}
+      >
+        <span className={`rail-pill${st.any ? ' unread' : ''}`} />
+        {s.icon_url ? (
+          <img className="rail-icon" src={s.icon_url} alt="" />
+        ) : (
+          <span className="rail-initials" style={{ color: current === s.id ? '#fff' : undefined }}>
+            {initials(s.name)}
+          </span>
+        )}
+        {st.mentions > 0 && !folder?.muted && <span className="badge">{st.mentions}</span>}
+        {s.verified && (
+          <span className="rail-verified">
+            <VerifiedMark size={14} />
+          </span>
+        )}
+      </button>
+    );
+  };
+
   return (
     <nav className="rail" aria-label="Servers">
       <button className={`rail-item home${current === null && !discover ? ' active' : ''}`} onClick={() => openServer(null)} title="Direct messages">
@@ -378,35 +548,67 @@ function ServerRail({
         {dmUnread > 0 && <span className="badge">{dmUnread > 99 ? '99+' : dmUnread}</span>}
       </button>
       <div className="rail-sep" />
-      {servers.map((s) => {
-        const st = serverState(s.id);
-        return (
-          <button
-            key={s.id}
-            className={`rail-item${current === s.id ? ' active' : ''}${s.status && s.status !== 'active' ? ' frozen' : ''}`}
-            onClick={() => openServer(s.id)}
-            onContextMenu={(e) => serverMenu(e, s)}
-            data-tip={s.name}
-            aria-label={s.name}
-            style={{ background: current === s.id ? s.icon_color : undefined }}
+      {railItems.map((it) =>
+        it.kind === 'server' ? (
+          serverButton(it.server)
+        ) : (
+          <div
+            key={it.folder.id}
+            className={`rail-folder${openFolder === it.folder.id ? ' open' : ''}${railDnd.over === `f:${it.folder.id}` ? ` drop-${railDnd.where}` : ''}`}
+            style={{ ['--folder' as string]: it.folder.color }}
           >
-            <span className={`rail-pill${st.any ? ' unread' : ''}`} />
-            {s.icon_url ? (
-              <img className="rail-icon" src={s.icon_url} alt="" />
-            ) : (
-              <span className="rail-initials" style={{ color: current === s.id ? '#fff' : undefined }}>
-                {initials(s.name)}
+            <button
+              className="rail-item folder"
+              data-tip={it.folder.name}
+              aria-label={`Folder ${it.folder.name}`}
+              aria-expanded={openFolder === it.folder.id}
+              draggable
+              onDragStart={(e) => railDragStart(e, `f:${it.folder.id}`)}
+              onDragOver={(e) => railDragOver(e, `f:${it.folder.id}`)}
+              onDrop={(e) => railDrop(e, `f:${it.folder.id}`)}
+              onDragEnd={() => setRailDnd({ drag: null, over: null, where: 'into' })}
+              onClick={() => setOpenFolder(openFolder === it.folder.id ? null : it.folder.id)}
+              onContextMenu={(e) => folderMenu(e, it.folder)}
+            >
+              <span className={`rail-pill${it.folder.servers.some((id) => serverState(id).any) ? ' unread' : ''}`} />
+              <span className="folder-grid">
+                {it.folder.servers.slice(0, 4).map((id) => {
+                  const sv = servers.find((x) => x.id === id);
+                  return sv ? (
+                    sv.icon_url ? <img key={id} src={sv.icon_url} alt="" /> : <span key={id} style={{ background: sv.icon_color }}>{initials(sv.name)[0]}</span>
+                  ) : null;
+                })}
               </span>
-            )}
-            {st.mentions > 0 && <span className="badge">{st.mentions}</span>}
-            {s.verified && (
-              <span className="rail-verified">
-                <VerifiedMark size={14} />
-              </span>
-            )}
-          </button>
-        );
-      })}
+              {it.folder.pinned && <span className="folder-pin"><Icon name="pin" size={10} /></span>}
+              {!it.folder.muted && it.folder.servers.reduce((n, id) => n + serverState(id).mentions, 0) > 0 && (
+                <span className="badge">{it.folder.servers.reduce((n, id) => n + serverState(id).mentions, 0)}</span>
+              )}
+            </button>
+          </div>
+        ),
+      )}
+      {openFolder && railFolders.find((f) => f.id === openFolder) && (
+        <div className="folder-panel" role="dialog" aria-label="Folder">
+          {(() => {
+            const f = railFolders.find((x) => x.id === openFolder)!;
+            return (
+              <>
+                <div className="folder-panel-head">
+                  <span className="folder-dot" style={{ background: f.color }} />
+                  <b className="grow ellipsis">{f.name}</b>
+                  {f.muted && <Icon name="bellOff" size={14} />}
+                  <button className="icon-btn small" onClick={() => setOpenFolder(null)} aria-label="Close folder">
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
+                <div className="folder-panel-list">
+                  {f.servers.map((id) => servers.find((x) => x.id === id)).filter(Boolean).map((sv) => serverButton(sv!, true))}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
       <div className="rail-bottom">
         <div className="rail-sep" />
         <button className="rail-item add" onClick={onAdd} data-tip="Add a server" aria-label="Add a server">
@@ -813,6 +1015,37 @@ function ServerView({ serverId }: { serverId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memberKey, data.channels.length, keyring]);
 
+  // the server's own look, unless you turned server themes off
+  const themeMode = useSettings((s) => s.serverThemes);
+  const theme = data.server?.theme;
+  useEffect(() => {
+    if (!theme || themeMode === 'never') return;
+    const vars = themeVars(themeMode === 'merge' ? { accent: theme.accent } : theme) as Record<string, string>;
+    const root = document.documentElement;
+    const before = Object.fromEntries(Object.keys(vars).map((k) => [k, root.style.getPropertyValue(k)]));
+    for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+    root.dataset.serverTheme = 'on';
+    return () => {
+      for (const [k, v] of Object.entries(before)) (v ? root.style.setProperty(k, v) : root.style.removeProperty(k));
+      delete root.dataset.serverTheme;
+    };
+  }, [theme, themeMode]);
+
+  // rules / welcome screen / onboarding for members who haven't been through it
+  const [welcome, setWelcome] = useState<'checking' | 'show' | 'done'>('checking');
+  const needsWelcome = Boolean(data.server && data.server.owner_id !== me.id && ((data.server.rules?.length ?? 0) > 0 || data.server.welcome?.message || (data.server.onboarding?.questions?.length ?? 0) > 0));
+  useEffect(() => {
+    if (!data.server) return;
+    if (!needsWelcome) return setWelcome('done');
+    supabase
+      .from('member_onboarding')
+      .select('completed_at, rules_accepted_at')
+      .eq('server_id', serverId)
+      .eq('user_id', me.id)
+      .maybeSingle()
+      .then(({ data: row }) => setWelcome(row?.completed_at && (row.rules_accepted_at || !(data.server!.rules?.length ?? 0)) ? 'done' : 'show'));
+  }, [serverId, needsWelcome, me.id, data.server]);
+
   if (!data.server) return <div className="main loading-main"><div className="spinner" /></div>;
   const status = data.server.status ?? 'active';
 
@@ -834,7 +1067,21 @@ function ServerView({ serverId }: { serverId: string }) {
                 : 'This server was banned by Venband staff.'}
           </div>
         )}
-        {channel?.type === 'voice' ? (
+        {welcome === 'show' && (
+          <WelcomeScreen
+            data={data}
+            onDone={() => {
+              setWelcome('done');
+              data.reload();
+            }}
+            onLater={() => setWelcome('done')}
+          />
+        )}
+        {channel?.type === 'forum' ? (
+          <ForumView channel={channel} data={data} />
+        ) : channel?.type === 'stage' ? (
+          <StageView channel={channel} data={data} />
+        ) : channel?.type === 'voice' ? (
           <VoiceChannelView
             channel={channel}
             data={data}
@@ -848,7 +1095,7 @@ function ServerView({ serverId }: { serverId: string }) {
           <ChatView
             channel={channel}
             title={channel.name}
-            canSend={has(data.myPermissions, P.SEND_MESSAGES)}
+            canSend={has(data.myPermissions, P.SEND_MESSAGES) && (channel.type !== 'announcement' || has(data.myPermissions, P.MANAGE_MESSAGES))}
             canManage={has(data.myPermissions, P.MANAGE_MESSAGES)}
             data={data}
             headerExtra={
@@ -1025,6 +1272,54 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
     ]);
   }
 
+  // ---- drag & drop
+  const [dnd, setDnd] = useState<{ drag: string | null; over: { id: string; where: 'before' | 'after' } | null; overCategory?: string }>({ drag: null, over: null });
+  const themeColors = data.server?.theme ?? {};
+
+  async function moveChannel(id: string, to: { beforeId: string | null; afterId: string | null; category: string }) {
+    const moving = data.channels.find((c) => c.id === id);
+    if (!moving) return;
+    const before = data.channels.map((c) => ({ id: c.id, position: c.position, category: c.category }));
+    // the order as shown, with the moved channel taken out and dropped in its new place
+    const ordered = groups.flatMap(([, list]) => list).filter((c) => c.id !== id);
+    let at = ordered.length;
+    if (to.beforeId) at = ordered.findIndex((c) => c.id === to.beforeId);
+    else if (to.afterId) at = ordered.findIndex((c) => c.id === to.afterId) + 1;
+    else {
+      const lastInCat = ordered.map((c) => c.category).lastIndexOf(to.category);
+      at = lastInCat === -1 ? ordered.length : lastInCat + 1;
+    }
+    ordered.splice(Math.max(0, at), 0, { ...moving, category: to.category });
+    const items = ordered.map((c, i) => ({ id: c.id, position: i, category: c.id === id ? to.category : c.category }));
+    const changedCategory = moving.category !== to.category;
+    let sync = false;
+    if (changedCategory) {
+      const sibling = data.channels.find((c) => c.category === to.category && c.id !== id);
+      if (sibling && sibling.is_private !== moving.is_private) {
+        sync = await askConfirm({
+          title: `Move #${moving.name} to ${to.category || 'no category'}`,
+          body: `Keep this channel’s current permissions, or sync them with the ${to.category} category (${sibling.is_private ? 'private' : 'visible to everyone'})?`,
+          confirm: 'Sync with category',
+        });
+        if (sync) {
+          await supabase.from('channels').update({ is_private: sibling.is_private }).eq('id', id);
+          if (sibling.is_private) {
+            const access = data.channelAccess.filter((a) => a.channel_id === sibling.id).map((a) => ({ channel_id: id, role_id: a.role_id }));
+            await supabase.from('channel_role_access').delete().eq('channel_id', id);
+            if (access.length) await supabase.from('channel_role_access').insert(access);
+          }
+        }
+      }
+    }
+    const { error } = await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: items });
+    if (error) return alert(errorMessage(error));
+    data.reload();
+    showUndo(`Moved #${moving.name}`, async () => {
+      await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: before });
+      data.reload();
+    });
+  }
+
   const voiceUsers = (channelId: string) => {
     const seen = new Set<string>();
     return presence.filter((p) => p.voice_channel_id === channelId && !seen.has(p.user_id) && seen.add(p.user_id));
@@ -1034,6 +1329,12 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
     openMenu(e, [
       { type: 'header', label: c.type === 'voice' ? c.name : `#${c.name}` },
       (unread.counts[c.id] ?? 0) > 0 && { label: 'Mark As Read', icon: 'check', onClick: () => markRead(c.id) },
+      (c.type === 'voice' || c.type === 'stage') &&
+        has(data.myPermissions, P.CREATE_INVITE) && {
+          label: call?.channelId === c.id ? 'Invite Friends to This Call' : 'Invite Friends to Voice',
+          icon: 'userPlus',
+          onClick: () => openGlobalModal({ kind: 'invite-to-voice', serverId: data.server!.id, serverName: data.server!.name, channelId: c.id, channelName: c.name }),
+        },
       { label: 'Copy Link', icon: 'link', onClick: () => copyText(linkTo(`channels/${data.server!.id}/${c.id}`)) },
       canManage && { label: 'Edit Channel', icon: 'settings', onClick: () => setEditing(c) },
       canManage && {
@@ -1057,9 +1358,21 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
         <div key={category || '_'}>
           {category && (
             <div
-              className="category"
+              className={`category${dnd.overCategory === category ? ' drop-into' : ''}`}
+              style={themeColors.categories?.[category] || themeColors.category ? { color: themeColors.categories?.[category] ?? themeColors.category } : undefined}
               onClick={() => setCollapsed((c) => ({ ...c, [category]: !c[category] }))}
               onContextMenu={(e) => listMenu(e, category)}
+              onDragOver={(e) => {
+                if (!dnd.drag) return;
+                e.preventDefault();
+                setDnd((d) => ({ ...d, over: null, overCategory: category }));
+              }}
+              onDragLeave={() => setDnd((d) => ({ ...d, overCategory: undefined }))}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dnd.drag) moveChannel(dnd.drag, { beforeId: null, afterId: null, category });
+                setDnd({ drag: null, over: null });
+              }}
             >
               <span>
                 <span className={`caret${collapsed[category] ? ' closed' : ''}`}>
@@ -1086,19 +1399,38 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
             .map((c) => (
               <div key={c.id}>
                 <div
-                  className={`channel${selected === c.id ? ' active' : ''}`}
+                  className={`channel${selected === c.id ? ' active' : ''}${dnd.over?.id === c.id ? ` drop-${dnd.over.where}` : ''}${dnd.drag === c.id ? ' dragging' : ''}`}
                   role="button"
                   tabIndex={0}
+                  style={c.color || themeColors.channel ? { color: c.color ?? themeColors.channel } : undefined}
+                  draggable={canManage}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-venband-channel', c.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDnd({ drag: c.id, over: null });
+                  }}
+                  onDragEnd={() => setDnd({ drag: null, over: null })}
+                  onDragOver={(e) => {
+                    if (!dnd.drag || dnd.drag === c.id) return;
+                    e.preventDefault();
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setDnd((d) => ({ ...d, over: { id: c.id, where: e.clientY < r.top + r.height / 2 ? 'before' : 'after' } }));
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (dnd.drag && dnd.over) moveChannel(dnd.drag, { beforeId: dnd.over.where === 'before' ? c.id : null, afterId: dnd.over.where === 'after' ? c.id : null, category: c.category });
+                    setDnd({ drag: null, over: null });
+                  }}
                   onClick={() => {
                     openChannel(data.server!.id, c.id);
-                    if (c.type === 'voice' && canConnect && call?.channelId !== c.id) {
+                    if ((c.type === 'voice' || c.type === 'stage') && canConnect && call?.channelId !== c.id) {
                       joinCall(identity, c.id, data.server!.id, c.name);
                     }
                   }}
                   onContextMenu={(e) => channelMenu(e, c)}
                   onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLElement).click()}
                 >
-                  <Icon name={c.type === 'voice' ? 'speaker' : c.id === data.server?.welcome_channel_id ? 'hand' : 'hash'} size={18} />
+                  <Icon name={channelIcon(c, data.server?.welcome_channel_id)} size={18} />
                   <span className={`channel-name${unread.counts[c.id] && selected !== c.id ? ' unread' : ''}`}>{c.name}</span>
                   {c.is_private && <Icon name="lock" size={12} />}
                   {(unread.mentions[c.id] ?? 0) > 0 && selected !== c.id && <span className="badge inline">{unread.mentions[c.id]}</span>}
@@ -1115,7 +1447,7 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
                     </button>
                   )}
                 </div>
-                {c.type === 'voice' &&
+                {(c.type === 'voice' || c.type === 'stage') &&
                   voiceUsers(c.id).map((p) => (
                     <div key={p.user_id} className="voice-user" onContextMenu={(e) => openMenu(e, userMenu(p.user_id, { data }))} onClick={() => openProfile(p.user_id, data.server!.id)}>
                       <Avatar profile={getProfile(p.user_id)} size={22} />
@@ -1133,6 +1465,14 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
       {creating && <CreateChannelModal data={data} initialCategory={creating.category} onClose={() => setCreating(null)} />}
     </div>
   );
+}
+
+function channelIcon(c: Channel, welcomeId?: string | null): string {
+  if (c.type === 'voice') return 'speaker';
+  if (c.type === 'stage') return 'stage';
+  if (c.type === 'forum') return 'thread';
+  if (c.type === 'announcement') return 'megaphone';
+  return c.id === welcomeId ? 'hand' : 'hash';
 }
 
 function VoiceChannelView({ channel, data, chatButton }: { channel: Channel; data: ServerData; chatButton: React.ReactNode }) {
@@ -1202,7 +1542,7 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
                   <span className="member-name" style={{ color: top?.color }}>
                     {displayName(m.user_id, m.nickname)}
                     <Badges ids={p?.badges} max={2} size={13} />
-                    <ServerTag tag={p?.server_tag} />
+                    <ServerTag tag={p?.server_tag} serverId={p?.tag_server_id} />
                   </span>
                   {p?.status_text && (
                     <span className="member-status">

@@ -1,4 +1,5 @@
 // Authentication + identity state machine.
+import { loadExpressions, resetExpressions } from './expressions';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, appUrl, errorMessage } from './supabase';
 import { createStore } from './store';
@@ -76,6 +77,7 @@ async function enterApp(session: Session, identity: Identity) {
   });
   // background extras: never block entering the app
   loadSettings(userId).catch(() => {});
+  loadExpressions(true).catch(() => {});
   startSocial(userId);
   registerDevice(session).catch(() => {});
   watchSession(() => {
@@ -369,6 +371,7 @@ export async function signOut(notice = 'You’re logged out. See you soon.') {
   stopSocial();
   stopWatchingSession();
   resetSettingsStore();
+  resetExpressions();
   await forgetIdentities();
   // 'local': only this browser. The default ('global') also logs out every
   // other device, which looks like a random logout there.

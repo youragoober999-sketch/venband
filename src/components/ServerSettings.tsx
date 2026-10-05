@@ -2,21 +2,28 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
-import { has, P, PERMISSION_INFO } from '../lib/permissions';
-import type { Ban, Invite, Role } from '../lib/types';
+import { has, P, PERMISSION_GROUPS, PERMISSION_INFO } from '../lib/permissions';
+import type { Ban, Role } from '../lib/types';
 import { openServer, type ServerData } from '../hooks/data';
-import { Avatar, ColorPicker, Field, Modal } from './ui';
+import { Avatar, ColorPicker, Field, Icon, Modal } from './ui';
+import { askConfirm, askText } from './Dialogs';
+import { showUndo } from './Undo';
+import { DiscoveryTab, ExpressionsTab, InvitesTab, JoiningTab, ThemeTab } from './ServerSettingsExtra';
 import { Select } from './Select';
 
-type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans';
+type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'expressions' | 'theme' | 'joining' | 'discovery';
 
 export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClose: () => void }) {
   const p = data.myPermissions;
   const tabs: [Tab, string, boolean][] = [
     ['overview', 'Overview', has(p, P.MANAGE_SERVER)],
-    ['roles', 'Roles', has(p, P.MANAGE_ROLES)],
+    ['theme', 'Server Theme', has(p, P.MANAGE_SERVER)],
+    ['joining', 'Welcome, Rules & Joining', has(p, P.MANAGE_SERVER)],
+    ['roles', 'Roles', has(p, P.MANAGE_ROLES) || true],
+    ['expressions', 'Emoji, GIFs & Sounds', true],
     ['members', 'Members', true],
     ['invites', 'Invites', has(p, P.MANAGE_SERVER)],
+    ['discovery', 'Discovery', has(p, P.MANAGE_SERVER)],
     ['bans', 'Bans', has(p, P.BAN_MEMBERS)],
   ];
   const visible = tabs.filter((t) => t[2]);
@@ -35,7 +42,11 @@ export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClo
           {tab === 'overview' && <Overview data={data} onClose={onClose} />}
           {tab === 'roles' && <Roles data={data} />}
           {tab === 'members' && <Members data={data} />}
-          {tab === 'invites' && <Invites data={data} />}
+          {tab === 'invites' && <InvitesTab data={data} />}
+          {tab === 'expressions' && <ExpressionsTab data={data} />}
+          {tab === 'theme' && <ThemeTab data={data} />}
+          {tab === 'joining' && <JoiningTab data={data} />}
+          {tab === 'discovery' && <DiscoveryTab data={data} />}
           {tab === 'bans' && <Bans data={data} />}
         </div>
       </div>
@@ -137,7 +148,7 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
               className="btn danger"
               disabled={!newOwner}
               onClick={async () => {
-                if (!confirm('Transfer ownership? You will lose owner rights.')) return;
+                if (!(await askConfirm({ title: 'Transfer ownership', body: `${displayName(newOwner)} becomes the owner and you lose owner rights. This can’t be undone by you.`, confirm: 'Transfer Ownership', danger: true }))) return;
                 const { error } = await supabase.from('servers').update({ owner_id: newOwner }).eq('id', server.id);
                 setMsg(error ? errorMessage(error) : 'Ownership transferred.');
                 data.reload();
@@ -151,7 +162,7 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
           <button
             className="btn danger"
             onClick={async () => {
-              const typed = prompt(`Type the server name (${server.name}) to delete it forever:`);
+              const typed = await askText({ title: `Delete ${server.name}`, label: `Type the server name (${server.name}) to delete it forever`, maxLength: 100 });
               if (typed !== server.name) return;
               const { error } = await supabase.from('servers').delete().eq('id', server.id);
               if (error) return setMsg(errorMessage(error));
@@ -169,9 +180,14 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
 
 function Roles({ data }: { data: ServerData }) {
   const me = sessionStore.use((s) => s.me)!;
-  const [selected, setSelected] = useState<string | null>(data.roles[0]?.id ?? null);
+  const sorted = [...data.roles].sort((a, b) => (a.is_default ? 1 : b.is_default ? -1 : b.position - a.position));
+  const [selected, setSelected] = useState<string | null>(sorted[0]?.id ?? null);
   const role = data.roles.find((r) => r.id === selected) ?? null;
   const myTop = data.server!.owner_id === me.id ? Infinity : (data.topRole(me.id)?.position ?? 0);
+  const canManage = has(data.myPermissions, P.MANAGE_ROLES);
+  const [drag, setDrag] = useState<string | null>(null);
+  const [over, setOver] = useState<{ id: string; where: 'before' | 'after' } | null>(null);
+  const movable = (r: Role) => canManage && !r.is_default && r.position < myTop;
 
   async function create() {
     const maxBelow = Math.max(0, ...data.roles.filter((r) => r.position < myTop).map((r) => r.position));
@@ -187,20 +203,73 @@ function Roles({ data }: { data: ServerData }) {
     setSelected(r.id);
   }
 
+  async function drop(targetId: string, where: 'before' | 'after') {
+    if (!drag || drag === targetId) return;
+    // only the roles you can move are reordered; they stay below your own top role
+    const list = sorted.filter(movable).map((r) => r.id).filter((id) => id !== drag);
+    let i = list.indexOf(targetId);
+    if (i === -1) i = where === 'before' ? 0 : list.length;
+    else if (where === 'after') i++;
+    list.splice(i, 0, drag);
+    const before = sorted.filter(movable).map((r) => r.id);
+    const { error } = await supabase.rpc('reorder_roles', { p_server: data.server!.id, p_ids: list });
+    if (error) return alert(errorMessage(error));
+    data.reload();
+    showUndo('Role order changed', async () => {
+      await supabase.rpc('reorder_roles', { p_server: data.server!.id, p_ids: before });
+      data.reload();
+    });
+  }
+
   return (
     <div className="roles-layout">
-      <div className="roles-list">
-        <button className="btn secondary small full" onClick={create}>
-          + Create Role
-        </button>
-        {data.roles.map((r) => (
-          <button key={r.id} className={`role-item${selected === r.id ? ' active' : ''}`} onClick={() => setSelected(r.id)}>
-            <span className="role-dot" style={{ background: r.color }} />
-            {r.name}
+      <div className="roles-list" role="list">
+        {canManage && (
+          <button className="btn secondary small full" onClick={create}>
+            + Create Role
           </button>
+        )}
+        <p className="small muted roles-hint">Drag roles to reorder. Higher roles can manage the ones below them.</p>
+        {sorted.map((r) => (
+          <div
+            key={r.id}
+            role="listitem"
+            className={`role-item${selected === r.id ? ' active' : ''}${drag === r.id ? ' dragging' : ''}${over?.id === r.id ? ` drop-${over.where}` : ''}`}
+            onClick={() => setSelected(r.id)}
+            draggable={movable(r)}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', r.id);
+              setDrag(r.id);
+            }}
+            onDragEnd={() => (setDrag(null), setOver(null))}
+            onDragOver={(e) => {
+              if (!drag || drag === r.id || r.is_default) return;
+              e.preventDefault();
+              const box = e.currentTarget.getBoundingClientRect();
+              setOver({ id: r.id, where: e.clientY < box.top + box.height / 2 ? 'before' : 'after' });
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (over) drop(over.id, over.where);
+              setDrag(null);
+              setOver(null);
+            }}
+          >
+            {movable(r) && (
+              <span className="role-grip" aria-hidden>
+                <Icon name="grip" size={14} />
+              </span>
+            )}
+            <span className="role-dot" style={{ background: r.color2 ? `linear-gradient(135deg, ${r.color}, ${r.color2})` : r.color }} />
+            {r.icon && <span className="role-icon">{r.icon}</span>}
+            <span className="grow ellipsis">{r.name}</span>
+            {!movable(r) && !r.is_default && <Icon name="lock" size={12} />}
+            <span className="small muted">{data.members.filter((m) => r.is_default || data.rolesOf(m.user_id).some((x) => x.id === r.id)).length}</span>
+          </div>
         ))}
       </div>
-      {role && <RoleEditor key={role.id} role={role} data={data} editable={role.is_default || role.position < myTop} />}
+      {role && <RoleEditor key={role.id} role={role} data={data} editable={canManage && (role.is_default || role.position < myTop)} />}
     </div>
   );
 }
@@ -208,61 +277,117 @@ function Roles({ data }: { data: ServerData }) {
 function RoleEditor({ role, data, editable }: { role: Role; data: ServerData; editable: boolean }) {
   const [name, setName] = useState(role.name);
   const [color, setColor] = useState(role.color);
+  const [color2, setColor2] = useState<string | null>(role.color2 ?? null);
+  const [icon, setIcon] = useState(role.icon ?? '');
+  const [description, setDescription] = useState(role.description ?? '');
+  const [mentionable, setMentionable] = useState(role.mentionable ?? true);
   const [perms, setPerms] = useState(role.permissions);
   const [hoist, setHoist] = useState(role.hoist);
-  const [position, setPosition] = useState(role.position);
+  const [q, setQ] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const mine = data.myPermissions;
+  const dirty =
+    name !== role.name || color !== role.color || color2 !== (role.color2 ?? null) || icon !== (role.icon ?? '') || description !== (role.description ?? '') ||
+    mentionable !== (role.mentionable ?? true) || perms !== role.permissions || hoist !== role.hoist;
+
+  async function save() {
+    const patch = role.is_default
+      ? { permissions: perms }
+      : { name: name.trim(), color, color2, icon: icon.trim() || null, description: description.trim(), mentionable, permissions: perms, hoist };
+    const { error } = await supabase.from('roles').update(patch).eq('id', role.id);
+    setMsg(error ? errorMessage(error) : 'Saved.');
+    data.reload();
+  }
 
   return (
     <div className="role-editor">
       {msg && <div className="notice">{msg}</div>}
-      {!editable && <div className="warning-box">This role is above your highest role, so you can’t edit it.</div>}
+      {!editable && <div className="warning-box">This role is above your highest role (or you don’t have Manage Roles), so you can’t edit it.</div>}
       <fieldset disabled={!editable}>
+        {!role.is_default && (
+          <div className="role-preview">
+            <span className="role-preview-name" style={color2 ? { backgroundImage: `linear-gradient(90deg, ${color}, ${color2})` } : { color }}>
+              {icon && <span className="role-icon">{icon}</span>}
+              {name || 'Role'}
+            </span>
+            <span className="small muted">how names with this role look</span>
+          </div>
+        )}
         <Field label="Role name">
           <input maxLength={100} value={name} disabled={role.is_default} onChange={(e) => setName(e.target.value)} />
         </Field>
         {!role.is_default && (
           <>
-            <Field label="Color">
-              <ColorPicker value={color} onChange={setColor} />
-            </Field>
             <div className="row">
-              <Field label="Position (higher = more powerful)">
-                <input type="number" min={1} value={position} onChange={(e) => setPosition(Number(e.target.value))} />
+              <Field label="Color">
+                <ColorPicker value={color} onChange={setColor} />
+              </Field>
+              <Field label="Gradient" aside={color2 ? <button type="button" className="btn link small" onClick={() => setColor2(null)}>Solid</button> : <button type="button" className="btn link small" onClick={() => setColor2('#ffffff')}>Add gradient</button>}>
+                {color2 ? <ColorPicker value={color2} onChange={setColor2} /> : <span className="small muted">Solid color</span>}
+              </Field>
+            </div>
+            <div className="row">
+              <Field label="Role icon" hint="an emoji, shown next to names">
+                <input maxLength={16} value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="⭐" />
+              </Field>
+              <Field label="Description">
+                <input maxLength={300} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Helps keep the server friendly" />
               </Field>
             </div>
             <label className="checkbox">
               <input type="checkbox" checked={hoist} onChange={(e) => setHoist(e.target.checked)} />
-              Display role members separately in the member list
+              Show members with this role separately in the member list
+            </label>
+            <label className="checkbox">
+              <input type="checkbox" checked={mentionable} onChange={(e) => setMentionable(e.target.checked)} />
+              Anyone can @mention this role
             </label>
           </>
         )}
-        <h3>Permissions</h3>
-        <div className="perm-list">
-          {PERMISSION_INFO.map((pi) => (
-            <label key={pi.bit} className={`perm${!has(mine, pi.bit) ? ' locked' : ''}`}>
-              <div>
-                <b>{pi.name}</b>
-                <div className="small muted">{pi.description}</div>
-              </div>
-              <input
-                type="checkbox"
-                className="toggle"
-                disabled={!has(mine, pi.bit)}
-                checked={has(perms, pi.bit)}
-                onChange={(e) => setPerms(e.target.checked ? perms | pi.bit : perms & ~pi.bit)}
-              />
-            </label>
-          ))}
+        <div className="perm-head">
+          <h3>Permissions</h3>
+          <input className="search-input" placeholder="Search permissions" value={q} onChange={(e) => setQ(e.target.value)} />
+          <button type="button" className="btn link small" onClick={() => setPerms(0)}>
+            Clear all
+          </button>
         </div>
-        <div className="modal-actions">
+        {PERMISSION_GROUPS.map((g) => {
+          const items = PERMISSION_INFO.filter((pi) => pi.group === g && (!q || `${pi.name} ${pi.description}`.toLowerCase().includes(q.toLowerCase())));
+          if (!items.length) return null;
+          return (
+            <section key={g} className="perm-group">
+              <h4>{g}</h4>
+              <div className="perm-list">
+                {items.map((pi) => (
+                  <label key={pi.bit} className={`perm${!has(mine, pi.bit) ? ' locked' : ''}${pi.dangerous ? ' dangerous' : ''}`}>
+                    <div>
+                      <b>
+                        {pi.name}
+                        {pi.dangerous && <span className="perm-danger">careful</span>}
+                      </b>
+                      <div className="small muted">{pi.description}</div>
+                      {!has(mine, pi.bit) && <div className="small muted">You can’t give a permission you don’t have yourself.</div>}
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="toggle"
+                      disabled={!has(mine, pi.bit)}
+                      checked={has(perms, pi.bit)}
+                      onChange={(e) => setPerms(e.target.checked ? perms | pi.bit : perms & ~pi.bit)}
+                    />
+                  </label>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+        <div className="modal-actions sticky-actions">
           {!role.is_default && (
             <button
               type="button"
               className="btn danger"
               onClick={async () => {
-                if (!confirm(`Delete role ${role.name}?`)) return;
+                if (!(await askConfirm({ title: `Delete ${role.name}`, body: 'Members lose this role and its permissions.', confirm: 'Delete Role', danger: true }))) return;
                 const { error } = await supabase.from('roles').delete().eq('id', role.id);
                 if (error) setMsg(errorMessage(error));
                 data.reload();
@@ -271,16 +396,8 @@ function RoleEditor({ role, data, editable }: { role: Role; data: ServerData; ed
               Delete Role
             </button>
           )}
-          <button
-            type="button"
-            className="btn primary"
-            onClick={async () => {
-              const patch = role.is_default ? { permissions: perms } : { name: name.trim(), color, permissions: perms, hoist, position };
-              const { error } = await supabase.from('roles').update(patch).eq('id', role.id);
-              setMsg(error ? errorMessage(error) : 'Saved.');
-              data.reload();
-            }}
-          >
+          {dirty && <span className="small muted">Unsaved changes</span>}
+          <button type="button" className="btn primary" disabled={!dirty} onClick={save}>
             Save Changes
           </button>
         </div>
@@ -315,14 +432,14 @@ function Members({ data }: { data: ServerData }) {
   }
 
   async function kick(userId: string) {
-    if (!confirm(`Kick ${displayName(userId)}?`)) return;
+    if (!(await askConfirm({ title: `Kick ${displayName(userId)}`, body: 'They can come back with a new invite.', confirm: 'Kick', danger: true }))) return;
     const { error } = await supabase.from('server_members').delete().eq('server_id', data.server!.id).eq('user_id', userId);
     if (error) alert(errorMessage(error));
     data.reload();
   }
 
   async function ban(userId: string) {
-    const reason = prompt(`Ban ${displayName(userId)}? Optional reason:`);
+    const reason = await askText({ title: `Ban ${displayName(userId)}`, label: 'Reason (optional, shown to them if they try to rejoin)', maxLength: 500 });
     if (reason === null) return;
     const { error } = await supabase.from('bans').insert({ server_id: data.server!.id, user_id: userId, banned_by: me.id, reason });
     if (error) alert(errorMessage(error));
@@ -380,43 +497,6 @@ function Members({ data }: { data: ServerData }) {
           );
         })}
       </div>
-    </div>
-  );
-}
-
-function Invites({ data }: { data: ServerData }) {
-  const [invites, setInvites] = useState<Invite[]>([]);
-  const load = useCallback(async () => {
-    const { data: rows } = await supabase.from('invites').select('*').eq('server_id', data.server!.id).order('created_at', { ascending: false });
-    setInvites((rows ?? []) as Invite[]);
-    loadProfiles((rows ?? []).map((r) => r.created_by));
-  }, [data.server]);
-  useEffect(() => {
-    load();
-  }, [load]);
-  return (
-    <div className="member-table">
-      {!invites.length && <p className="muted">No active invites.</p>}
-      {invites.map((i) => (
-        <div key={i.code} className="member-row">
-          <code>{i.code}</code>
-          <span className="small muted">by {displayName(i.created_by)}</span>
-          <span className="small">
-            {i.uses}
-            {i.max_uses ? `/${i.max_uses}` : ''} uses
-          </span>
-          <span className="small muted">{i.expires_at ? `expires ${new Date(i.expires_at).toLocaleString()}` : 'never expires'}</span>
-          <button
-            className="btn danger small"
-            onClick={async () => {
-              await supabase.from('invites').delete().eq('code', i.code);
-              load();
-            }}
-          >
-            Revoke
-          </button>
-        </div>
-      ))}
     </div>
   );
 }

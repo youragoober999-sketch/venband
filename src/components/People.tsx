@@ -13,6 +13,7 @@ import { Avatar, Icon, Modal } from './ui';
 import { Badges } from './Badges';
 import { copyText, type Entry } from './ContextMenu';
 import { askConfirm, askText } from './Dialogs';
+import { openGlobalModal } from './GlobalModals';
 import { reportUser } from '../lib/reports';
 import { Markdown } from './Markdown';
 import { startDm } from './Modals';
@@ -28,9 +29,23 @@ export const NAMEPLATES: { id: string; label: string }[] = [
   { id: 'gold', label: 'Gold' },
 ];
 
-export function ServerTag({ tag }: { tag?: string | null }) {
+/** A server's tag next to someone's name. Click it to see the server (and join, if it's open). */
+export function ServerTag({ tag, serverId }: { tag?: string | null; serverId?: string | null }) {
   if (!tag) return null;
-  return <span className="server-tag">{tag}</span>;
+  if (!serverId) return <span className="server-tag">{tag}</span>;
+  return (
+    <button
+      type="button"
+      className="server-tag clickable"
+      title="See this server"
+      onClick={(e) => {
+        e.stopPropagation();
+        openGlobalModal({ kind: 'server-preview', serverId });
+      }}
+    >
+      {tag}
+    </button>
+  );
 }
 
 export function bannerStyle(p?: Partial<Profile> | null) {
@@ -87,6 +102,7 @@ export function userMenu(userId: string, opts: { data?: ServerData; onProfile?: 
     { label: 'Profile', icon: 'user', onClick: () => (opts.onProfile ? opts.onProfile() : openProfile(userId, data?.server?.id)) },
     !self && { label: 'Message', icon: 'message', onClick: () => startDm(userId).catch(report) },
     !self && { label: 'Call', icon: 'phone', onClick: () => callUser(userId).catch(report) },
+    !self && { label: 'Invite to Server', icon: 'userPlus', onClick: () => openGlobalModal({ kind: 'invite-to-servers', userId }) },
     { type: 'sep' },
     !self && !f && !rel?.blocked && profile && {
       label: 'Add Friend',
@@ -285,7 +301,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
             <div className="muted">
               @{shown?.username}
               {shown?.pronouns ? ` · ${shown.pronouns}` : ''}
-              <ServerTag tag={shown?.server_tag} />
+              <ServerTag tag={shown?.server_tag} serverId={shown?.tag_server_id} />
             </div>
             {(shown?.status_text || shown?.status_emoji) && (
               <div className="profile-status">

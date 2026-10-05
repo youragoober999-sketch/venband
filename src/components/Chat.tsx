@@ -15,6 +15,9 @@ import { setUnread, setViewingChannel } from '../lib/notify';
 import { socialStore } from '../lib/social';
 import { getSettings, useSettings } from '../lib/settings';
 import { fetchPreview, previewableLink } from '../lib/linkPreview';
+import { inviteCodeFrom } from '../lib/dmSend';
+import { InviteEmbed } from './Invite';
+import { customEmoji, expressionStore } from '../lib/expressions';
 import { languageName, translate, translationSupported, type Translation } from '../lib/translate';
 import { containsSlur } from '../lib/automod';
 import { has, P } from '../lib/permissions';
@@ -398,6 +401,7 @@ export function ChatView({
     return messages.find((m) => m.row.created_at > openedAt && m.row.author_id !== me.id)?.row.id ?? null;
   }, [messages, openedAt, me.id]);
 
+  const expressions = expressionStore.use((s) => s.list);
   const mentionables: Mentionables = useMemo(() => {
     const people: Profile[] = data
       ? (data.members.map((m) => getProfile(m.user_id)).filter(Boolean) as Profile[])
@@ -407,9 +411,10 @@ export function ChatView({
       roles: (data?.roles ?? []).filter((r) => !r.is_default).map((r) => ({ id: r.id, label: r.name, color: r.color })),
       channels: (data?.channels ?? []).filter((c) => c.type === 'text').map((c) => ({ id: c.id, label: c.name })),
       everyone: Boolean(data) && can(P.MENTION_EVERYONE),
+      emoji: customEmoji(expressions),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, dmMembers, me]);
+  }, [data, dmMembers, me, expressions]);
 
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File[]>([]);
@@ -1040,6 +1045,15 @@ function MessageItem({
   }
 
   const embeds = m.payload && !editing ? findEmbeds(text) : [];
+  const invites = useMemo(() => {
+    const out: { code: string; voice: string | null }[] = [];
+    for (const word of text.split(/\s+/)) {
+      const code = inviteCodeFrom(word);
+      if (code && !out.some((x) => x.code === code)) out.push({ code, voice: word.match(/[?&]voice=([0-9a-f-]{36})/)?.[1] ?? null });
+      if (out.length >= 2) break;
+    }
+    return out;
+  }, [text]);
   const bareGif = isBareGif(text);
   const shownText = translation && !showOriginal ? translation.text : text;
   const link = linkTo(`channels/${data?.server?.id ?? '@me'}/${m.row.channel_id}/${m.row.id}`);
@@ -1170,7 +1184,7 @@ function MessageItem({
                 {name}
               </button>
               <Badges ids={author?.badges} max={4} size={15} />
-              <ServerTag tag={author?.server_tag} />
+              <ServerTag tag={author?.server_tag} serverId={author?.tag_server_id} />
               {trust === 'changed' && (
                 <span className="trust-warn" title="This user's security key changed. Verify their fingerprint.">
                   <Icon name="warning" size={14} />
@@ -1241,6 +1255,9 @@ function MessageItem({
                 )}
                 {m.payload.poll && <PollView row={m.row} poll={m.payload.poll} state={poll} ctx={ctx} />}
                 {m.payload.preview && <LinkPreviewCard p={m.payload.preview} />}
+                {invites.map((c) => (
+                  <InviteEmbed key={c.code} code={c.code} voice={c.voice} />
+                ))}
                 {translation && (
                   <div className="translated-note">
                     <Icon name="translate" size={12} />

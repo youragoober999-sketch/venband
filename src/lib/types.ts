@@ -49,9 +49,35 @@ export interface Server {
   categories?: string[];
   icon_url?: string | null;
   banner_url?: string | null;
+  log_retention_days?: number;
+  vanity?: string | null;
+  theme?: ServerTheme;
+  welcome?: { message?: string; buttons?: { label: string; channel_id: string; emoji?: string }[] };
+  rules?: string[];
+  onboarding?: { questions?: { title: string; multi?: boolean; options: { label: string; emoji?: string; role_ids: string[] }[] }[] };
+  verification?: { level?: 'none' | 'email' | 'account_age' | 'voogle'; min_account_days?: number };
+  join_mode?: 'open' | 'invite' | 'discovery' | 'private';
+  joins_paused?: boolean;
+  public_preview?: boolean;
+  language?: string;
+  category_tags?: string[];
+  discovery_status?: 'none' | 'pending' | 'approved' | 'rejected';
 }
 
-export type ChannelType = 'text' | 'voice' | 'dm';
+/** A server's own look (applied over yours unless you turn it off). */
+export interface ServerTheme {
+  accent?: string;
+  bg?: string;
+  surface?: string;
+  text?: string;
+  channel?: string;
+  category?: string;
+  banner_gradient?: [string, string];
+  /** per-category colors */
+  categories?: Record<string, string>;
+}
+
+export type ChannelType = 'text' | 'voice' | 'dm' | 'forum' | 'announcement' | 'stage';
 
 export interface Channel {
   id: string;
@@ -66,6 +92,8 @@ export interface Channel {
   request_to?: string | null;
   key_rotation_needed: boolean;
   created_at: string;
+  settings?: { bitrate?: number; user_limit?: number; video?: boolean; tags?: string[]; sort?: 'recent' | 'created'; guidelines?: string };
+  color?: string | null;
 }
 
 export interface Role {
@@ -77,6 +105,10 @@ export interface Role {
   position: number;
   is_default: boolean;
   hoist: boolean;
+  icon?: string | null;
+  color2?: string | null;
+  description?: string;
+  mentionable?: boolean;
 }
 
 export interface Member {

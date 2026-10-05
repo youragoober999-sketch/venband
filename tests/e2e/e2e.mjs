@@ -118,8 +118,10 @@ await login(alice);
 
 // ---- create a server
 await alice.page.locator('.rail-item[aria-label="Add a server"]').click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
 await alice.page.locator('.modal input').first().fill('Venband HQ');
-await alice.page.locator('.modal form').getByRole('button', { name: 'Create' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Create server' }).click();
 await alice.page.getByText('Welcome to Venband HQ').waitFor({ timeout: 20000 });
 await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
 await alice.page.getByText('This is the start of #chat').waitFor({ timeout: 20000 });
@@ -136,7 +138,7 @@ log('alice sent a message');
 await alice.page.locator('.server-header').click();
 await alice.page.getByRole('button', { name: /Invite People/ }).click();
 const inviteInput = alice.page.locator('.modal .copy-row input');
-await alice.page.waitForFunction(() => document.querySelector('.modal .copy-row input')?.value.includes('invite='));
+await alice.page.waitForFunction(() => document.querySelector('.modal .copy-row input')?.value.includes('/invite/'));
 const invite = await inviteInput.inputValue();
 log('invite link', invite);
 if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/3-invite.png` });
@@ -146,6 +148,9 @@ await alice.page.keyboard.press('Escape');
 await signupAndVerify(bob);
 await login(bob);
 await bob.page.goto(invite);
+await bob.page.locator('.invite-page, .invite-card').first().waitFor({ timeout: 20000 });
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/3b-invite-page.png` });
+await bob.page.getByRole('button', { name: 'Join server' }).click();
 await bob.page.locator('.server-header').waitFor({ timeout: 20000 });
 log('bob joined server');
 await alice.page.locator('.channel .channel-name').getByText('welcome', { exact: true }).click();
@@ -538,8 +543,8 @@ await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).click({ timeout:
 await bob.page.getByText('hello group').waitFor({ timeout: 20000 });
 log('✅ group chat created, bob sees the group and decrypts messages');
 await bob.page.getByTitle(/Group settings/).click();
-bob.page.once('dialog', (d) => d.accept());
-await bob.page.getByRole('button', { name: 'Leave group' }).click();
+await bob.page.getByRole('button', { name: 'Leave group', exact: true }).click();
+await bob.page.locator('.modal').getByRole('button', { name: 'Leave Group', exact: true }).click();
 await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).waitFor({ state: 'detached', timeout: 20000 });
 await alice.page.locator('.composer textarea').fill('after bob left');
 await alice.page.keyboard.press('Enter');
@@ -619,7 +624,9 @@ await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click()
 await bobCard.locator('.pill.limited').waitFor({ timeout: 10000 });
 await bob.page.locator('.app-banner.warn').waitFor({ timeout: 20000 });
 await bob.page.locator('.rail-item[aria-label="Add a server"]').click();
-await bob.page.locator('.modal form').getByRole('button', { name: 'Create' }).click();
+await bob.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
+await bob.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
+await bob.page.locator('.modal').getByRole('button', { name: 'Create server' }).click();
 await bob.page.locator('.modal .form-error', { hasText: 'create servers' }).waitFor({ timeout: 10000 });
 await bob.page.keyboard.press('Escape');
 log('✅ limited account is stopped by the database (no new servers)');
@@ -780,6 +787,104 @@ await alice.page.locator('.asset-picker.icon .asset-preview img').waitFor({ time
 await alice.page.keyboard.press('Escape');
 await alice.page.locator('.rail-item img.rail-icon').first().waitFor({ timeout: 15000 });
 log('✅ server icon uploads and shows in the server list');
+
+// ---- announcement channel: everyone reads, only moderators post
+await alice.page.locator('.category', { hasText: 'Gaming' }).click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Channel' }).click();
+await alice.page.locator('.modal .type-option', { hasText: 'Announcement' }).click();
+await alice.page.locator('.modal input[placeholder="Lounge"]').fill('news');
+await alice.page.locator('.modal').getByRole('button', { name: 'Create Channel' }).click();
+await alice.page.getByText('This is the start of #news').waitFor({ timeout: 15000 });
+await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 15000 });
+await alice.page.locator('.composer textarea').fill('big announcement');
+await alice.page.keyboard.press('Enter');
+await bob.page.locator('.channel .channel-name').getByText('news', { exact: true }).click({ timeout: 20000 });
+await bob.page.locator('.message-text', { hasText: 'big announcement' }).waitFor({ timeout: 20000 });
+if (await bob.page.locator('.composer textarea:not([disabled])').count()) throw new Error('members should not be able to post in announcement channels');
+log('✅ announcement channels: moderators post, members read only');
+
+// ---- forum channel: posts are their own discussions
+await alice.page.locator('.category', { hasText: 'Gaming' }).click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Channel' }).click();
+await alice.page.locator('.modal .type-option', { hasText: 'Forum' }).click();
+await alice.page.locator('.modal input[placeholder="Lounge"]').fill('help');
+await alice.page.locator('.modal').getByRole('button', { name: 'Create Channel' }).click();
+await alice.page.locator('.forum-view').waitFor({ timeout: 15000 });
+await alice.page.getByRole('button', { name: 'New Post' }).click();
+await alice.page.locator('.modal input').first().fill('How do I build a base?');
+await alice.page.locator('.modal textarea').first().fill('Asking for a friend');
+await alice.page.locator('.modal').getByRole('button', { name: /^Post/ }).click();
+await alice.page.locator('.forum-post-view .thread-root', { hasText: 'Asking for a friend' }).waitFor({ timeout: 15000 });
+await bob.page.locator('.channel .channel-name').getByText('help', { exact: true }).click({ timeout: 20000 });
+await bob.page.locator('.forum-card', { hasText: 'How do I build a base?' }).click({ timeout: 20000 });
+await bob.page.locator('.forum-post-view .thread-root', { hasText: 'Asking for a friend' }).waitFor({ timeout: 20000 });
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/13-forum.png` });
+log('✅ forum channels: posts are created encrypted and others can open them');
+
+// ---- custom server emoji
+await alice.page.locator('.server-header').click();
+await alice.page.getByRole('button', { name: /Server Settings/ }).click();
+await alice.page.locator('.settings-nav button', { hasText: 'Emoji, GIFs & Sounds' }).click();
+await alice.page.locator('.settings-content input[type=file]').setInputFiles({ name: 'pixel_dot.png', mimeType: 'image/png', buffer: png });
+await alice.page.locator('.expr-item', { hasText: 'pixel_dot' }).waitFor({ timeout: 15000 });
+await alice.page.keyboard.press('Escape');
+await alice.page.locator('.channel .channel-name').getByText('clips', { exact: true }).click();
+await bob.page.locator('.channel .channel-name').getByText('clips', { exact: true }).click();
+await bob.page.waitForTimeout(500);
+await alice.page.locator('.chat:not(.thread-chat) .composer textarea:not([disabled])').fill('party :pixel_dot: time');
+await alice.page.keyboard.press('Enter');
+await bob.page.locator('.message-text img.custom-emoji[alt=":pixel_dot:"]').waitFor({ timeout: 20000 });
+log('✅ custom server emoji upload and show for other members');
+
+// ---- invite links become an embed with a Join button
+await alice.page.locator('.server-header').click();
+await alice.page.getByRole('button', { name: /Invite People/ }).click();
+await alice.page.waitForFunction(() => document.querySelector('.modal .copy-row input')?.value.includes('/invite/'));
+const invite2 = await alice.page.locator('.modal .copy-row input').inputValue();
+await alice.page.keyboard.press('Escape');
+await alice.page.locator('.chat:not(.thread-chat) .composer textarea:not([disabled])').fill(`come join ${invite2}`);
+await alice.page.keyboard.press('Enter');
+const embed = bob.page.locator('.invite-embed', { hasText: 'Venband HQ' }).last();
+await embed.waitFor({ timeout: 20000 });
+await embed.getByRole('button', { name: /Join|Open/ }).waitFor({ timeout: 10000 });
+log('✅ invite links show an embed with the server name and a Join button');
+
+// ---- templates: a Gaming server comes with its channels; discovery application goes to staff
+await alice.page.locator('.rail-item[aria-label="Add a server"]').click();
+await alice.page.locator('.modal .template-card', { hasText: 'Gaming' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
+await alice.page.locator('.modal input').first().fill('Frag Squad');
+await alice.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
+await alice.page.locator('.modal .check-row input[type=checkbox]').check();
+await alice.page.locator('.modal textarea').first().fill('We play every night');
+await alice.page.locator('.modal .chip', { hasText: 'Gaming' }).first().click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Create server' }).click();
+await alice.page.locator('.server-header', { hasText: 'Frag Squad' }).waitFor({ timeout: 20000 });
+for (const ch of ['looking-for-group', 'game-guides', 'Lobby', 'Tournament Stage']) await alice.page.locator('.channel .channel-name').getByText(ch, { exact: true }).waitFor({ timeout: 15000 });
+log('✅ server templates create their channels (forum, stage, voice included)');
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Discovery Applications' }).click();
+const app = alice.page.locator('.queue-card', { hasText: 'Frag Squad' });
+await app.waitFor({ timeout: 15000 });
+await app.getByRole('button', { name: 'Approve' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await app.locator('.invite-status.approved').waitFor({ timeout: 15000 }).catch(async () => {
+  await alice.page.locator('.mod-filters .vselect').first().click();
+  await alice.page.getByRole('option', { name: 'All' }).click();
+  await app.locator('.invite-status.approved').waitFor({ timeout: 15000 });
+});
+await alice.page.locator('.sp-close').click();
+log('✅ discovery applications reach the staff queue and can be approved');
+
+// ---- server folders: drop a server on another
+const hqBtn = alice.page.locator('.rail-item[aria-label="Venband HQ"]');
+const fragBtn = alice.page.locator('.rail-item[aria-label="Frag Squad"]');
+await fragBtn.dragTo(hqBtn);
+await alice.page.locator('.rail-item.folder').waitFor({ timeout: 10000 });
+await alice.page.locator('.rail-item.folder').click();
+await alice.page.locator('.folder-panel .rail-item[aria-label="Frag Squad"]').waitFor({ timeout: 10000 });
+await alice.page.locator('.folder-panel [aria-label="Close folder"]').click();
+log('✅ dragging a server onto another makes a folder');
 
 // ---- phone layout
 await bob.page.setViewportSize({ width: 390, height: 844 });

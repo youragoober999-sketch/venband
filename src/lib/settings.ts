@@ -13,6 +13,15 @@ export interface GifFavorite {
   height: number;
 }
 
+export interface ServerFolder {
+  id: string;
+  name: string;
+  color: string;
+  servers: string[];
+  pinned?: boolean;
+  muted?: boolean;
+}
+
 export type CodeTheme = 'vscode-dark' | 'vs-2026' | 'github-dark' | 'monokai' | 'one-dark' | 'vscode-light';
 
 export interface Settings {
@@ -54,6 +63,12 @@ export interface Settings {
   emojiUsage: Record<string, number>;
   /** most recent reactions first */
   recentReactions: string[];
+  /** server list order and folders */
+  rail: { order: string[]; folders: ServerFolder[] };
+  /** how server themes apply to you */
+  serverThemes: 'override' | 'merge' | 'never';
+  /** per-user soundboard volume (0-100) and muted soundboards */
+  soundboard: { volume: number; perUser: Record<string, number>; muted: string[]; joinSound: string | null };
   /** DM list organisation */
   dms: { pinned: string[]; archived: string[]; folders: { id: string; name: string; channels: string[] }[]; mutedUntil: Record<string, number> };
   gifFavorites: GifFavorite[];
@@ -94,6 +109,9 @@ export const DEFAULT_SETTINGS: Settings = {
   emojiUsage: {},
   recentReactions: [],
   dms: { pinned: [], archived: [], folders: [], mutedUntil: {} },
+  rail: { order: [], folders: [] },
+  serverThemes: 'override',
+  soundboard: { volume: 80, perUser: {}, muted: [], joinSound: null },
   gifFavorites: [],
   layout: { sidebar: 248, members: 248, callHeight: 320 },
   volumes: {},
@@ -124,6 +142,12 @@ function merge(raw: unknown): Settings {
     volumes: r.volumes && typeof r.volumes === 'object' ? r.volumes : {},
     emojiUsage: r.emojiUsage && typeof r.emojiUsage === 'object' ? trimUsage(r.emojiUsage) : {},
     recentReactions: Array.isArray(r.recentReactions) ? r.recentReactions.filter((x) => typeof x === 'string').slice(0, 8) : [],
+    rail: {
+      order: Array.isArray(r.rail?.order) ? r.rail!.order.filter((x) => typeof x === 'string').slice(0, 300) : [],
+      folders: Array.isArray(r.rail?.folders) ? r.rail!.folders.slice(0, 50) : [],
+    },
+    serverThemes: r.serverThemes === 'merge' || r.serverThemes === 'never' ? r.serverThemes : 'override',
+    soundboard: { ...DEFAULT_SETTINGS.soundboard, ...(r.soundboard ?? {}) },
     dms: {
       pinned: Array.isArray(r.dms?.pinned) ? r.dms!.pinned.slice(0, 100) : [],
       archived: Array.isArray(r.dms?.archived) ? r.dms!.archived.slice(0, 1000) : [],

@@ -58,5 +58,29 @@
       "source": "/((?!api/|assets/|favicon|icon-|apple-touch-icon|robots\\.txt|sitemap\\.xml|site\\.webmanifest).*)",
       "destination": "/index.html"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/:code([A-Za-z0-9-]{3,32})",
+      "has": [
+        {
+          "type": "host",
+          "value": "venband.gg"
+        }
+      ],
+      "destination": "https://www.venband.com/invite/:code",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "venband.gg"
+        }
+      ],
+      "destination": "https://www.venband.com/",
+      "permanent": false
+    }
   ]
 }

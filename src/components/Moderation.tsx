@@ -1,6 +1,6 @@
 // Venband staff tools: find any account or server and act on it. Every action
 // is enforced by the database (staff rank checks) and written to an audit log.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
@@ -13,6 +13,7 @@ import { askConfirm, askText } from './Dialogs';
 import { Markdown } from './Markdown';
 import { startDm } from './Modals';
 import { openProfile } from './People';
+import { openGlobalModal } from './GlobalModals';
 
 interface ModUser {
   id: string;
@@ -526,5 +527,109 @@ export function ReportCentre() {
         {rows && !rows.length && <p className="muted">Nothing here. 🎉</p>}
       </div>
     </div>
+  );
+}
+
+// ------------------------------------------------- discovery applications --
+
+interface QueueRow {
+  id: string;
+  server_id: string;
+  name: string;
+  description: string;
+  icon_url: string | null;
+  icon_color: string;
+  verified: boolean;
+  members: number;
+  pitch: string;
+  categories: string[];
+  language: string;
+  status: string;
+  created_at: string;
+  note: string | null;
+}
+
+export function DiscoveryQueue() {
+  const [status, setStatus] = useState('pending');
+  const [size, setSize] = useState<'' | 'big' | 'small'>('');
+  const [verified, setVerified] = useState<'' | 'yes' | 'no'>('');
+  const [q, setQ] = useState('');
+  const [rows, setRows] = useState<QueueRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setError(null);
+    const { data, error: e } = await supabase.rpc('discovery_queue', {
+      p_status: status,
+      p_min_members: size === 'big' ? 500 : null,
+      p_max_members: size === 'small' ? 500 : null,
+      p_query: q,
+    });
+    if (e) return setError(errorMessage(e));
+    setRows(((data ?? []) as QueueRow[]).filter((r) => !verified || (verified === 'yes') === r.verified));
+  }, [status, size, verified, q]);
+  useEffect(() => {
+    const t = setTimeout(load, 200);
+    return () => clearTimeout(t);
+  }, [load]);
+
+  async function review(r: QueueRow, approve: boolean) {
+    const note = await askText({ title: approve ? `Approve ${r.name}` : `Reject ${r.name}`, label: 'Note for the server owner (optional)', maxLength: 500 });
+    if (note === null) return;
+    const { error: e } = await supabase.rpc('review_discovery', { p_application: r.id, p_approve: approve, p_note: note.trim() || null });
+    if (e) return alert(errorMessage(e));
+    load();
+  }
+
+  return (
+    <>
+      <h2>Discovery Applications</h2>
+      <p className="muted">Servers asking to be listed on the Discover page. Preview a server before deciding.</p>
+      <div className="mod-filters">
+        <input className="search-input" placeholder="Search name or pitch" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Select value={status} onChange={setStatus} options={[{ value: 'pending', label: 'Waiting' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }, { value: '', label: 'All' }]} />
+        <Select value={size} onChange={(v) => setSize(v as typeof size)} options={[{ value: '', label: 'Any size' }, { value: 'big', label: '500+ members' }, { value: 'small', label: 'Under 500' }]} />
+        <Select value={verified} onChange={(v) => setVerified(v as typeof verified)} options={[{ value: '', label: 'Verified or not' }, { value: 'yes', label: 'Verified' }, { value: 'no', label: 'Not verified' }]} />
+      </div>
+      {error && <div className="form-error">{error}</div>}
+      {!rows && <div className="spinner" />}
+      {rows?.length === 0 && <p className="muted">Nothing here.</p>}
+      <div className="queue-list">
+        {rows?.map((r) => (
+          <div key={r.id} className="queue-card">
+            <div className="queue-head">
+              {r.icon_url ? <img className="queue-icon" src={r.icon_url} alt="" /> : <span className="queue-icon" style={{ background: r.icon_color }}>{r.name.slice(0, 2).toUpperCase()}</span>}
+              <div className="grow">
+                <b>
+                  {r.name} {r.verified && <VerifiedMark size={14} />}
+                </b>
+                <div className="small muted">
+                  {r.members.toLocaleString()} members · {r.language} · applied {new Date(r.created_at).toLocaleDateString()}
+                  {r.categories.length ? ` · ${r.categories.join(', ')}` : ''}
+                </div>
+              </div>
+              <span className={`invite-status ${r.status}`}>{r.status}</span>
+            </div>
+            {r.description && <p className="small">{r.description}</p>}
+            {r.pitch && <blockquote className="queue-pitch">{r.pitch}</blockquote>}
+            {r.note && <div className="small muted">Reviewer note: {r.note}</div>}
+            <div className="row">
+              <button className="btn secondary small" onClick={() => openGlobalModal({ kind: 'server-preview', serverId: r.server_id })}>
+                <Icon name="eye" size={14} /> Preview & join
+              </button>
+              {r.status !== 'approved' && (
+                <button className="btn success small" onClick={() => review(r, true)}>
+                  Approve
+                </button>
+              )}
+              {r.status !== 'rejected' && (
+                <button className="btn danger small" onClick={() => review(r, false)}>
+                  Reject
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }

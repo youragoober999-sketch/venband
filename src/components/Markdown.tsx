@@ -2,9 +2,11 @@
 //   # / ## / ### headings, -# subtext, > quotes, >>> quotes, - lists, 1. lists
 //   **bold** *italic* _italic_ __underline__ ~~strike~~ ||spoiler|| `code` ```blocks```
 //   [masked](https://links), <https://no-embed>, <@user> <@&role> <#channel> @everyone @here
-import { Fragment, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { highlightAuto, languageLabel } from '../lib/highlight';
 import { copyText, openMenu } from './ContextMenu';
+import { EXPRESSION_TOKEN, expressionStore, noteUnknownExpression } from '../lib/expressions';
+import { isOurAsset } from '../lib/soundboard';
 import { useSettings } from '../lib/settings';
 
 export interface MentionContext {
@@ -52,6 +54,16 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
       </pre>
     </div>
   );
+}
+
+function ExpressionToken({ kind, name, id }: { kind?: 'a' | 's'; name: string; id: string }) {
+  const e = expressionStore.use((s) => s.byId[id]);
+  useEffect(() => {
+    if (!e) noteUnknownExpression(id);
+  }, [e, id]);
+  if (!e) return <span className="custom-emoji-missing" title="From a server you’re not in">:{name}:</span>;
+  if (kind === 's' || e.kind === 'sticker') return <img className="sticker" src={e.url} alt={`${name} sticker`} title={`${name} · ${e.server_name}`} loading="lazy" />;
+  return <img className="custom-emoji" src={e.url} alt={`:${name}:`} title={`:${name}: · ${e.server_name}`} loading="lazy" draggable={false} />;
 }
 
 export function Markdown({ text, ctx }: { text: string; ctx?: MentionContext }) {
@@ -149,6 +161,7 @@ const INLINE: { name: string; re: RegExp }[] = [
   { name: 'user', re: new RegExp(`<@!?(${UUID})>`) },
   { name: 'role', re: new RegExp(`<@&(${UUID})>`) },
   { name: 'channel', re: new RegExp(`<#(${UUID})>`) },
+  { name: 'expression', re: EXPRESSION_TOKEN },
   { name: 'everyone', re: /@(everyone|here)\b/ },
   { name: 'url', re: URL_RE },
   { name: 'spoiler', re: /\|\|([\s\S]+?)\|\|/ },
@@ -184,6 +197,8 @@ function inline(text: string, ctx: MentionContext | undefined, key: string): Rea
 
 function renderToken(name: string, m: RegExpExecArray, ctx: MentionContext | undefined, k: string): ReactNode {
   switch (name) {
+    case 'expression':
+      return <ExpressionToken key={k} kind={m[1] as 'a' | 's' | undefined} name={m[2]} id={m[3]} />;
     case 'code':
       return <code key={k} className="md-code">{m[1]}</code>;
     case 'masked':
@@ -323,6 +338,9 @@ export function embedFor(raw: string): EmbedInfo | null {
     const m = u.pathname.match(/\/video\/(\d{8,25})/);
     if (!m) return null;
     return { kind: 'tiktok', url: raw, src: `https://www.tiktok.com/embed/v2/${m[1]}`, label: 'TikTok', tall: true };
+  }
+  if (isOurAsset(raw) && /\/expr\/[0-9a-f-]{36}\.(gif|webp|png|jpe?g|avif)$/i.test(u.pathname)) {
+    return { kind: 'gif', url: raw, src: raw, label: 'GIF' };
   }
   if (/(^|\.)klipy\.com$/.test(u.hostname) && /\.(gif|webp|mp4|webm)$/i.test(u.pathname)) {
     return { kind: 'gif', url: raw, src: raw, label: 'GIF' };

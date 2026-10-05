@@ -6,6 +6,8 @@ import { Shell } from './components/Shell';
 import { Logo } from './components/ui';
 import { Onboarding } from './components/Onboarding';
 import { ContextMenuHost } from './components/ContextMenu';
+import { InvitePage } from './components/Invite';
+import { parseRoute, useRoute } from './lib/router';
 
 export default function App() {
   const status = sessionStore.use((s) => s.status);
@@ -15,7 +17,10 @@ export default function App() {
     if (configured) initSession();
   }, []);
 
+  const route = parseRoute(useRoute());
   if (!configured) return <NotConfigured />;
+  // invite links work signed in or out
+  if (route.kind === 'invite' && (status === 'signed-out' || (status === 'ready' && hasProfile && !needsOnboarding))) return <InvitePage code={route.code} />;
   switch (status) {
     case 'loading':
       return (

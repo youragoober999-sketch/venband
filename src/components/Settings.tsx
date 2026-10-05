@@ -17,7 +17,7 @@ import { Select } from './Select';
 import { Badges } from './Badges';
 import { accountAge, bannerStyle, NAMEPLATES, ServerTag } from './People';
 import { askConfirm } from './Dialogs';
-import { ModerationCenter, ReportCentre } from './Moderation';
+import { DiscoveryQueue, ModerationCenter, ReportCentre } from './Moderation';
 import { Markdown } from './Markdown';
 
 const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; admin?: boolean }[] = [
@@ -30,6 +30,7 @@ const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff
   { id: 'chat', label: 'Chat', icon: 'message', group: 'App Settings' },
   { id: 'language', label: 'Language', icon: 'globe', group: 'App Settings' },
   { id: 'moderation', label: 'Moderation', icon: 'gavel', group: 'Venband Staff', staff: true },
+  { id: 'discovery-queue', label: 'Discovery Applications', icon: 'compass', group: 'Venband Staff', staff: true },
   { id: 'reports', label: 'Report Centre', icon: 'flag', group: 'Venband Staff', staff: true, admin: true },
 ];
 
@@ -70,7 +71,7 @@ export function SettingsPage() {
         </div>
       </nav>
       <main className="sp-content">
-        <div className={`sp-inner${tab === 'moderation' || tab === 'reports' ? ' wide' : ''}`}>
+        <div className={`sp-inner${tab === 'moderation' || tab === 'reports' || tab === 'discovery-queue' ? ' wide' : ''}`}>
           {tab === 'account' && <AccountTab />}
           {tab === 'profile' && <ProfileTab />}
           {tab === 'privacy' && <PrivacyTab />}
@@ -81,6 +82,7 @@ export function SettingsPage() {
           {tab === 'language' && <LanguageTab />}
           {tab === 'moderation' && staff && <ModerationCenter />}
           {tab === 'reports' && admin && <ReportCentre />}
+          {tab === 'discovery-queue' && staff && <DiscoveryQueue />}
         </div>
         <button className="sp-close" onClick={closeSettings} title="Close (Esc)">
           <Icon name="x" size={18} />
@@ -552,6 +554,7 @@ function AppearanceTab() {
   const themeId = useSettings((s) => s.themeId);
   const installed = useSettings((s) => s.installedThemes);
   const reduceMotion = useSettings((s) => s.chat.reduceMotion);
+  const serverThemes = useSettings((s) => s.serverThemes);
   const me = sessionStore.use((s) => s.me)!;
   const [view, setView] = useState<'themes' | 'market' | 'create'>('themes');
   const [market, setMarket] = useState<MarketTheme[] | null>(null);
@@ -619,6 +622,23 @@ function AppearanceTab() {
               </div>
             ))}
           </div>
+          <Section title="Server themes" desc="Servers can have their own colors. Choose how they apply to you.">
+            <div className="radio-cards">
+              {(
+                [
+                  ['override', 'Use the server’s look', 'While you’re in a server, its colors replace yours.'],
+                  ['merge', 'Just the accent color', 'Keep your theme, take only the server’s accent color.'],
+                  ['never', 'Always my theme', 'Ignore server themes.'],
+                ] as const
+              ).map(([id, label, desc]) => (
+                <label key={id} className={`radio-card${serverThemes === id ? ' selected' : ''}`}>
+                  <input type="radio" name="serverthemes" checked={serverThemes === id} onChange={() => updateSettings({ serverThemes: id })} />
+                  <b>{label}</b>
+                  <span className="small muted">{desc}</span>
+                </label>
+              ))}
+            </div>
+          </Section>
           <Section title="Motion">
             <Toggle label="Reduce motion" desc="Turn off animations and transitions." checked={reduceMotion} onChange={(v) => updateChat({ reduceMotion: v })} />
           </Section>

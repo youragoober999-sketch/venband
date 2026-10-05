@@ -12,6 +12,7 @@ export type SettingsTab =
   | 'language'
   | 'notifications'
   | 'moderation'
+  | 'discovery-queue'
   | 'reports';
 
 export const uiStore = createStore<{

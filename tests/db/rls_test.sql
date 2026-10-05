@@ -615,3 +615,73 @@ do $t$ begin
   assert public.deliver_scheduled_messages() = 0;
   assert not exists (select 1 from public.messages where ciphertext = 'after kick');
 end $t$;
+
+-- ============================================================== servers ----
+reset role;
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000a1', 's1@example.com', '{"username":"srvowner"}'),
+  ('00000000-0000-0000-0000-0000000000a2', 's2@example.com', '{"username":"srvjoiner"}');
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select set_config('t.gs', public.create_server('Gamers', '#ff0000', 'gaming')::text, false);
+do $t$ begin
+  assert (select count(*) from public.channels where server_id = current_setting('t.gs')::uuid) >= 10, 'gaming template made its channels';
+  assert exists (select 1 from public.channels where server_id = current_setting('t.gs')::uuid and type = 'stage'), 'template includes a stage';
+  assert exists (select 1 from public.channels where server_id = current_setting('t.gs')::uuid and type = 'forum'), 'template includes a forum';
+  assert (select welcome_channel_id from public.servers where id = current_setting('t.gs')::uuid) is not null;
+end $t$;
+-- vanity links need 500+ members or verification
+select pg_temp.must_fail($$select public.set_vanity(current_setting('t.gs')::uuid, 'gamers')$$);
+-- nobody sets discovery approval or vanity directly
+select pg_temp.must_fail($$update public.servers set discovery_status = 'approved' where id = current_setting('t.gs')::uuid$$);
+select pg_temp.must_fail($$update public.servers set vanity = 'sneaky' where id = current_setting('t.gs')::uuid$$);
+select public.apply_for_discovery(current_setting('t.gs')::uuid, 'come play', '{Gaming}', 'en');
+select pg_temp.must_fail($$select public.discovery_queue('pending', null, null, '')$$);  -- staff only
+-- rules: new members can read but not talk until they accept
+update public.servers set rules = '{"Be nice"}' where id = current_setting('t.gs')::uuid;
+select set_config('t.inv', public.create_invite(current_setting('t.gs')::uuid, 5, 0.5, 0, 'test'), false);
+reset role;
+set role anon;
+do $t$ begin
+  assert (select name from public.invite_preview(current_setting('t.inv'))) = 'Gamers', 'invite preview works signed out';
+  assert (select cardinality(rules) from public.invite_preview(current_setting('t.inv'))) = 1;
+end $t$;
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a2', false);
+select public.join_server(current_setting('t.inv'));
+do $t$ begin
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 0, 'no sending before accepting the rules';
+end $t$;
+select public.complete_onboarding(current_setting('t.gs')::uuid, true, '{}'::jsonb);
+do $t$ begin
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 128, 'can send after accepting';
+end $t$;
+-- announcement channels: members can't post
+reset role;
+insert into public.channel_epochs (channel_id, epoch, key_check, created_by)
+  select id, 1, 'kc', '00000000-0000-0000-0000-0000000000a1' from public.channels where server_id = current_setting('t.gs')::uuid and type = 'announcement';
+update public.channels set key_rotation_needed = false where server_id = current_setting('t.gs')::uuid;
+insert into public.user_keys (key_id, user_id, enc_public, sign_public) values ('srvKey00000000000002', '00000000-0000-0000-0000-0000000000a2', 'e', 's');
+set role authenticated;
+select pg_temp.must_fail($$insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature)
+  select gen_random_uuid(), id, auth.uid(), 'srvKey00000000000002', 1, 'iv', 'ct', 'sig' from public.channels
+  where server_id = current_setting('t.gs')::uuid and type = 'announcement'$$);
+-- members can't reorder channels or upload emoji without permission
+select pg_temp.must_fail($$select public.reorder_channels(current_setting('t.gs')::uuid, '[]'::jsonb)$$);
+select pg_temp.must_fail($$insert into public.server_expressions (server_id, kind, name, url, mime, size) values (current_setting('t.gs')::uuid, 'emoji', 'hi', 'x', 'image/png', 10)$$);
+-- invite analytics are for managers only
+do $t$ begin
+  assert (select count(*) from public.invite_uses) = 0, 'members can''t see who used invites';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+do $t$ begin
+  assert (select count(*) from public.invite_uses where server_id = current_setting('t.gs')::uuid) = 1, 'owner sees invite use';
+end $t$;
+-- paused invites refuse new joins
+update public.invites set paused = true where code = current_setting('t.inv');
+insert into public.server_expressions (server_id, kind, name, url, mime, size) values (current_setting('t.gs')::uuid, 'emoji', 'hype', 'x', 'image/png', 10);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a2', false);
+do $t$ begin
+  assert (select count(*) from public.my_expressions() where name = 'hype') = 1, 'members can use server emoji';
+end $t$;
