@@ -30,6 +30,7 @@ export type AuthStatus =
   | 'identity-reset' // password was reset: keys can't be opened
   | 'recovery' // arrived from a password-reset email
   | 'setup-error' // signed in, but the account couldn't be loaded
+  | 'mfa' // password was right; waiting for the authenticator code
   | 'ready';
 
 interface SessionState {
@@ -41,6 +42,8 @@ interface SessionState {
   notice: string | null;
   setupError: string | null;
   pendingVault: CryptoKey | null;
+  /** waiting on the second sign-in step (vaultKey is null when the keys are already on this device) */
+  pendingMfa: { vaultKey: CryptoKey | null; remember: boolean } | null;
 }
 
 export const sessionStore = createStore<SessionState>({
@@ -52,7 +55,15 @@ export const sessionStore = createStore<SessionState>({
   notice: null,
   setupError: null,
   pendingVault: null,
+  pendingMfa: null,
 });
+
+/** True when the account has an authenticator app and this session hasn't passed it yet. */
+async function needsMfa(): Promise<boolean> {
+  const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error || !data) return false;
+  return data.nextLevel === 'aal2' && data.currentLevel !== 'aal2';
+}
 
 async function enterApp(session: Session, identity: Identity) {
   const userId = session.user.id;
@@ -173,6 +184,11 @@ async function onSession(session: Session | null) {
     sessionStore.set({ status: 'recovery', session });
     return;
   }
+  if (await needsMfa()) {
+    // keep the password-derived key if signIn already stashed it
+    sessionStore.set({ status: 'mfa', session, pendingMfa: sessionStore.get().pendingMfa ?? { vaultKey: null, remember: true } });
+    return;
+  }
   const remembered = await recallIdentity(session.user.id);
   if (remembered) {
     // `null` = couldn't check right now: trust this device's keys rather than
@@ -288,6 +304,10 @@ export async function signIn(email: string, password: string, remember: boolean)
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: authPassword });
     if (error) throw error;
+    if (await needsMfa()) {
+      sessionStore.set({ status: 'mfa', session: data.session, pendingMfa: { vaultKey, remember } });
+      return;
+    }
     try {
       await unlockWith(data.session, vaultKey, remember);
     } catch (e) {
@@ -335,6 +355,38 @@ async function unlockWith(session: Session, vaultKey: CryptoKey, remember: boole
       return;
     }
     throw e;
+  }
+}
+
+/** Second sign-in step: the 6-digit code from an authenticator app. */
+export async function verifyMfa(code: string) {
+  const { pendingMfa } = sessionStore.get();
+  const { data: factors, error: fe } = await supabase.auth.mfa.listFactors();
+  if (fe) throw fe;
+  const factor = factors.totp.find((f) => f.status === 'verified');
+  if (!factor) throw new Error('No authenticator app is set up for this account.');
+  authInProgress++;
+  try {
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code: code.replace(/\s/g, '') });
+    if (error) throw new Error(/invalid/i.test(error.message) ? 'That code didn’t work. Check the time on your phone and try the newest code.' : error.message);
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw new Error('Your sign-in expired. Please log in again.');
+    sessionStore.set({ pendingMfa: null });
+    if (pendingMfa?.vaultKey) {
+      await unlockWith(session, pendingMfa.vaultKey, pendingMfa.remember);
+    } else {
+      sessionStore.set({ status: 'loading' });
+      authInProgress--;
+      try {
+        await onSession(session);
+      } finally {
+        authInProgress++;
+      }
+    }
+  } finally {
+    authInProgress--;
   }
 }
 

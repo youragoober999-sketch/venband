@@ -128,7 +128,8 @@ export function useMyServers(onMessage?: (row: MessageRow) => void) {
     const ids = (memberships ?? []).map((m) => m.server_id);
     const { data: srv } = ids.length ? await supabase.from('servers').select('*').in('id', ids) : { data: [] };
     const order = new Map((memberships ?? []).map((m) => [m.server_id, m.joined_at]));
-    setServers(((srv ?? []) as Server[]).sort((a, b) => (order.get(a.id)! < order.get(b.id)! ? -1 : 1)));
+    // deleted servers wait in Settings → Security for 7 days
+    setServers(((srv ?? []) as Server[]).filter((x) => x.status !== 'deleted').sort((a, b) => (order.get(a.id)! < order.get(b.id)! ? -1 : 1)));
 
     const { data: parts } = await supabase.from('dm_participants').select('channel_id, user_id');
     const byChannel = new Map<string, string[]>();

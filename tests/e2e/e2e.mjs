@@ -109,6 +109,8 @@ async function main() {
 const { execSync: sh } = await import('node:child_process');
 // every test run signs up from 127.0.0.1: reset the 6-accounts-per-IP counter
 try { sh(`psql ${DB} -Atc "delete from public.signup_ips"`); } catch { /* table may not exist on old schemas */ }
+// earlier runs' test accounts would look like alts of this run's (same browser, same network)
+try { sh(`psql ${DB} -Atc "delete from public.voogle_verifications; delete from public.voogle_signals"`); } catch { /* older schema */ }
 
 // ---- unverified login is rejected
 await alice.page.goto(APP);
@@ -970,6 +972,8 @@ await alice.page.getByRole('button', { name: /Server Settings/ }).click();
 await alice.page.locator('.settings-nav button', { hasText: 'Voogle' }).click();
 await alice.page.locator('.check-row', { hasText: 'Use Voogle in this server' }).locator('input').check();
 await alice.page.locator('.check-row', { hasText: 'must verify' }).locator('input').check();
+// alice and bob share this machine and network, so Voogle rightly sees them as linked: only review real risk
+await alice.page.getByLabel('Send to moderators at risk score').fill('100');
 await alice.page.locator('.settings-content').getByRole('button', { name: 'Save' }).click();
 await alice.page.locator('.settings-content .form-notice', { hasText: 'Saved' }).waitFor({ timeout: 10000 });
 await alice.page.keyboard.press('Escape');
@@ -992,6 +996,149 @@ if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/25-voogle-lookup.png` }
 await alice.page.goto(APP + `channels/${hqId}`);
 await alice.page.locator('.server-header').waitFor({ timeout: 20000 });
 log('✅ Voogle lookups show a risk score and likely alts, never IPs');
+
+// ---- server moderation: timeouts, warnings, audit log
+const { createHmac } = await import('node:crypto');
+function totp(secret, offset = 0) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const c of secret.replace(/=+$/, '').toUpperCase()) bits += alphabet.indexOf(c).toString(2).padStart(5, '0');
+  const key = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000) + offset));
+  const h = createHmac('sha1', key).update(counter).digest();
+  const o = h[h.length - 1] & 15;
+  return String(((h.readUInt32BE(o) & 0x7fffffff) % 1e6)).padStart(6, '0');
+}
+await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+const bobMember = alice.page.locator('.members .member', { hasText: 'Bob' }).first();
+await bobMember.click({ button: 'right' });
+await alice.page.locator('.ctx-timeouts .chip', { hasText: '5m' }).click();
+await alice.page.locator('.modal input').fill('cool off');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await bob.page.locator('.timeout-bar', { hasText: 'cool off' }).waitFor({ timeout: 20000 });
+if (await bob.page.locator('.composer textarea:not([disabled])').count()) throw new Error('timed out members should not be able to type');
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/30-timeout.png` });
+await bobMember.click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Remove Timeout' }).click();
+await bob.page.locator('.timeout-bar').waitFor({ state: 'detached', timeout: 20000 });
+await bob.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
+log('✅ timeouts make a member read-only until removed');
+await bobMember.click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: /^Warn / }).click();
+await alice.page.locator('.modal input').fill('please keep it friendly');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await bob.page.locator('.modal .warning-reason', { hasText: 'please keep it friendly' }).waitFor({ timeout: 20000 });
+await bob.page.locator('.modal').getByRole('button', { name: 'I understand' }).click();
+await bob.page.locator('.modal .warning-reason').waitFor({ state: 'detached', timeout: 10000 });
+log('✅ warnings pop up for the member until they acknowledge them');
+await alice.page.locator('.server-header').click();
+await alice.page.getByRole('button', { name: /Server Settings/ }).click();
+await alice.page.locator('.settings-nav button', { hasText: 'Audit Log' }).click();
+await alice.page.locator('.audit-row', { hasText: 'timed out' }).first().waitFor({ timeout: 15000 });
+await alice.page.locator('.audit-row', { hasText: 'warned' }).first().waitFor({ timeout: 15000 });
+await alice.page.locator('.audit-filters input').fill('warned');
+if ((await alice.page.locator('.audit-row').count()) < 1 || (await alice.page.locator('.audit-row', { hasText: 'timed out' }).count())) throw new Error('audit log search did not filter');
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/31-audit-log.png` });
+log('✅ the audit log records moderation and can be searched');
+
+// ---- server reports: moderators see them (reporter hidden) and jump to the message
+await alice.page.locator('.settings-nav button', { hasText: 'Reports' }).click();
+const srvReport = alice.page.locator('.report-card', { hasText: 'testing reports' });
+await srvReport.waitFor({ timeout: 15000 });
+if (await srvReport.locator('.evidence-msg.reported').count() !== 1) throw new Error('reported message not highlighted');
+await srvReport.getByRole('button', { name: 'Jump to message' }).click();
+await alice.page.locator('.message.flash', { hasText: 'secret after kick' }).waitFor({ timeout: 20000 });
+log('✅ server moderators see reports and jump straight to the reported message');
+
+// ---- removed GIFs show the Terms notice for everyone
+await alice.page.locator('.composer textarea:not([disabled])').fill('https://static.klipy.com/ii/test/removed-me.gif');
+await alice.page.keyboard.press('Enter');
+const gifMsg = alice.page.locator('.message', { has: alice.page.locator('.embed-wrap') }).last();
+await gifMsg.waitFor({ timeout: 20000 });
+await gifMsg.click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Remove GIF from Server' }).click();
+await bob.page.locator('.gif-removed', { hasText: 'venband.com/tos' }).last().waitFor({ timeout: 20000 });
+log('✅ owners can remove a GIF; everyone sees the Terms of Service notice instead');
+
+// ---- link safety
+await alice.page.locator('.composer textarea:not([disabled])').fill('free stuff http://paypa1-login.xyz/claim');
+await alice.page.keyboard.press('Enter');
+await bob.page.locator('.message-text a', { hasText: 'paypa1-login.xyz' }).last().click();
+await bob.page.locator('.modal', { hasText: 'This link looks dangerous' }).waitFor({ timeout: 10000 });
+await bob.page.locator('.modal .link-risks li').first().waitFor();
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/32-link-warning.png` });
+await bob.page.locator('.modal').getByRole('button', { name: 'Go back' }).click();
+log('✅ risky links get a warning before they open');
+
+// ---- custom badges designed by the Venband owner
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Badge Designer' }).click();
+const [chooser] = await Promise.all([alice.page.waitForEvent('filechooser'), alice.page.getByLabel('Upload badge picture').click()]);
+await chooser.setFiles({ name: 'star.png', mimeType: 'image/png', buffer: png });
+await alice.page.locator('.modal').getByRole('button', { name: 'Apply' }).click();
+await alice.page.locator('.badge-designer input').first().fill(`event_${run}`);
+await alice.page.locator('.badge-designer input').nth(1).fill('Summer Event');
+await alice.page.getByRole('button', { name: 'Save badge' }).click();
+await alice.page.locator('.badge-choice', { hasText: 'Summer Event' }).waitFor({ timeout: 15000 });
+log('✅ the Venband owner can design badges with an uploaded picture');
+
+// ---- security centre: data export, two-factor sign-in
+await alice.page.locator('.sp-tab', { hasText: 'Security' }).click();
+const [exportDl] = await Promise.all([alice.page.waitForEvent('download'), alice.page.getByRole('button', { name: 'Download my data' }).click()]);
+const exported = JSON.parse(await (await import('node:fs/promises')).readFile(await exportDl.path(), 'utf8'));
+if (exported.profile?.username !== `alice_${run}`) throw new Error('export is missing the profile');
+log('✅ data export downloads your account data');
+await alice.page.getByRole('button', { name: 'Set up an authenticator app' }).click();
+const secret = (await alice.page.locator('.mfa-secret').innerText()).trim();
+await alice.page.getByLabel('Setup code').fill(totp(secret));
+await alice.page.getByRole('button', { name: 'Turn on' }).click();
+await alice.page.locator('.pill.active', { hasText: 'On' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.sp-tab', { hasText: 'My Account' }).click();
+await alice.page.getByRole('button', { name: /Log Out/i }).click();
+await alice.page.getByText('Welcome back').waitFor({ timeout: 20000 });
+await alice.page.locator('input[type=email]').fill(alice.email);
+await alice.page.locator('input[type=password]').fill(alice.password);
+await alice.page.locator('.auth-card').getByRole('button', { name: 'Log in' }).click();
+await alice.page.getByText('Two-factor check').waitFor({ timeout: 20000 });
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/33-two-factor.png` });
+await alice.page.getByLabel('Authenticator code').fill(totp(secret, 1));
+await alice.page.locator('.auth-card').getByRole('button', { name: 'Continue' }).click();
+await alice.page.locator('.user-panel').waitFor({ timeout: 30000 });
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+await alice.page.locator('.message-text', { hasText: 'secret after kick' }).first().waitFor({ timeout: 20000 });
+log('✅ two-factor sign-in asks for the authenticator code, then messages decrypt');
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Security' }).click();
+await alice.page.getByRole('button', { name: 'Turn off' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Turn off' }).click();
+await alice.page.getByRole('button', { name: 'Set up an authenticator app' }).waitFor({ timeout: 15000 });
+log('✅ two-factor sign-in can be turned off again');
+
+// ---- deleted servers can be restored for 7 days
+await alice.page.locator('.sp-close').click();
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.server-header').waitFor({ timeout: 20000 });
+const fragId = execSync(`psql ${DB} -Atc "select id from public.servers where name = '${'Frag Squad ' + run}'"`).toString().trim();
+await alice.page.goto(APP + `channels/${fragId}`);
+await alice.page.locator('.server-header', { hasText: 'Frag Squad' }).click();
+await alice.page.getByRole('button', { name: /Server Settings/ }).click();
+await alice.page.getByRole('button', { name: 'Delete Server' }).click();
+await alice.page.locator('.modal input').last().fill(`Frag Squad ${run}`);
+await alice.page.locator('.modal').last().getByRole('button', { name: 'Save' }).click();
+await alice.page.waitForFunction((id) => !document.querySelector(`.rail-item[aria-label^="Frag Squad"]`), fragId, { timeout: 20000 });
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Security' }).click();
+await alice.page.getByRole('button', { name: 'Restore' }).click();
+await alice.page.locator('.form-notice', { hasText: 'is back' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.sp-close').click();
+await alice.page.reload();
+await alice.page.locator('.user-panel').waitFor({ timeout: 20000 });
+if (!(await execSync(`psql ${DB} -Atc "select status from public.servers where id = '${fragId}'"`).toString().includes('active'))) throw new Error('server not restored');
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.server-header').waitFor({ timeout: 20000 });
+log('✅ deleted servers wait in Settings → Security and can be restored');
 
 // ---- phone layout
 await bob.page.setViewportSize({ width: 390, height: 844 });
@@ -1055,4 +1202,4 @@ try {
 await browser.close();
 log('ALL E2E CHECKS PASSED');
 }
-main().catch(async (e) => { console.log('FAIL', e.message.split('\n')[0]); for (const u of [alice, bob]) { try { if (SHOTS) await u.page.screenshot({ path: `${SHOTS}/fail-${u.name}.png` }); console.log(u.name, 'text:', (await u.page.evaluate(() => document.body.innerText)).slice(0, 700).replace(/\n+/g, ' | ')); } catch {} } process.exit(1); });
+main().catch(async (e) => { console.log('FAIL', e.message.split('\n').slice(0, 14).join('\n')); for (const u of [alice, bob]) { try { if (SHOTS) await u.page.screenshot({ path: `${SHOTS}/fail-${u.name}.png` }); console.log(u.name, 'text:', (await u.page.evaluate(() => document.body.innerText)).slice(0, 700).replace(/\n+/g, ' | ')); } catch {} } process.exit(1); });

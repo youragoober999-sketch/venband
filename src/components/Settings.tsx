@@ -17,13 +17,15 @@ import { Select } from './Select';
 import { Badges } from './Badges';
 import { accountAge, bannerStyle, NAMEPLATES, ServerTag } from './People';
 import { askConfirm } from './Dialogs';
-import { DiscoveryQueue, ModerationCenter, ReportCentre } from './Moderation';
+import { BadgeDesigner, DiscoveryQueue, ModerationCenter, ReportCentre } from './Moderation';
 import { Markdown } from './Markdown';
+import { SecurityTab } from './Security';
 
-const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; admin?: boolean }[] = [
+const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; admin?: boolean; designer?: boolean }[] = [
   { id: 'account', label: 'My Account', icon: 'user', group: 'User Settings' },
   { id: 'profile', label: 'Profiles', icon: 'edit', group: 'User Settings' },
-  { id: 'privacy', label: 'Privacy & Safety', icon: 'shield', group: 'User Settings' },
+  { id: 'privacy', label: 'Privacy & Safety', icon: 'eye', group: 'User Settings' },
+  { id: 'security', label: 'Security', icon: 'shield', group: 'User Settings' },
   { id: 'devices', label: 'Devices', icon: 'monitor', group: 'User Settings' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App Settings' },
   { id: 'voice', label: 'Voice & Video', icon: 'mic', group: 'App Settings' },
@@ -32,6 +34,7 @@ const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff
   { id: 'moderation', label: 'Moderation', icon: 'gavel', group: 'Venband Staff', staff: true },
   { id: 'discovery-queue', label: 'Discovery Applications', icon: 'compass', group: 'Venband Staff', staff: true },
   { id: 'reports', label: 'Report Centre', icon: 'flag', group: 'Venband Staff', staff: true, admin: true },
+  { id: 'badges', label: 'Badge Designer', icon: 'star', group: 'Venband Staff', designer: true },
 ];
 
 export function SettingsPage() {
@@ -39,6 +42,8 @@ export function SettingsPage() {
   const me = sessionStore.use((s) => s.me)!;
   const staff = (me.platform_role ?? 'user') !== 'user';
   const admin = me.platform_role === 'admin' || me.platform_role === 'owner';
+  // Venband owners and founders design badges
+  const designer = me.platform_role === 'owner' || (me.badges ?? []).includes('founder');
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.modal-backdrop') && closeSettings();
     window.addEventListener('keydown', onKey);
@@ -51,7 +56,7 @@ export function SettingsPage() {
       <nav className="sp-nav">
         <div className="sp-nav-inner">
           {groups.map((g) => {
-            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.admin || admin));
+            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer));
             if (!items.length) return null;
             return (
               <div key={g}>
@@ -71,10 +76,11 @@ export function SettingsPage() {
         </div>
       </nav>
       <main className="sp-content">
-        <div className={`sp-inner${tab === 'moderation' || tab === 'reports' || tab === 'discovery-queue' ? ' wide' : ''}`}>
+        <div className={`sp-inner${tab === 'moderation' || tab === 'reports' || tab === 'discovery-queue' || tab === 'badges' ? ' wide' : ''}`}>
           {tab === 'account' && <AccountTab />}
           {tab === 'profile' && <ProfileTab />}
           {tab === 'privacy' && <PrivacyTab />}
+          {tab === 'security' && <SecurityTab />}
           {tab === 'devices' && <DevicesTab />}
           {tab === 'appearance' && <AppearanceTab />}
           {tab === 'voice' && <VoiceTab />}
@@ -83,6 +89,7 @@ export function SettingsPage() {
           {tab === 'moderation' && staff && <ModerationCenter />}
           {tab === 'reports' && admin && <ReportCentre />}
           {tab === 'discovery-queue' && staff && <DiscoveryQueue />}
+          {tab === 'badges' && designer && <BadgeDesigner />}
         </div>
         <button className="sp-close" onClick={closeSettings} title="Close (Esc)">
           <Icon name="x" size={18} />
@@ -960,6 +967,20 @@ function ChatTab() {
           onChange={(v) => updateChat({ linkPreviews: v })}
         />
       </Section>
+      <Section title="Link safety" desc="Venband checks links for look-alike letters, fake brand names, hidden destinations and short links before they open.">
+        <Field label="Ask before opening links">
+          <Select
+            value={c.linkWarnings}
+            onChange={(v) => updateChat({ linkWarnings: v as 'always' | 'risky' | 'off' })}
+            options={[
+              { value: 'always', label: 'For every site I haven’t trusted (recommended)' },
+              { value: 'risky', label: 'Only when a link looks risky' },
+              { value: 'off', label: 'Only for dangerous links' },
+            ]}
+          />
+        </Field>
+        <TrustedSites />
+      </Section>
       <Section title="Servers">
         <Toggle label="Show join messages" desc="“Someone just joined” notices in welcome channels." checked={c.showJoins} onChange={(v) => updateChat({ showJoins: v })} />
       </Section>
@@ -1056,5 +1077,22 @@ function LanguageTab() {
         </div>
       </Section>
     </>
+  );
+}
+
+function TrustedSites() {
+  const trusted = useSettings((s) => s.trustedDomains);
+  if (!trusted.length) return <p className="small muted">You haven’t trusted any sites yet.</p>;
+  return (
+    <div className="chip-row">
+      {trusted.map((d) => (
+        <span key={d} className="chip">
+          {d}{' '}
+          <button className="pill-x" aria-label={`Stop trusting ${d}`} onClick={() => updateSettings((s) => ({ trustedDomains: s.trustedDomains.filter((x) => x !== d) }))}>
+            ×
+          </button>
+        </span>
+      ))}
+    </div>
   );
 }

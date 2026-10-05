@@ -25,10 +25,14 @@ export function ImageCropper({ file, opts, onDone, onCancel }: { file: File; opt
   useEffect(() => {
     const url = URL.createObjectURL(file);
     const i = new Image();
-    i.onload = () => setImg(i);
-    i.onerror = () => setError('That file isn’t a picture we can read. Try a PNG, JPG, GIF or WebP.');
+    let live = true; // a cancelled load (e.g. React re-running this) must not report an error
+    i.onload = () => live && (setError(null), setImg(i));
+    i.onerror = () => live && setError('That file isn’t a picture we can read. Try a PNG, JPG, GIF or WebP.');
     i.src = url;
-    return () => URL.revokeObjectURL(url);
+    return () => {
+      live = false;
+      URL.revokeObjectURL(url);
+    };
   }, [file]);
 
   // the picture's size at zoom 1 covers the frame

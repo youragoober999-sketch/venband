@@ -7,6 +7,10 @@ import { sessionStore } from './session';
 import { displayName, loadProfiles } from './directory';
 import type { DecryptedMessage } from './keyring';
 import type { MessageRow } from './types';
+import { downloadDecrypted } from './files';
+import { containsSlur } from './automod';
+
+export type EvidenceKind = 'text' | 'image' | 'video' | 'gif' | 'file' | 'slur';
 
 export interface EvidenceItem {
   id: string;
@@ -15,6 +19,69 @@ export interface EvidenceItem {
   text: string;
   at: string;
   reported?: boolean;
+  /** what the message contains (for filters) */
+  kinds?: EvidenceKind[];
+  /** report-evidence/<reporter>/<report>/<n>.webp copies of the pictures, readable only by moderators */
+  images?: string[];
+}
+
+const GIF_URL = /https?:\/\/\S+?(\.gif\b|klipy\.com|tenor\.com|giphy\.com)/i;
+
+function kindsOf(m: DecryptedMessage): EvidenceKind[] {
+  const p = m.payload!;
+  const out = new Set<EvidenceKind>();
+  if (p.text.trim()) out.add('text');
+  if (GIF_URL.test(p.text)) out.add('gif');
+  if (containsSlur(p.text)) out.add('slur');
+  for (const a of p.attachments ?? []) {
+    if (a.mime === 'image/gif') out.add('gif');
+    else if (a.mime.startsWith('image/')) out.add('image');
+    else if (a.mime.startsWith('video/')) out.add('video');
+    else out.add('file');
+  }
+  return [...out];
+}
+
+/** Re-encode a picture as a small webp (drops hidden metadata too). */
+async function shrink(blob: Blob, max = 1280): Promise<Blob | null> {
+  try {
+    const bmp = await createImageBitmap(blob);
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * scale);
+    c.height = Math.round(bmp.height * scale);
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close();
+    return await new Promise((res) => c.toBlob((b) => res(b), 'image/webp', 0.85));
+  } catch {
+    return null;
+  }
+}
+
+/** Upload copies of the reported message's pictures (moderators can't decrypt the originals). */
+async function attachPictures(m: DecryptedMessage, reportId: string): Promise<string[]> {
+  const me = sessionStore.get().me!;
+  const out: string[] = [];
+  const pics = (m.payload?.attachments ?? []).filter((a) => a.mime.startsWith('image/') && a.size < 30 * 1024 * 1024).slice(0, 4);
+  for (const [i, a] of pics.entries()) {
+    try {
+      const small = await shrink(await downloadDecrypted(a));
+      if (!small) continue;
+      const path = `${me.id}/${reportId}/${i}.webp`;
+      const { error } = await supabase.storage.from('report-evidence').upload(path, small, { contentType: 'image/webp', upsert: false });
+      if (!error) out.push(path);
+    } catch {
+      /* a picture that can't be read is skipped; the text still goes */
+    }
+  }
+  return out;
+}
+
+/** Signed links for moderators to look at evidence pictures. */
+export async function evidenceUrls(paths: string[]): Promise<Record<string, string>> {
+  if (!paths.length) return {};
+  const { data } = await supabase.storage.from('report-evidence').createSignedUrls(paths, 600);
+  return Object.fromEntries((data ?? []).filter((d) => d.signedUrl && d.path).map((d) => [d.path!, d.signedUrl as string]));
 }
 
 export type ReportStatus = 'under_review' | 'actioned' | 'dismissed';
@@ -40,6 +107,7 @@ function toEvidence(m: DecryptedMessage, reported = false): EvidenceItem | null 
     author: displayName(m.row.author_id),
     text: (m.payload.text + files).slice(0, 4000),
     at: m.row.created_at,
+    kinds: kindsOf(m),
     ...(reported ? { reported: true } : {}),
   };
 }
@@ -49,8 +117,13 @@ export async function reportMessage(m: DecryptedMessage, context: DecryptedMessa
   const me = sessionStore.get().me!;
   const i = context.findIndex((x) => x.row.id === m.row.id);
   const around = context.slice(Math.max(0, i - 5), i + 3);
-  const evidence = around.map((x) => toEvidence(x, x.row.id === m.row.id)).filter(Boolean);
+  const evidence = around.map((x) => toEvidence(x, x.row.id === m.row.id)).filter(Boolean) as EvidenceItem[];
+  const reportId = crypto.randomUUID();
+  const images = await attachPictures(m, reportId);
+  const target = evidence.find((e) => e.reported);
+  if (target && images.length) target.images = images;
   const { error } = await supabase.from('reports').insert({
+    id: reportId,
     reporter_id: me.id,
     kind: 'message',
     target_user: m.row.author_id,

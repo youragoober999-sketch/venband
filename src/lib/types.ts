@@ -30,7 +30,7 @@ export interface Profile {
 export const PROFILE_COLUMNS =
   'id, username, display_name, avatar_color, about, created_at, pronouns, status_text, status_emoji, presence, banner_color, banner_color2, accent_color, nameplate, tag_server_id, server_tag, badges, platform_role, account_status';
 
-export type ServerStatus = 'active' | 'review' | 'closed' | 'banned';
+export type ServerStatus = 'active' | 'review' | 'closed' | 'banned' | 'deleted';
 
 export interface Server {
   id: string;
@@ -117,6 +117,8 @@ export interface Member {
   user_id: string;
   nickname: string | null;
   joined_at: string;
+  timeout_until?: string | null;
+  timeout_reason?: string | null;
 }
 
 export interface MemberRole {

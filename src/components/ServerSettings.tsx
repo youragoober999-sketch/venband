@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { IntegrationsTab, VoogleTab } from './ServerSettingsBots';
+import { AuditLogTab, ServerReportsTab } from './ReportViews';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
@@ -12,7 +13,7 @@ import { showUndo } from './Undo';
 import { DiscoveryTab, ExpressionsTab, InvitesTab, JoiningTab, ThemeTab } from './ServerSettingsExtra';
 import { Select } from './Select';
 
-type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'expressions' | 'theme' | 'joining' | 'discovery' | 'integrations' | 'voogle';
+type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'expressions' | 'theme' | 'joining' | 'discovery' | 'integrations' | 'voogle' | 'reports' | 'audit';
 
 export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClose: () => void }) {
   const p = data.myPermissions;
@@ -28,6 +29,8 @@ export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClo
     ['integrations', 'Integrations & Bots', has(p, P.MANAGE_INTEGRATIONS) || has(p, P.MANAGE_SERVER)],
     ['voogle', 'Voogle', has(p, P.MANAGE_SERVER)],
     ['bans', 'Bans', has(p, P.BAN_MEMBERS)],
+    ['reports', 'Reports', has(p, P.MODERATE_MEMBERS) || has(p, P.MANAGE_MESSAGES) || has(p, P.KICK_MEMBERS)],
+    ['audit', 'Audit Log', has(p, P.VIEW_AUDIT_LOG)],
   ];
   const visible = tabs.filter((t) => t[2]);
   const [tab, setTab] = useState<Tab>(visible[0][0]);
@@ -49,6 +52,8 @@ export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClo
           {tab === 'expressions' && <ExpressionsTab data={data} />}
           {tab === 'theme' && <ThemeTab data={data} />}
           {tab === 'integrations' && <IntegrationsTab data={data} />}
+          {tab === 'reports' && <ServerReportsTab data={data} onClose={onClose} />}
+          {tab === 'audit' && <AuditLogTab data={data} />}
           {tab === 'voogle' && <VoogleTab data={data} />}
           {tab === 'joining' && <JoiningTab data={data} />}
           {tab === 'discovery' && <DiscoveryTab data={data} />}
@@ -167,9 +172,14 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
           <button
             className="btn danger"
             onClick={async () => {
-              const typed = await askText({ title: `Delete ${server.name}`, label: `Type the server name (${server.name}) to delete it forever`, maxLength: 100 });
+              const typed = await askText({
+                title: `Delete ${server.name}`,
+                label: `Type the server name (${server.name}) to delete it`,
+                hint: 'You can restore it from Settings → Security for 7 days. After that it’s gone for good.',
+                maxLength: 100,
+              });
               if (typed !== server.name) return;
-              const { error } = await supabase.from('servers').delete().eq('id', server.id);
+              const { error } = await supabase.rpc('delete_server', { p_server: server.id });
               if (error) return setMsg(errorMessage(error));
               onClose();
               openServer(null);

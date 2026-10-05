@@ -5,6 +5,7 @@ export type SettingsTab =
   | 'account'
   | 'profile'
   | 'privacy'
+  | 'security'
   | 'devices'
   | 'appearance'
   | 'voice'
@@ -13,7 +14,8 @@ export type SettingsTab =
   | 'notifications'
   | 'moderation'
   | 'discovery-queue'
-  | 'reports';
+  | 'reports'
+  | 'badges';
 
 export const uiStore = createStore<{
   settings: SettingsTab | null;

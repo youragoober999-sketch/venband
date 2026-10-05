@@ -523,3 +523,80 @@ export function VoogleGate({ data }: { data: ServerData }) {
     </div>
   );
 }
+
+/** "You're timed out" bar for the current server. */
+export function TimeoutBar({ data }: { data: ServerData }) {
+  const me = sessionStore.use((s) => s.identity?.userId);
+  const member = data.members.find((m) => m.user_id === me);
+  const [, tick] = useState(0);
+  const until = member?.timeout_until ? new Date(member.timeout_until) : null;
+  useEffect(() => {
+    if (!until || until <= new Date()) return;
+    const t = setTimeout(() => (tick((x) => x + 1), data.reload()), Math.min(until.getTime() - Date.now() + 500, 2 ** 31 - 1));
+    return () => clearTimeout(t);
+  }, [until?.getTime()]);
+  if (!until || until <= new Date()) return null;
+  return (
+    <div className="voogle-gate blocked timeout-bar">
+      <Icon name="clock" size={18} />
+      <span className="grow">
+        You’re timed out until {until.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}. You can read but not talk.
+        {member?.timeout_reason ? ` Reason: “${member.timeout_reason}”` : ''}
+      </span>
+    </div>
+  );
+}
+
+interface Warning {
+  id: string;
+  server_id: string;
+  reason: string;
+  created_at: string;
+}
+
+/** Pops up warnings from server moderators until you acknowledge them. */
+export function WarningsNotice() {
+  const me = sessionStore.use((s) => s.identity?.userId);
+  const [list, setList] = useState<(Warning & { server_name?: string })[]>([]);
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('member_warnings').select('id, server_id, reason, created_at').eq('user_id', me!).is('acknowledged_at', null).order('created_at');
+    const rows = (data ?? []) as Warning[];
+    const { data: servers } = rows.length ? await supabase.from('servers').select('id, name').in('id', [...new Set(rows.map((r) => r.server_id))]) : { data: [] };
+    const names = new Map((servers ?? []).map((s) => [s.id as string, s.name as string]));
+    setList(rows.map((r) => ({ ...r, server_name: names.get(r.server_id) })));
+  }, [me]);
+  useEffect(() => {
+    if (!me) return;
+    load();
+    const ch = supabase
+      .channel(`dbu:${me}:warnings`, { config: { private: true } })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'member_warnings', filter: `user_id=eq.${me}` }, load)
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [me, load]);
+  const w = list[0];
+  if (!w) return null;
+  const ack = async () => {
+    await supabase.rpc('ack_warning', { p_warning: w.id });
+    setList((l) => l.slice(1));
+  };
+  return (
+    <Modal title="You received a warning" onClose={ack}>
+      <div className="warning-card">
+        <Icon name="warning" size={28} />
+        <div>
+          <div className="small muted">From the moderators of {w.server_name ?? 'a server'} · {new Date(w.created_at).toLocaleString()}</div>
+          <p className="warning-reason">{w.reason}</p>
+          <p className="small muted">Please follow the server’s rules. More warnings can lead to a timeout, kick or ban.</p>
+        </div>
+      </div>
+      <div className="modal-actions">
+        <button className="btn primary" onClick={ack}>
+          I understand
+        </button>
+      </div>
+    </Modal>
+  );
+}

@@ -1,16 +1,18 @@
 // Venband staff tools: find any account or server and act on it. Every action
 // is enforced by the database (staff rank checks) and written to an audit log.
+import { EvidenceList, ReportFilters, reportMatches, type ReportFilter } from './ReportViews';
+import { jumpTo } from './Search';
 import { useCallback, useEffect, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
 import { uiStore } from '../lib/ui';
 import type { AccountStatus, PlatformRole, Profile, ServerStatus } from '../lib/types';
-import { Avatar, Icon, Modal } from './ui';
+import { Avatar, Field, Icon, Modal } from './ui';
+import { ImageCropper } from './ImageCropper';
 import { Select } from './Select';
-import { BADGES, BadgeIcon, Badges, VerifiedMark } from './Badges';
+import { BadgeIcon, Badges, loadCustomBadges, useAllBadges, VerifiedMark } from './Badges';
 import { askConfirm, askText } from './Dialogs';
-import { Markdown } from './Markdown';
 import { startDm } from './Modals';
 import { openProfile } from './People';
 import { openGlobalModal } from './GlobalModals';
@@ -61,6 +63,7 @@ const SERVER_LABEL: Record<ServerStatus, string> = {
   review: 'In review (frozen)',
   closed: 'Closed',
   banned: 'Banned',
+  deleted: 'Deleted by owner (restorable for 7 days)',
 };
 
 export function ModerationCenter() {
@@ -349,6 +352,7 @@ export function ModerationCenter() {
 
 function BadgeEditor({ user, myRank, onClose, onSave }: { user: ModUser; myRank: number; onClose: () => void; onSave: (ids: string[]) => void }) {
   const [ids, setIds] = useState<string[]>(user.badges);
+  const BADGES = useAllBadges();
   const locked = (id: string) => (id === 'owner' || id === 'founder' ? myRank < 3 : ['admin', 'moderator', 'staff'].includes(id) ? myRank < 2 : false);
   return (
     <Modal title={`Badges for @${user.username}`} onClose={onClose}>
@@ -401,6 +405,8 @@ export function ReportCentre() {
   const [rows, setRows] = useState<ReportRow[] | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [filter, setFilter] = useState<ReportFilter>('all');
+  const [q, setQ] = useState('');
 
   async function load() {
     const { data, error } = await supabase.from('reports').select('*').eq('status', status).order('created_at', { ascending: status !== 'under_review' }).limit(100);
@@ -456,10 +462,11 @@ export function ReportCentre() {
           Dismissed
         </button>
       </div>
+      <ReportFilters filter={filter} setFilter={setFilter} q={q} setQ={setQ} />
       {msg && <div className={msg.ok ? 'notice' : 'form-error'}>{msg.text}</div>}
       {!rows && <div className="spinner" />}
       <div className="mod-list">
-        {(rows ?? []).map((r) => (
+        {(rows ?? []).filter((r) => reportMatches(r, filter, q)).map((r) => (
           <div key={r.id} className="mod-card report-card">
             <div className="mod-card-head">
               <span className={`pill ${r.kind === 'message' ? 'review' : 'limited'}`}>{r.kind === 'message' ? 'Message' : 'User'}</span>
@@ -469,23 +476,7 @@ export function ReportCentre() {
               </div>
             </div>
             <div className="report-reason">“{r.reason}”</div>
-            {r.evidence.length > 0 ? (
-              <div className="report-evidence">
-                {r.evidence.map((e) => (
-                  <div key={e.id} className={`evidence-msg${e.reported ? ' reported' : ''}${e.author_id === r.target_user ? ' target' : ''}`}>
-                    <div className="evidence-meta">
-                      <b>{e.author}</b> <span className="muted">{new Date(e.at).toLocaleString()}</span>
-                      {e.reported && <span className="pill banned">reported</span>}
-                    </div>
-                    <div className="evidence-text">
-                      <Markdown text={e.text} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="small muted">No messages were shared with this report.</p>
-            )}
+            <EvidenceList evidence={r.evidence} targetUser={r.target_user} />
             {r.status !== 'under_review' && (
               <p className="small muted">
                 {r.status === 'actioned' ? 'Actioned' : 'Dismissed'} by @{getProfile(r.handled_by ?? '')?.username ?? 'staff'}
@@ -493,6 +484,18 @@ export function ReportCentre() {
               </p>
             )}
             <div className="mod-actions">
+              {r.message_id && r.channel_id && (
+                <button
+                  className="btn primary small"
+                  title="Opens the conversation if you can see it"
+                  onClick={() => {
+                    uiStore.set({ settings: null });
+                    jumpTo({ channelId: r.channel_id!, serverId: r.server_id, messageId: r.message_id! });
+                  }}
+                >
+                  <Icon name="external" size={14} /> Jump to message
+                </button>
+              )}
               {r.target_user && (
                 <button className="btn secondary small" onClick={() => startDm(r.target_user!).then(() => uiStore.set({ settings: null })).catch((e) => setMsg({ ok: false, text: errorMessage(e) }))}>
                   <Icon name="message" size={14} /> DM them
@@ -631,5 +634,122 @@ export function DiscoveryQueue() {
         ))}
       </div>
     </>
+  );
+}
+
+// ---------------------------------------------------------- badge designer --
+
+/** Venband owners and founders design new badges with their own picture. */
+export function BadgeDesigner() {
+  const all = useAllBadges();
+  const custom = all.filter((b) => b.image);
+  const [id, setId] = useState('');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [picture, setPicture] = useState<{ blob: Blob; url: string } | null>(null);
+  const [cropping, setCropping] = useState<File | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="mod-center">
+      <div className="mod-head">
+        <h2>
+          <Icon name="star" /> Badge Designer
+        </h2>
+      </div>
+      <p className="muted small">Make a new badge with its own picture. Moderators can then hand it out from the Moderation tab like any other badge.</p>
+      {msg && <div className={msg.ok ? 'notice' : 'form-error'}>{msg.text}</div>}
+      {cropping && (
+        <ImageCropper
+          file={cropping}
+          opts={{ aspect: 1, size: 128, title: 'Badge picture' }}
+          onCancel={() => setCropping(null)}
+          onDone={(blob) => {
+            setPicture({ blob, url: URL.createObjectURL(blob) });
+            setCropping(null);
+          }}
+        />
+      )}
+      <div className="badge-designer">
+        <button
+          className="badge-drop"
+          onClick={() => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/png,image/webp,image/gif,image/jpeg';
+            input.onchange = () => input.files?.[0] && setCropping(input.files[0]);
+            input.click();
+          }}
+          aria-label="Upload badge picture"
+        >
+          {picture ? <img src={picture.url} alt="" /> : <Icon name="upload" size={22} />}
+        </button>
+        <div className="grow">
+          <div className="row">
+            <Field label="Badge ID" hint="letters, numbers and _ (can’t change later)">
+              <input value={id} maxLength={30} onChange={(e) => setId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} placeholder="summer_event" />
+            </Field>
+            <Field label="Name">
+              <input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="Summer Event 2026" />
+            </Field>
+          </div>
+          <Field label="Description">
+            <input value={description} maxLength={200} onChange={(e) => setDescription(e.target.value)} placeholder="Took part in the summer event" />
+          </Field>
+          <button
+            className="btn primary"
+            disabled={busy || !picture || id.length < 2 || name.trim().length < 2}
+            onClick={async () => {
+              setBusy(true);
+              setMsg(null);
+              try {
+                const path = `${id}-${crypto.randomUUID().slice(0, 8)}.webp`;
+                const { error: up } = await supabase.storage.from('badges').upload(path, picture!.blob, { contentType: 'image/webp' });
+                if (up) throw up;
+                const url = supabase.storage.from('badges').getPublicUrl(path).data.publicUrl;
+                const { error } = await supabase.rpc('save_custom_badge', { p_id: id, p_name: name.trim(), p_description: description.trim(), p_image_url: url });
+                if (error) throw error;
+                await loadCustomBadges(true);
+                setMsg({ ok: true, text: `“${name}” is ready to hand out.` });
+                setId('');
+                setName('');
+                setDescription('');
+                setPicture(null);
+              } catch (e) {
+                setMsg({ ok: false, text: errorMessage(e) });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Save badge
+          </button>
+        </div>
+      </div>
+      <h3>Custom badges</h3>
+      {custom.length === 0 && <p className="muted small">None yet.</p>}
+      <div className="badge-editor">
+        {custom.map((b) => (
+          <div key={b.id} className="badge-choice">
+            <BadgeIcon def={b} size={24} />
+            <span className="grow">
+              <b>{b.label}</b> <span className="muted small">{b.id}</span>
+              {b.description && <div className="small muted">{b.description}</div>}
+            </span>
+            <button
+              className="btn link small danger-text"
+              onClick={async () => {
+                if (!(await askConfirm({ title: `Delete ${b.label}?`, body: 'Everyone who has it loses it.', confirm: 'Delete', danger: true }))) return;
+                const { error } = await supabase.rpc('delete_custom_badge', { p_id: b.id });
+                if (error) return setMsg({ ok: false, text: errorMessage(error) });
+                loadCustomBadges(true);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { configured } from './lib/supabase';
 import { initSession, sessionStore } from './lib/session';
-import { AuthScreen, IdentityResetScreen, RecoveryScreen, SetupErrorScreen, UnlockScreen } from './components/Auth';
+import { AuthScreen, IdentityResetScreen, MfaScreen, RecoveryScreen, SetupErrorScreen, UnlockScreen } from './components/Auth';
 import { Shell } from './components/Shell';
 import { Logo } from './components/ui';
 import { Onboarding } from './components/Onboarding';
@@ -50,6 +50,8 @@ export default function App() {
       );
     case 'locked':
       return <UnlockScreen />;
+    case 'mfa':
+      return <MfaScreen />;
     case 'recovery':
       return <RecoveryScreen />;
     case 'identity-reset':

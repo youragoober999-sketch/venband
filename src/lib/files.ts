@@ -6,6 +6,7 @@
 // the piece count, so pieces can't be swapped, reordered, dropped or added.
 // Each piece is uploaded as its own object, so the server's per-file size
 // limit never applies to the whole file.
+import { stripMetadata } from './metadata';
 import { supabase } from './supabase';
 import { fromB64, randomBytes, toB64, decryptBlob, type Attachment } from './crypto';
 
@@ -33,7 +34,9 @@ async function pool<T>(items: T[], n: number, fn: (item: T) => Promise<void>) {
   );
 }
 
-export async function uploadEncrypted(channelId: string, file: File, onProgress?: (fraction: number) => void): Promise<Attachment> {
+export async function uploadEncrypted(channelId: string, original: File, onProgress?: (fraction: number) => void): Promise<Attachment> {
+  // GPS location, camera details and edit history never leave the device
+  const file = await stripMetadata(original);
   if (file.size > MAX_FILE) throw new Error(`${file.name} is larger than 5 GB.`);
   const raw = randomBytes(32);
   const baseIv = randomBytes(12);

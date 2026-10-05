@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { setMediaRemoved, useMediaRemoved } from '../lib/mediaBans';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import type { Attachment, MessagePayload } from '../lib/crypto';
@@ -1077,6 +1078,9 @@ function MessageItem({
     return out;
   }, [text]);
   const bareGif = isBareGif(text);
+  const gifUrls = embeds.filter((e) => e.kind === 'gif').map((e) => e.src);
+  const identity = sessionStore.use((s) => s.identity)!;
+  const isStaff = sessionStore.use((s) => ['moderator', 'admin', 'owner'].includes(s.me?.platform_role ?? 'user'));
   const shownText = translation && !showOriginal ? translation.text : text;
   const link = linkTo(`channels/${data?.server?.id ?? '@me'}/${m.row.channel_id}/${m.row.id}`);
   const react = (emoji: string) => toggleReaction(m.row, emoji, reactions.find((g) => g.emoji === emoji)?.mine ?? null).catch((e) => alert(errorMessage(e)));
@@ -1126,6 +1130,23 @@ function MessageItem({
         icon: 'star',
         onClick: () => toggleGifFavorite({ id: text, url: text.trim(), preview: text.trim(), width: 1, height: 1 }),
       },
+      ...gifUrls.flatMap((url) => [
+        data?.server &&
+          (data.server.owner_id === identity.userId || has(data.myPermissions, P.ADMINISTRATOR)) && {
+            label: 'Remove GIF from Server',
+            icon: 'block',
+            danger: true,
+            hint: 'everyone sees a notice instead',
+            onClick: () => setMediaRemoved(url, data.server!.id, true).catch((err) => alert(errorMessage(err))),
+          },
+        isStaff && {
+          label: 'Remove GIF Everywhere',
+          icon: 'block',
+          danger: true,
+          hint: 'Venband staff',
+          onClick: () => setMediaRemoved(url, null, true).catch((err) => alert(errorMessage(err))),
+        },
+      ]),
       { type: 'sep' },
       { label: 'Copy Message Link', icon: 'link', onClick: () => copyText(link) },
       { label: 'Copy Message ID', icon: 'copy', onClick: () => copyText(m.row.id) },
@@ -1294,10 +1315,12 @@ function MessageItem({
             ))}
           {!flagged &&
             embeds.map((e) => (
-              <div key={e.src} className="embed-wrap">
-                <Embed e={e} />
-                {e.kind === 'gif' && <FavoriteStar className="embed-star" g={{ id: e.src, url: e.src, preview: e.src, width: 1, height: 1 }} fav={gifFavs.some((f) => f.url === e.src)} />}
-              </div>
+              <GifGuard key={e.src} url={e.src} active={e.kind === 'gif'} serverId={data?.server?.id ?? null}>
+                <div className="embed-wrap">
+                  <Embed e={e} />
+                  {e.kind === 'gif' && <FavoriteStar className="embed-star" g={{ id: e.src, url: e.src, preview: e.src, width: 1, height: 1 }} fav={gifFavs.some((f) => f.url === e.src)} />}
+                </div>
+              </GifGuard>
             ))}
           {m.payload?.attachments?.map((a) => <AttachmentView key={a.path} a={a} />)}
           {reactions.length > 0 && <Reactions row={m.row} groups={reactions} canReact={canReact} />}
@@ -1556,6 +1579,23 @@ function BotMessageItem({ b, app, ctx, canManage }: { b: BotMessage; app?: Appli
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Shows the removal notice instead of a GIF that was taken down. */
+function GifGuard({ url, active, serverId, children }: { url: string; active: boolean; serverId: string | null; children: ReactNode }) {
+  const removed = useMediaRemoved(active ? url : '', serverId);
+  if (!active || !removed) return <>{children}</>;
+  return (
+    <div className="gif-removed" role="note">
+      <Icon name="block" size={16} />
+      <span>
+        This GIF has been removed, probably because it didn’t follow{' '}
+        <a href="https://www.venband.com/tos#gifs" target="_blank" rel="noopener noreferrer">
+          https://www.venband.com/tos
+        </a>
+      </span>
     </div>
   );
 }

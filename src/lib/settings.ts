@@ -58,7 +58,11 @@ export interface Settings {
     mediaAutoload: 'always' | 'wifi' | 'click';
     /** attach previews (site name, title, description) to links you send */
     linkPreviews: boolean;
+    /** ask before opening links: every untrusted site, only risky ones, or never */
+    linkWarnings: 'always' | 'risky' | 'off';
   };
+  /** sites you chose to trust in the "Leaving Venband" dialog */
+  trustedDomains: string[];
   /** how often each emoji was used (for autocomplete ranking) */
   emojiUsage: Record<string, number>;
   /** most recent reactions first */
@@ -105,7 +109,9 @@ export const DEFAULT_SETTINGS: Settings = {
     clock24: false,
     mediaAutoload: 'always',
     linkPreviews: true,
+    linkWarnings: 'always',
   },
+  trustedDomains: [],
   emojiUsage: {},
   recentReactions: [],
   dms: { pinned: [], archived: [], folders: [], mutedUntil: {} },
@@ -146,6 +152,7 @@ function merge(raw: unknown): Settings {
       order: Array.isArray(r.rail?.order) ? r.rail!.order.filter((x) => typeof x === 'string').slice(0, 300) : [],
       folders: Array.isArray(r.rail?.folders) ? r.rail!.folders.slice(0, 50) : [],
     },
+    trustedDomains: Array.isArray(r.trustedDomains) ? r.trustedDomains.filter((x) => typeof x === 'string').slice(0, 200) : [],
     serverThemes: r.serverThemes === 'merge' || r.serverThemes === 'never' ? r.serverThemes : 'override',
     soundboard: { ...DEFAULT_SETTINGS.soundboard, ...(r.soundboard ?? {}) },
     dms: {

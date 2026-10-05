@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { moderate, TIMEOUTS } from './ReportViews';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { fingerprint } from '../lib/crypto';
@@ -162,6 +163,44 @@ export function userMenu(userId: string, opts: { data?: ServerData; onProfile?: 
         const { error } = await supabase.from('server_members').update({ nickname: v.trim() || null }).eq('server_id', data.server!.id).eq('user_id', me.id);
         if (error) report(error);
         else data.reload();
+      },
+    },
+    data && !self && outranks && has(p, P.MODERATE_MEMBERS) && {
+      type: 'custom',
+      render: (close) => (
+        <div className="ctx-timeouts">
+          <span className="ctx-timeouts-label">
+            <Icon name="clock" size={14} /> {member?.timeout_until && new Date(member.timeout_until) > new Date() ? 'Timed out · change' : `Time out ${name}`}
+          </span>
+          <div className="ctx-timeouts-row">
+            {TIMEOUTS.map(([label, mins]) => (
+              <button
+                key={mins}
+                className="chip small"
+                onClick={async () => {
+                  close();
+                  const t = await moderate('timeout', data.server!.id, userId, mins);
+                  if (t && !/timed out/.test(t)) report(new Error(t));
+                }}
+              >
+                {label.replace(' seconds', 's').replace(' minutes', 'm').replace(' hour', 'h').replace(' days', 'd').replace(' day', 'd').replace(' week', 'w')}
+              </button>
+            ))}
+          </div>
+        </div>
+      ),
+    },
+    data && !self && outranks && has(p, P.MODERATE_MEMBERS) && member?.timeout_until && new Date(member.timeout_until) > new Date() && {
+      label: 'Remove Timeout',
+      icon: 'clock',
+      onClick: () => supabase.rpc('timeout_member', { p_server: data.server!.id, p_user: userId, p_minutes: 0, p_reason: '' }).then(({ error }) => error && report(error)),
+    },
+    data && !self && outranks && (has(p, P.MODERATE_MEMBERS) || has(p, P.KICK_MEMBERS)) && {
+      label: `Warn ${name}`,
+      icon: 'warning',
+      onClick: async () => {
+        const t = await moderate('warn', data.server!.id, userId);
+        if (t && !/was warned/.test(t)) report(new Error(t));
       },
     },
     data && !self && outranks && has(p, P.KICK_MEMBERS) && {

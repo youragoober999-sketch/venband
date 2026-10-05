@@ -629,6 +629,19 @@ export function GuidelinesPage() {
 
 export const CHANGELOG: { date: string; title: string; items: string[] }[] = [
   {
+    date: '2026-10-07',
+    title: 'Safer by default',
+    items: [
+      'Two-factor sign-in with an authenticator app; your messages only unlock after the code',
+      'Security Center: log out other devices, download your data, delete your account (with a 14-day grace period)',
+      'Deleted servers can be restored for 7 days',
+      'Hidden photo data (like GPS location) is removed before pictures are sent',
+      'Link safety: warnings for fake brand sites, look-alike letters, hidden destinations and short links',
+      'Server moderators get Reports (with pictures and jump-to-message), timeouts, warnings and a searchable Audit Log',
+      'Server owners can remove GIFs; Venband owners can design new badges',
+    ],
+  },
+  {
     date: '2026-10-06',
     title: 'Developers, bots, Voogle and a status page',
     items: [

@@ -27,7 +27,7 @@ const FILTER_HELP: [string, string][] = [
   ['"…"', 'exact phrase'],
 ];
 
-function jumpTo(hit: { channelId: string; serverId: string | null; messageId: string }) {
+export function jumpTo(hit: { channelId: string; serverId: string | null; messageId: string }) {
   openChannel(hit.serverId ?? '@me', hit.channelId);
   setTimeout(() => uiStore.set({ jump: hit.messageId }), 50);
 }

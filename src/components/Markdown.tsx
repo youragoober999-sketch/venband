@@ -2,6 +2,7 @@
 //   # / ## / ### headings, -# subtext, > quotes, >>> quotes, - lists, 1. lists
 //   **bold** *italic* _italic_ __underline__ ~~strike~~ ||spoiler|| `code` ```blocks```
 //   [masked](https://links), <https://no-embed>, <@user> <@&role> <#channel> @everyone @here
+import { guardLink } from './GlobalModals';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { highlightAuto, languageLabel } from '../lib/highlight';
 import { copyText, openMenu } from './ContextMenu';
@@ -203,7 +204,7 @@ function renderToken(name: string, m: RegExpExecArray, ctx: MentionContext | und
       return <code key={k} className="md-code">{m[1]}</code>;
     case 'masked':
       return (
-        <a key={k} href={m[2]} target="_blank" rel="noopener noreferrer nofollow" title={m[2]}>
+        <a key={k} href={m[2]} target="_blank" rel="noopener noreferrer nofollow" title={m[2]} onClick={(e) => guardLink(e, m[2], m[1])}>
           {inline(m[1], ctx, k)}
         </a>
       );
@@ -211,7 +212,7 @@ function renderToken(name: string, m: RegExpExecArray, ctx: MentionContext | und
     case 'url': {
       const href = name === 'angle' ? m[1] : m[0];
       return (
-        <a key={k} href={href} target="_blank" rel="noopener noreferrer nofollow">
+        <a key={k} href={href} target="_blank" rel="noopener noreferrer nofollow" onClick={(e) => guardLink(e, href)}>
           {href}
         </a>
       );

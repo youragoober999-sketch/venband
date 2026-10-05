@@ -796,3 +796,83 @@ do $t$ declare v jsonb; begin
   assert v::text !~ 'devicetoken', 'no device tokens in lookups';
 end $t$;
 reset role;
+
+-- ============================================ moderation & security ====
+set role authenticated;
+-- timeouts make a member read-only; only moderators above them can do it
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+select set_config('request.jwt.claim.session_id', '', false);
+select pg_temp.must_fail($$select public.timeout_member(current_setting('t.gs')::uuid, '00000000-0000-0000-0000-0000000000a1', 10, 'no')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.timeout_member(current_setting('t.gs')::uuid, '00000000-0000-0000-0000-0000000000b2', 10, 'cool off');
+select public.warn_member(current_setting('t.gs')::uuid, '00000000-0000-0000-0000-0000000000b2', 'please be nice');
+do $t$ begin
+  assert exists (select 1 from public.server_audit_log where server_id = current_setting('t.gs')::uuid and action = 'timeout'), 'timeouts are logged';
+  assert exists (select 1 from public.server_audit_log where server_id = current_setting('t.gs')::uuid and action = 'warn'), 'warnings are logged';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+do $t$ begin
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 0, 'timed out members can''t send';
+  assert (select count(*) from public.member_warnings where acknowledged_at is null) = 1, 'you see your warning';
+  assert (select count(*) from public.server_audit_log) = 0, 'members can''t read the audit log';
+end $t$;
+select public.ack_warning((select id from public.member_warnings limit 1));
+-- members can't remove GIFs; the owner can, and only a hash is kept
+select pg_temp.must_fail($$select public.ban_media(current_setting('t.gs')::uuid, repeat('c', 64))$$);
+select pg_temp.must_fail($$select public.ban_media(null, repeat('c', 64))$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.timeout_member(current_setting('t.gs')::uuid, '00000000-0000-0000-0000-0000000000b2', 0, '');
+select public.ban_media(current_setting('t.gs')::uuid, repeat('c', 64));
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+do $t$ begin
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 128, 'timeout lifted';
+  assert (select count(*) from public.banned_media where hash = repeat('c', 64)) = 1, 'members see removed GIFs';
+end $t$;
+-- only Venband owners / founders design badges
+select pg_temp.must_fail($$select public.save_custom_badge('cool', 'Cool', '', 'https://x/storage/v1/object/public/badges/a.png')$$);
+-- server reports: moderators see them without the reporter's name
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+insert into public.reports (reporter_id, kind, target_user, server_id, reason)
+  values (auth.uid(), 'message', '00000000-0000-0000-0000-0000000000b2', current_setting('t.gs')::uuid, 'rude');
+select pg_temp.must_fail($$select public.handle_server_report((select id from public.reports where reason = 'rude'), 'actioned', '')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+do $t$ declare r record; begin
+  select * into r from public.server_reports(current_setting('t.gs')::uuid, 'open') limit 1;
+  assert r.reason = 'rude', 'moderators see server reports';
+  assert not (to_jsonb(r) ? 'reporter_id'), 'reporter stays anonymous';
+end $t$;
+select public.handle_server_report((select id from public.server_reports(current_setting('t.gs')::uuid, 'open') limit 1), 'actioned', 'handled');
+-- deleted servers can be restored by the owner within 7 days
+select pg_temp.must_fail($$select public.request_account_deletion()$$);  -- owns servers
+select public.delete_server(current_setting('t.gs')::uuid);
+do $t$ begin
+  assert (select status from public.servers where id = current_setting('t.gs')::uuid) = 'deleted';
+  assert public.server_permissions(current_setting('t.gs')::uuid, '00000000-0000-0000-0000-0000000000b2') = 0, 'deleted servers are frozen';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+select pg_temp.must_fail($$select public.restore_server(current_setting('t.gs')::uuid)$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.restore_server(current_setting('t.gs')::uuid);
+-- account deletion can be requested and cancelled; export works
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+select public.request_account_deletion();
+select public.cancel_account_deletion();
+do $t$ begin
+  assert (public.export_my_data() -> 'profile' ->> 'username') = 'alttwo', 'export includes your profile';
+end $t$;
+-- two-factor: with a verified authenticator, the private key needs an aal2 session
+reset role;
+insert into public.user_keys (key_id, user_id, enc_public, sign_public) values ('mfaKey00000000000003', '00000000-0000-0000-0000-0000000000b3', 'e', 's');
+insert into public.user_private_keys (user_id, key_id, iv, ciphertext) values ('00000000-0000-0000-0000-0000000000b3', 'mfaKey00000000000003', 'iv', 'ct');
+insert into auth.mfa_factors (user_id, status) values ('00000000-0000-0000-0000-0000000000b3', 'verified');
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+do $t$ begin
+  assert (select count(*) from public.user_private_keys) = 0, 'aal1 session can''t read the private key';
+end $t$;
+select set_config('request.jwt.claim.aal', 'aal2', false);
+do $t$ begin
+  assert (select count(*) from public.user_private_keys) = 1, 'aal2 session can';
+end $t$;
+select set_config('request.jwt.claim.aal', '', false);
+reset role;

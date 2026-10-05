@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { DeletionBanner } from './Security';
 import { useApps, useServerBots } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
 import { sessionStore, updateMyProfile } from '../lib/session';
@@ -52,7 +53,7 @@ import { Resizer } from './Resizer';
 import { showUndo, UndoToast } from './Undo';
 import { GlobalModals, openGlobalModal } from './GlobalModals';
 import { themeVars } from './ServerSettingsExtra';
-import { ForumView, StageView, VoogleGate, WelcomeScreen } from './ServerViews';
+import { ForumView, StageView, TimeoutBar, VoogleGate, WarningsNotice, WelcomeScreen } from './ServerViews';
 import { SavedView, SearchPanel } from './Search';
 import { mentionsMe } from './Markdown';
 
@@ -190,7 +191,15 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
 
   // view -> URL
   useEffect(() => {
-    if (pending.current && !pending.current.startsWith('tried:')) return;
+    if (pending.current && !pending.current.startsWith('tried:')) {
+      // still waiting for the DM list to open a link — unless the person has
+      // already clicked somewhere else, which wins
+      const n = nav.get();
+      const moved = Boolean(n.serverId || n.discover || (n.channelByServer['@me'] && n.channelByServer['@me'] !== pending.current));
+      if (!moved) return;
+      pending.current = null;
+      lastRoute.current = null;
+    }
     const s = nav.get();
     let path: string;
     if (s.discover) path = 'discover';
@@ -317,6 +326,8 @@ export function Shell() {
   return (
     <div className={`shell${drawer ? ` drawer-${drawer}` : ''}`}>
       <AppBanner />
+      <DeletionBanner />
+      <WarningsNotice />
       <TopBar servers={servers} dms={dms} />
       <div className="shell-body">
         <ServerRail servers={servers} dms={dms} current={serverId} discover={discover} onAdd={() => setModal('create-join')} reload={reload} />
@@ -1070,6 +1081,7 @@ function ServerView({ serverId }: { serverId: string }) {
           </div>
         )}
         {data.server.voogle?.enabled && data.server.voogle.required && <VoogleGate data={data} />}
+        <TimeoutBar data={data} />
         {welcome === 'show' && (
           <WelcomeScreen
             data={data}

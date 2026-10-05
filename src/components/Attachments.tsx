@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isRiskyFile } from '../lib/metadata';
+import { askConfirm } from './Dialogs';
 import type { Attachment } from '../lib/crypto';
 import { CODE_LANGS, downloadDecrypted, extOf, fileIcon, fileKind, saveDecrypted } from '../lib/files';
 import { highlight, LANGUAGE_OPTIONS } from '../lib/highlight';
@@ -54,6 +56,16 @@ function DownloadButton({ a, small }: { a: Attachment; small?: boolean }) {
       title={p !== null ? `Downloading ${Math.round(p * 100)}%` : `Download (${formatSize(a.size)})`}
       onClick={async (e) => {
         e.stopPropagation();
+        if (
+          isRiskyFile(a.name) &&
+          !(await askConfirm({
+            title: 'This file could harm your computer',
+            body: `“${a.name}” is a kind of file that can run programs. Only open it if you trust the person who sent it and expected it.`,
+            confirm: 'Download anyway',
+            danger: true,
+          }))
+        )
+          return;
         setP(0);
         try {
           await saveDecrypted(a, setP);
