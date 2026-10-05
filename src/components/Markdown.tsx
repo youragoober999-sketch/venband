@@ -2,7 +2,12 @@
 //   # / ## / ### headings, -# subtext, > quotes, >>> quotes, - lists, 1. lists
 //   **bold** *italic* _italic_ __underline__ ~~strike~~ ||spoiler|| `code` ```blocks```
 //   [masked](https://links), <https://no-embed>, <@user> <@&role> <#channel> @everyone @here
-import { Fragment, useState, type ReactNode } from 'react';
+import { guardLink } from './GlobalModals';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { highlightAuto, languageLabel } from '../lib/highlight';
+import { copyText, openMenu } from './ContextMenu';
+import { EXPRESSION_TOKEN, expressionStore, noteUnknownExpression } from '../lib/expressions';
+import { isOurAsset } from '../lib/soundboard';
 import { useSettings } from '../lib/settings';
 
 export interface MentionContext {
@@ -25,6 +30,43 @@ export function mentionsMe(text: string, myId: string, myRoleIds: string[] = [],
   return allowEveryone && /(^|[^\w`])@(everyone|here)\b/.test(text);
 }
 
+/** A ``` block: coloured like a code editor, with the language and a copy button. */
+function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+  const { html, language } = useMemo(() => highlightAuto(code, lang), [code, lang]);
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="md-codeblock-wrap">
+      <div className="md-codeblock-bar">
+        <span>{languageLabel(language)}</span>
+        <button
+          type="button"
+          className="btn link small"
+          onClick={() => {
+            navigator.clipboard?.writeText(code);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre className="md-codeblock hljs" data-lang={language}>
+        <code dangerouslySetInnerHTML={{ __html: html }} />
+      </pre>
+    </div>
+  );
+}
+
+function ExpressionToken({ kind, name, id }: { kind?: 'a' | 's'; name: string; id: string }) {
+  const e = expressionStore.use((s) => s.byId[id]);
+  useEffect(() => {
+    if (!e) noteUnknownExpression(id);
+  }, [e, id]);
+  if (!e) return <span className="custom-emoji-missing" title="From a server you’re not in">:{name}:</span>;
+  if (kind === 's' || e.kind === 'sticker') return <img className="sticker" src={e.url} alt={`${name} sticker`} title={`${name} · ${e.server_name}`} loading="lazy" />;
+  return <img className="custom-emoji" src={e.url} alt={`:${name}:`} title={`:${name}: · ${e.server_name}`} loading="lazy" draggable={false} />;
+}
+
 export function Markdown({ text, ctx }: { text: string; ctx?: MentionContext }) {
   const blocks: ReactNode[] = [];
   const pieces = text.split(/```/);
@@ -32,11 +74,7 @@ export function Markdown({ text, ctx }: { text: string; ctx?: MentionContext }) 
     if (i % 2 === 1 && i < pieces.length - 1) {
       const m = piece.match(/^([\w+-]{1,20})\n/);
       const code = m ? piece.slice(m[0].length) : piece.replace(/^\n/, '');
-      blocks.push(
-        <pre key={`c${i}`} className="md-codeblock" data-lang={m?.[1] ?? undefined}>
-          <code>{code.replace(/\n$/, '')}</code>
-        </pre>,
-      );
+      blocks.push(<CodeBlock key={`c${i}`} code={code.replace(/\n$/, '')} lang={m?.[1]} />);
       return;
     }
     const raw = i % 2 === 1 ? '```' + piece : piece;
@@ -124,6 +162,7 @@ const INLINE: { name: string; re: RegExp }[] = [
   { name: 'user', re: new RegExp(`<@!?(${UUID})>`) },
   { name: 'role', re: new RegExp(`<@&(${UUID})>`) },
   { name: 'channel', re: new RegExp(`<#(${UUID})>`) },
+  { name: 'expression', re: EXPRESSION_TOKEN },
   { name: 'everyone', re: /@(everyone|here)\b/ },
   { name: 'url', re: URL_RE },
   { name: 'spoiler', re: /\|\|([\s\S]+?)\|\|/ },
@@ -159,11 +198,13 @@ function inline(text: string, ctx: MentionContext | undefined, key: string): Rea
 
 function renderToken(name: string, m: RegExpExecArray, ctx: MentionContext | undefined, k: string): ReactNode {
   switch (name) {
+    case 'expression':
+      return <ExpressionToken key={k} kind={m[1] as 'a' | 's' | undefined} name={m[2]} id={m[3]} />;
     case 'code':
       return <code key={k} className="md-code">{m[1]}</code>;
     case 'masked':
       return (
-        <a key={k} href={m[2]} target="_blank" rel="noopener noreferrer nofollow" title={m[2]}>
+        <a key={k} href={m[2]} target="_blank" rel="noopener noreferrer nofollow" title={m[2]} onClick={(e) => guardLink(e, m[2], m[1])}>
           {inline(m[1], ctx, k)}
         </a>
       );
@@ -171,7 +212,7 @@ function renderToken(name: string, m: RegExpExecArray, ctx: MentionContext | und
     case 'url': {
       const href = name === 'angle' ? m[1] : m[0];
       return (
-        <a key={k} href={href} target="_blank" rel="noopener noreferrer nofollow">
+        <a key={k} href={href} target="_blank" rel="noopener noreferrer nofollow" onClick={(e) => guardLink(e, href)}>
           {href}
         </a>
       );
@@ -243,6 +284,8 @@ export interface EmbedInfo {
   src: string;
   label: string;
   tall?: boolean;
+  /** playlists / albums / shows: show the track list */
+  list?: boolean;
 }
 
 export function findEmbeds(text: string): EmbedInfo[] {
@@ -276,7 +319,8 @@ export function embedFor(raw: string): EmbedInfo | null {
     return {
       kind: 'youtube',
       url: raw,
-      src: `https://www.youtube-nocookie.com/embed/${id}${t ? `?start=${t}` : ''}`,
+      // a bigger player lets YouTube pick HD; rel=0 keeps suggestions to this channel
+      src: `https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1&playsinline=1${t ? `&start=${t}` : ''}`,
       label: 'YouTube',
       tall: u.pathname.startsWith('/shorts/'),
     };
@@ -284,7 +328,7 @@ export function embedFor(raw: string): EmbedInfo | null {
   if (host === 'open.spotify.com') {
     const m = u.pathname.match(/^\/(?:intl-\w+\/)?(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]{10,32})/);
     if (!m) return null;
-    return { kind: 'spotify', url: raw, src: `https://open.spotify.com/embed/${m[1]}/${m[2]}`, label: 'Spotify' };
+    return { kind: 'spotify', url: raw, src: `https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator`, label: 'Spotify', list: m[1] !== 'track' && m[1] !== 'episode' };
   }
   if (host === 'instagram.com') {
     const m = u.pathname.match(/^\/(p|reel|reels|tv)\/([\w-]{5,40})/);
@@ -295,6 +339,9 @@ export function embedFor(raw: string): EmbedInfo | null {
     const m = u.pathname.match(/\/video\/(\d{8,25})/);
     if (!m) return null;
     return { kind: 'tiktok', url: raw, src: `https://www.tiktok.com/embed/v2/${m[1]}`, label: 'TikTok', tall: true };
+  }
+  if (isOurAsset(raw) && /\/expr\/[0-9a-f-]{36}\.(gif|webp|png|jpe?g|avif)$/i.test(u.pathname)) {
+    return { kind: 'gif', url: raw, src: raw, label: 'GIF' };
   }
   if (/(^|\.)klipy\.com$/.test(u.hostname) && /\.(gif|webp|mp4|webm)$/i.test(u.pathname)) {
     return { kind: 'gif', url: raw, src: raw, label: 'GIF' };
@@ -332,7 +379,16 @@ export function Embed({ e }: { e: EmbedInfo }) {
     );
   }
   return (
-    <div className={`embed-frame ${e.kind}${e.tall ? ' tall' : ''}`}>
+    <div
+      className={`embed-frame ${e.kind}${e.tall ? ' tall' : ''}${e.list ? ' list' : ''}`}
+      onContextMenu={(ev) =>
+        openMenu(ev, [
+          { type: 'header', label: e.label },
+          { label: `Open on ${e.label}`, icon: 'external', onClick: () => window.open(e.url, '_blank', 'noopener,noreferrer') },
+          { label: 'Copy link', icon: 'link', onClick: () => copyText(e.url) },
+        ])
+      }
+    >
       <iframe
         src={e.src}
         title={`${e.label} embed`}

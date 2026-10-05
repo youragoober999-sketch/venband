@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'" />
+<title>Venband — offline</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; font-family: Inter, "Segoe UI", system-ui, sans-serif; background: #050507; color: #f5f5f7; }
+  body { display: grid; place-items: center; text-align: center; }
+  img { width: 72px; height: 72px; border-radius: 18px; opacity: .9; }
+  h1 { font-size: 22px; margin: 18px 0 6px; } p { color: #ffffff99; margin: 0 0 18px; }
+  button { border: 0; border-radius: 12px; padding: 11px 22px; font: inherit; font-weight: 700; background: #fff; color: #000; cursor: pointer; }
+  .small { font-size: 12px; color: #ffffff66; margin-top: 14px; }
+</style>
+</head>
+<body>
+  <main>
+    <img src="../build/icon.png" alt="" />
+    <h1>Can’t reach Venband</h1>
+    <p>Check your internet connection. We’ll keep trying.</p>
+    <button id="retry">Try again</button>
+    <div class="small" id="next"></div>
+  </main>
+  <script src="offline.js"></script>
+</body>
+</html>

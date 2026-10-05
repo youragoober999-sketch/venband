@@ -1,0 +1,112 @@
+{
+  "name": "venband-desktop",
+  "productName": "Venband",
+  "version": "1.0.0",
+  "description": "Venband for Windows, macOS and Linux \u2014 end-to-end encrypted chat",
+  "main": "src/main.js",
+  "author": {
+    "name": "Venband",
+    "url": "https://www.venband.com"
+  },
+  "homepage": "https://www.venband.com",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "start:local": "cross-env VENBAND_URL=http://127.0.0.1:5173/ electron .",
+    "safe": "electron . --safe-mode",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/update-preload.js && node --check src/picker-preload.js && node --test test/*.test.js",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win nsis portable",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux AppImage deb",
+    "release": "electron-builder --win nsis portable --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.venband.desktop",
+    "productName": "Venband",
+    "copyright": "Copyright \u00a9 2026 Venband",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**",
+      "build/icon.png",
+      "build/tray.png",
+      "package.json"
+    ],
+    "protocols": [
+      {
+        "name": "Venband",
+        "schemes": [
+          "venband"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png",
+      "verifyUpdateCodeSignature": true,
+      "artifactName": "Venband-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Venband",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Venband-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Venband-Portable-${version}.${ext}"
+    },
+    "mac": {
+      "category": "public.app-category.social-networking",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Venband uses your microphone for voice calls.",
+        "NSCameraUsageDescription": "Venband uses your camera for video calls.",
+        "NSScreenCaptureUsageDescription": "Venband shares your screen when you ask it to."
+      }
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Network",
+      "icon": "build/icon.png",
+      "synopsis": "End-to-end encrypted chat"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "youragoober999-sketch",
+        "repo": "venband",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

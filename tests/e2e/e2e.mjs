@@ -109,6 +109,8 @@ async function main() {
 const { execSync: sh } = await import('node:child_process');
 // every test run signs up from 127.0.0.1: reset the 6-accounts-per-IP counter
 try { sh(`psql ${DB} -Atc "delete from public.signup_ips"`); } catch { /* table may not exist on old schemas */ }
+// earlier runs' test accounts would look like alts of this run's (same browser, same network)
+try { sh(`psql ${DB} -Atc "delete from public.voogle_verifications; delete from public.voogle_signals"`); } catch { /* older schema */ }
 
 // ---- unverified login is rejected
 await alice.page.goto(APP);
@@ -118,8 +120,10 @@ await login(alice);
 
 // ---- create a server
 await alice.page.locator('.rail-item[aria-label="Add a server"]').click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
 await alice.page.locator('.modal input').first().fill('Venband HQ');
-await alice.page.locator('.modal form').getByRole('button', { name: 'Create' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Create server' }).click();
 await alice.page.getByText('Welcome to Venband HQ').waitFor({ timeout: 20000 });
 await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
 await alice.page.getByText('This is the start of #chat').waitFor({ timeout: 20000 });
@@ -136,7 +140,7 @@ log('alice sent a message');
 await alice.page.locator('.server-header').click();
 await alice.page.getByRole('button', { name: /Invite People/ }).click();
 const inviteInput = alice.page.locator('.modal .copy-row input');
-await alice.page.waitForFunction(() => document.querySelector('.modal .copy-row input')?.value.includes('invite='));
+await alice.page.waitForFunction(() => document.querySelector('.modal .copy-row input')?.value.includes('/invite/'));
 const invite = await inviteInput.inputValue();
 log('invite link', invite);
 if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/3-invite.png` });
@@ -146,6 +150,9 @@ await alice.page.keyboard.press('Escape');
 await signupAndVerify(bob);
 await login(bob);
 await bob.page.goto(invite);
+await bob.page.locator('.invite-page, .invite-card').first().waitFor({ timeout: 20000 });
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/3b-invite-page.png` });
+await bob.page.getByRole('button', { name: 'Join server' }).click();
 await bob.page.locator('.server-header').waitFor({ timeout: 20000 });
 log('bob joined server');
 await alice.page.locator('.channel .channel-name').getByText('welcome', { exact: true }).click();
@@ -165,8 +172,14 @@ log('✅ alice received bob reply live');
 
 // ---- verify server only has ciphertext
 const { execSync } = await import('node:child_process');
+const iconPngForSpoiler = () => Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const rows = execSync(`psql ${DB} -Atc "select ciphertext from public.messages"`).toString();
-if (/hello|alice|bob/i.test(rows)) throw new Error('PLAINTEXT FOUND IN DB');
+// decode each stored ciphertext and look for the actual words (a regex on the
+// base64 text itself would sometimes match "bob" by pure chance)
+for (const line of rows.split('\n').filter(Boolean)) {
+  const bytes = Buffer.from(line, 'base64').toString('latin1');
+  if (/hello bob|hi alice|encrypted/i.test(bytes) || /hello bob|hi alice/i.test(line)) throw new Error('PLAINTEXT FOUND IN DB');
+}
 log('✅ database contains only ciphertext:', rows.split('\n')[0].slice(0, 40) + '…');
 
 // ---- roles: alice creates a Mods role, makes a private channel
@@ -181,7 +194,8 @@ await alice.page.getByRole('button', { name: 'Save Changes' }).click();
 await alice.page.locator('.role-item', { hasText: 'Moderators' }).waitFor();
 await alice.page.locator('.settings-nav').getByRole('button', { name: 'Members' }).click();
 const bobRow = alice.page.locator('.member-row', { hasText: 'Bob' });
-await bobRow.locator('select.add-role').selectOption({ label: 'Moderators' });
+await bobRow.locator('button.add-role').click();
+await alice.page.locator('.vselect-opt', { hasText: 'Moderators' }).click();
 await bobRow.getByText('Moderators').waitFor();
 log('✅ role created and assigned');
 if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/4-roles.png` });
@@ -258,7 +272,7 @@ await alice.page.locator('.pending-file', { hasText: 'script.py' }).waitFor({ ti
 await alice.page.locator('.composer textarea').press('Enter');
 const codeCard = bob.page.locator('.code-card', { hasText: 'script.py' });
 await codeCard.locator('.hljs-keyword', { hasText: 'def' }).first().waitFor({ timeout: 20000 });
-if ((await codeCard.locator('.code-lang').inputValue()) !== 'python') throw new Error('language not detected');
+if ((await codeCard.locator('.code-lang .vselect-value').textContent()) !== 'Python') throw new Error('language not detected');
 await codeCard.locator('.code-expand').click();
 await bob.page.locator('.code-viewer .code-gutter div', { hasText: '60' }).waitFor({ timeout: 5000 });
 await bob.page.keyboard.press('Escape');
@@ -297,6 +311,137 @@ await bob.page.locator('.forward-row', { hasText: 'Alice' }).getByRole('button',
 await bob.page.keyboard.press('Escape');
 await alice.page.locator('.forwarded-label', { hasText: 'Forwarded from' }).waitFor({ timeout: 20000 });
 log('✅ messages can be forwarded');
+
+// ---- reactions: one-click quick reaction, live on the other side, emoji never stored in plaintext
+const dmMsg = alice.page.locator('.message', { hasText: 'private DM for bob only' }).first();
+await dmMsg.hover();
+await dmMsg.locator('.quick-react button', { hasText: '👍' }).click();
+await bob.page.locator('.message', { hasText: 'private DM for bob only' }).first().locator('.reaction', { hasText: '👍' }).waitFor({ timeout: 15000 });
+await bob.page.locator('.message', { hasText: 'private DM for bob only' }).first().locator('.reaction', { hasText: '👍' }).click();
+await alice.page.locator('.message', { hasText: 'private DM for bob only' }).first().locator('.reaction', { hasText: '2' }).waitFor({ timeout: 15000 });
+const reactionDump = execSync(`psql ${DB} -Atc "select tag || iv || ciphertext from public.reactions"`).toString();
+if (reactionDump.includes('👍')) throw new Error('reaction emoji stored in plaintext');
+log('✅ reactions: quick-react, live counts, encrypted at rest');
+
+// ---- :shortcode autocomplete (type :hear, Enter picks the top match)
+const aliceBox = alice.page.locator('.composer textarea:not([disabled])');
+await aliceBox.click();
+await alice.page.keyboard.type('love you :hear', { delay: 20 });
+await alice.page.locator('.mention-pop .mention-option').first().waitFor({ timeout: 10000 });
+await alice.page.keyboard.press('Enter');
+if (!(await aliceBox.inputValue()).includes('❤️')) throw new Error('emoji autocomplete did not insert ❤️: ' + (await aliceBox.inputValue()));
+await alice.page.keyboard.type(' and :broken_heart:', { delay: 10 });
+await alice.page.keyboard.press('Escape');
+await alice.page.keyboard.press('Enter');
+await bob.page.locator('.message-text', { hasText: 'love you ❤️' }).filter({ hasText: '💔' }).waitFor({ timeout: 15000 });
+log('✅ :emoji: autocomplete (Enter picks the top match) and :shortcodes: become emoji');
+
+// ---- over 2000 characters goes out as message.txt
+await aliceBox.fill('long '.repeat(500));
+await aliceBox.press('Enter');
+await bob.page.locator('.code-card, .attachment', { hasText: 'message.txt' }).first().waitFor({ timeout: 20000 });
+log('✅ messages over 2,000 characters are sent as message.txt');
+
+// ---- spoiler attachments stay blurred until clicked
+await alice.page.locator('.composer input[type=file]').setInputFiles({ name: 'secret.png', mimeType: 'image/png', buffer: iconPngForSpoiler() });
+await alice.page.locator('.pending-file').getByRole('button', { name: 'Spoiler' }).click();
+await aliceBox.press('Enter');
+const spoiler = bob.page.locator('.spoiler-file', { hasText: 'secret.png' });
+await spoiler.waitFor({ timeout: 20000 });
+await spoiler.click();
+await bob.page.locator('img.attachment-img[alt="secret.png"]').waitFor({ timeout: 20000 });
+log('✅ files can be sent as spoilers');
+
+// ---- edit history
+await aliceBox.fill('version one');
+await aliceBox.press('Enter');
+const v1 = alice.page.locator('.message', { hasText: 'version one' }).last();
+await v1.waitFor();
+await v1.hover();
+await v1.getByRole('button', { name: 'Edit' }).click();
+await alice.page.locator('.edit-box textarea').fill('version two');
+await alice.page.locator('.edit-box textarea').press('Enter');
+await bob.page.locator('.message', { hasText: 'version two' }).locator('button.edited').click();
+await bob.page.locator('.edit-version', { hasText: 'version one' }).waitFor({ timeout: 15000 });
+await bob.page.locator('.modal-close').click();
+log('✅ edited tag opens the (still encrypted) edit history');
+
+// ---- pins in DMs + pinned panel
+await bob.page.locator('.message', { hasText: 'version two' }).click({ button: 'right' });
+await bob.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Pin Message' }).click();
+await alice.page.getByRole('button', { name: 'Pinned messages' }).click();
+await alice.page.locator('.side-panel .panel-message', { hasText: 'version two' }).waitFor({ timeout: 15000 });
+await alice.page.getByRole('button', { name: 'Pinned messages' }).click();
+log('✅ pins work in DMs and show in the pinned panel');
+
+// ---- saved messages
+await alice.page.locator('.message', { hasText: 'version two' }).click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Save Message' }).click();
+await new Promise((r) => setTimeout(r, 500));
+const savedCount = execSync(`psql ${DB} -Atc "select count(*) from public.saved_messages"`).toString().trim();
+if (savedCount === '0') throw new Error('message was not saved');
+log('✅ messages can be saved');
+
+// ---- polls (encrypted question, live counts)
+await alice.page.locator('.composer .icon-btn[aria-label="Upload, poll or schedule"]').click();
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create a poll' }).click();
+await alice.page.locator('.modal input').first().fill('Pizza or tacos?');
+await alice.page.locator('.modal input[placeholder="Answer 1"]').fill('Pizza');
+await alice.page.locator('.modal input[placeholder="Answer 2"]').fill('Tacos');
+await alice.page.locator('.modal').getByRole('button', { name: 'Post poll' }).click();
+const bobPoll = bob.page.locator('.poll', { hasText: 'Pizza or tacos?' });
+await bobPoll.waitFor({ timeout: 20000 });
+await bobPoll.locator('.poll-option', { hasText: 'Tacos' }).click();
+await alice.page.locator('.poll', { hasText: 'Pizza or tacos?' }).locator('.poll-option', { hasText: 'Tacos' }).locator('.poll-count', { hasText: '1 ·' }).waitFor({ timeout: 15000 });
+log('✅ polls: encrypted question, live vote counts');
+
+// ---- mark unread + unread divider
+await bob.page.locator('.message', { hasText: 'version two' }).click({ button: 'right' });
+await bob.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Mark Unread' }).click();
+await bob.page.locator('.unread-divider').waitFor({ timeout: 10000 });
+log('✅ mark unread shows the New divider');
+
+// ---- search: decrypts and matches on the device, with filters
+await alice.page.keyboard.press('Control+k');
+await alice.page.locator('.switcher input').fill('version two');
+await alice.page.locator('.switcher-item', { hasText: 'Search messages for' }).click();
+const hit = alice.page.locator('.search-hit', { hasText: 'version two' }).first();
+await hit.waitFor({ timeout: 20000 });
+await alice.page.locator('.search-head input').fill('from:bob_' + run + ' got');
+await alice.page.locator('.search-head input').press('Enter');
+await alice.page.locator('.search-hit', { hasText: 'hi alice! got it' }).waitFor({ timeout: 20000 });
+await alice.page.locator('.search-head input').fill('has:poll pizza');
+await alice.page.locator('.search-head input').press('Enter');
+await alice.page.locator('.search-hit', { hasText: 'Alice' }).first().waitFor({ timeout: 20000 });
+await alice.page.locator('.search-head input').fill('version two');
+await alice.page.locator('.search-head input').press('Enter');
+await alice.page.locator('.search-hit', { hasText: 'version two' }).first().click();
+await alice.page.locator('.message.flash', { hasText: 'version two' }).waitFor({ timeout: 10000 });
+log('✅ search: message contents (decrypted on device), from:/has: filters, click jumps to the message');
+
+// ---- command palette runs commands
+await alice.page.keyboard.press('Control+k');
+await alice.page.locator('.switcher input').fill('>saved');
+await alice.page.keyboard.press('Enter');
+await alice.page.locator('.saved-item', { hasText: 'version two' }).waitFor({ timeout: 15000 });
+log('✅ command palette commands; Saved Messages view lists saved messages');
+await alice.page.locator('.saved-item').getByRole('button', { name: 'Go to message' }).click();
+await alice.page.locator('.message', { hasText: 'version two' }).first().waitFor({ timeout: 10000 });
+
+// ---- DM organisation: pin + folder + mute
+const bobRowDm = alice.page.locator('.channel.dm', { hasText: 'Bob' }).first();
+await bobRowDm.click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'New folder…' }).click();
+await alice.page.locator('.modal input').fill('Besties');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await alice.page.locator('.dm-folder-head', { hasText: 'Besties' }).waitFor({ timeout: 5000 });
+await alice.page.locator('.dm-folder', { hasText: 'Besties' }).locator('.channel.dm', { hasText: 'Bob' }).waitFor();
+await alice.page.locator('.channel.dm', { hasText: 'Bob' }).first().click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'For 1 hour' }).click();
+await alice.page.locator('.channel.dm.muted-convo', { hasText: 'Bob' }).waitFor({ timeout: 5000 });
+await alice.page.locator('.channel.dm', { hasText: 'Bob' }).first().click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: /^Unmute/ }).click();
+log('✅ DMs: folders, timed mute');
 await bob.page.locator('.rail-item.home').click();
 await bob.page.evaluate(() => { history.replaceState(null, '', location.pathname); });
 // bob also has a second tab open (same login)
@@ -372,7 +517,10 @@ await alice.page.locator('.call-controls [title=Camera]').click();
 // refresh mid-call and come back: must not show the same person twice
 await bob.page.reload();
 await bob.page.locator('.user-panel').waitFor({ timeout: 30000 });
-await bob.page.locator('.toast').getByTitle('Join call').click({ timeout: 20000 });
+// refreshing never "rings": he rejoins with the Join call button in the DM header
+await bob.page.waitForTimeout(1500);
+if (await bob.page.locator('.toast.incoming-call').count()) throw new Error('a refresh made the call ring again');
+await bob.page.locator('.chat-header').getByRole('button', { name: /Join call/ }).click({ timeout: 20000 });
 await alice.page.waitForTimeout(6000);
 const tilesAfterRejoin = await alice.page.locator('.voice-view .tile').count();
 if (tilesAfterRejoin !== 2) throw new Error(`expected 2 tiles after bob refreshed and rejoined, got ${tilesAfterRejoin}`);
@@ -384,8 +532,8 @@ await alice.page.locator('.voice-bar [title=Disconnect]').click();
 await alice.page.locator('.rail-item.home').click();
 await alice.page.getByTitle('New group chat').click();
 await alice.page.locator('.modal input').first().fill('Test crew');
-await alice.page.locator('.modal input[placeholder="@username"]').fill('bob_' + run);
-await alice.page.locator('.modal').getByRole('button', { name: 'Add', exact: true }).click();
+await alice.page.locator('.modal input[placeholder="Search friends or type a username"]').fill('bob_' + run);
+await alice.page.locator('.modal input[placeholder="Search friends or type a username"]').press('Enter');
 await alice.page.locator('.modal .role-pill').waitFor();
 await alice.page.locator('.modal').getByRole('button', { name: /Create group/ }).click();
 await alice.page.getByText('This is the start of your conversation with Test crew').waitFor({ timeout: 20000 });
@@ -397,8 +545,8 @@ await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).click({ timeout:
 await bob.page.getByText('hello group').waitFor({ timeout: 20000 });
 log('✅ group chat created, bob sees the group and decrypts messages');
 await bob.page.getByTitle(/Group settings/).click();
-bob.page.once('dialog', (d) => d.accept());
-await bob.page.getByRole('button', { name: 'Leave group' }).click();
+await bob.page.getByRole('button', { name: 'Leave group', exact: true }).click();
+await bob.page.locator('.modal').getByRole('button', { name: 'Leave Group', exact: true }).click();
 await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).waitFor({ state: 'detached', timeout: 20000 });
 await alice.page.locator('.composer textarea').fill('after bob left');
 await alice.page.keyboard.press('Enter');
@@ -478,7 +626,9 @@ await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click()
 await bobCard.locator('.pill.limited').waitFor({ timeout: 10000 });
 await bob.page.locator('.app-banner.warn').waitFor({ timeout: 20000 });
 await bob.page.locator('.rail-item[aria-label="Add a server"]').click();
-await bob.page.locator('.modal form').getByRole('button', { name: 'Create' }).click();
+await bob.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
+await bob.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
+await bob.page.locator('.modal').getByRole('button', { name: 'Create server' }).click();
 await bob.page.locator('.modal .form-error', { hasText: 'create servers' }).waitFor({ timeout: 10000 });
 await bob.page.keyboard.press('Escape');
 log('✅ limited account is stopped by the database (no new servers)');
@@ -526,18 +676,29 @@ await alice.page.locator('.rail-item:not(.home):not(.add)').first().click();
 await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
 await alice.page.locator('.message-text', { hasText: 'bob is back and can talk' }).waitFor({ timeout: 20000 });
 log('✅ a newcomer can send immediately (new key shared with everyone) and others read it');
+// …and once a member who has the older keys is online, the newcomer can read the history too
+for (let i = 0; i < 40 && (await bob.page.locator('.message .undecryptable').count()); i++) await new Promise((r) => setTimeout(r, 500));
+if (await bob.page.locator('.message .undecryptable').count()) throw new Error('newcomer still cannot read earlier messages');
+await bob.page.locator('.message-text', { hasText: 'hello bob, this is' }).waitFor({ timeout: 5000 });
+log('✅ newcomers can read messages sent before they joined (keys shared by online members)');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/11-server-badges.png` });
 // ---- channels: right-click to create a category and a channel in it
 await alice.page.locator('.rail-item[aria-label="Venband HQ"]').first().click().catch(() => {});
 await alice.page.locator(`.rail-item`).filter({ has: alice.page.locator('.rail-initials', { hasText: 'VH' }) }).first().click();
 await alice.page.locator('.sidebar-scroll').click({ button: 'right', position: { x: 60, y: 400 } });
 await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Category' }).click();
+// type like a person (letter by letter, with a space): the dialog must keep focus and stay open
+await alice.page.keyboard.type('Game Room', { delay: 30 });
+if ((await alice.page.locator('.modal input').inputValue()) !== 'Game Room') throw new Error('typing in a dialog lost focus or closed it');
+await alice.page.mouse.click(5, 5); // clicking outside must not close it
+if (!(await alice.page.locator('.modal input').isVisible())) throw new Error('dialog closed on outside click');
 await alice.page.locator('.modal input').fill('Gaming');
 await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+log('✅ dialogs keep focus while typing (spaces included) and ignore outside clicks');
 await alice.page.locator('.category', { hasText: 'Gaming' }).waitFor({ timeout: 10000 });
 await alice.page.locator('.category', { hasText: 'Gaming' }).click({ button: 'right' });
 await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Channel' }).click();
-if ((await alice.page.locator('.modal select').first().inputValue()) !== 'Gaming') throw new Error('category dropdown not preselected');
+if ((await alice.page.locator('.modal .vselect-value').first().textContent()) !== 'Gaming') throw new Error('category dropdown not preselected');
 await alice.page.locator('.modal input[placeholder="new-channel"]').fill('clips');
 await alice.page.locator('.modal').getByRole('button', { name: 'Create Channel' }).click();
 await alice.page.getByText('This is the start of #clips').waitFor({ timeout: 15000 });
@@ -565,6 +726,39 @@ await alice.page.keyboard.press('Enter');
 await alice.page.locator('.vc-chat .message-text', { hasText: 'chatting in the voice channel' }).waitFor({ timeout: 10000 });
 await alice.page.locator('.voice-bar [title=Disconnect]').click();
 log('✅ voice channel side chat works');
+
+// ---- threads: replies stay out of the main channel; lock/rename
+await alice.page.locator('.channel .channel-name').getByText('clips', { exact: true }).click();
+await bob.page.locator('.channel .channel-name').getByText('clips', { exact: true }).click();
+const rootMsg = alice.page.locator('.message', { hasText: 'make this bold' }).last();
+await rootMsg.click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Thread' }).click();
+await alice.page.locator('.modal input').fill('Bold talk');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+const threadBox = alice.page.locator('.thread-panel .composer textarea:not([disabled])');
+await threadBox.waitFor({ timeout: 15000 });
+await threadBox.fill('reply inside the thread');
+await threadBox.press('Enter');
+await alice.page.locator('.thread-panel .message-text', { hasText: 'reply inside the thread' }).waitFor({ timeout: 15000 });
+if (await alice.page.locator('.chat:not(.thread-chat) .message-text', { hasText: 'reply inside the thread' }).count()) throw new Error('thread reply leaked into the main channel');
+await bob.page.locator('.thread-summary', { hasText: 'Bold talk' }).waitFor({ timeout: 20000 });
+await bob.page.locator('.thread-summary', { hasText: 'Bold talk' }).click();
+await bob.page.locator('.thread-panel .message-text', { hasText: 'reply inside the thread' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.thread-panel [title^="Lock thread"]').click();
+await bob.page.locator('.thread-panel textarea[placeholder="This thread is locked"]').waitFor({ timeout: 15000 });
+await bob.page.locator('.thread-panel [aria-label="Close thread"]').click();
+await alice.page.locator('.thread-panel [aria-label="Close thread"]').click();
+log('✅ threads: side panel, replies stay out of the channel, locking works live');
+
+// ---- scheduled message (encrypted now, delivered later by the server)
+const schedBox = alice.page.locator('.chat:not(.thread-chat) .composer textarea:not([disabled])');
+await schedBox.fill('this was scheduled');
+await alice.page.locator('.chat:not(.thread-chat) .send-btn').click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'In 1 hour' }).click();
+await alice.page.locator('.form-notice', { hasText: 'Scheduled for' }).waitFor({ timeout: 10000 });
+execSync(`psql ${DB} -Atc "update public.scheduled_messages set send_at = now() - interval '1 second'; select public.deliver_scheduled_messages();"`);
+await bob.page.locator('.message-text', { hasText: 'this was scheduled' }).waitFor({ timeout: 20000 });
+log('✅ scheduled messages are delivered at their time');
 
 // ---- reports: bob reports a message, alice (owner) handles it in the Report Centre
 await bob.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
@@ -595,6 +789,440 @@ await alice.page.locator('.asset-picker.icon .asset-preview img').waitFor({ time
 await alice.page.keyboard.press('Escape');
 await alice.page.locator('.rail-item img.rail-icon').first().waitFor({ timeout: 15000 });
 log('✅ server icon uploads and shows in the server list');
+
+// ---- announcement channel: everyone reads, only moderators post
+await alice.page.locator('.category', { hasText: 'Gaming' }).click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Channel' }).click();
+await alice.page.locator('.modal .type-option', { hasText: 'Announcement' }).click();
+await alice.page.locator('.modal input[placeholder="Lounge"]').fill('news');
+await alice.page.locator('.modal').getByRole('button', { name: 'Create Channel' }).click();
+await alice.page.getByText('This is the start of #news').waitFor({ timeout: 15000 });
+await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 15000 });
+await alice.page.locator('.composer textarea').fill('big announcement');
+await alice.page.keyboard.press('Enter');
+await bob.page.locator('.channel .channel-name').getByText('news', { exact: true }).click({ timeout: 20000 });
+await bob.page.locator('.message-text', { hasText: 'big announcement' }).waitFor({ timeout: 20000 });
+if (await bob.page.locator('.composer textarea:not([disabled])').count()) throw new Error('members should not be able to post in announcement channels');
+log('✅ announcement channels: moderators post, members read only');
+
+// ---- forum channel: posts are their own discussions
+await alice.page.locator('.category', { hasText: 'Gaming' }).click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Create Channel' }).click();
+await alice.page.locator('.modal .type-option', { hasText: 'Forum' }).click();
+await alice.page.locator('.modal input[placeholder="Lounge"]').fill('help');
+await alice.page.locator('.modal').getByRole('button', { name: 'Create Channel' }).click();
+await alice.page.locator('.forum-view').waitFor({ timeout: 15000 });
+await alice.page.getByRole('button', { name: 'New Post' }).click();
+await alice.page.locator('.modal input').first().fill('How do I build a base?');
+await alice.page.locator('.modal textarea').first().fill('Asking for a friend');
+await alice.page.locator('.modal').getByRole('button', { name: /^Post/ }).click();
+await alice.page.locator('.forum-post-view .thread-root', { hasText: 'Asking for a friend' }).waitFor({ timeout: 15000 });
+await bob.page.locator('.channel .channel-name').getByText('help', { exact: true }).click({ timeout: 20000 });
+await bob.page.locator('.forum-card', { hasText: 'How do I build a base?' }).click({ timeout: 20000 });
+await bob.page.locator('.forum-post-view .thread-root', { hasText: 'Asking for a friend' }).waitFor({ timeout: 20000 });
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/13-forum.png` });
+log('✅ forum channels: posts are created encrypted and others can open them');
+
+// ---- custom server emoji
+await alice.page.locator('.server-header').click();
+await alice.page.getByRole('button', { name: /Server Settings/ }).click();
+await alice.page.locator('.settings-nav button', { hasText: 'Emoji, GIFs & Sounds' }).click();
+await alice.page.locator('.settings-content input[type=file]').setInputFiles({ name: 'pixel_dot.png', mimeType: 'image/png', buffer: png });
+await alice.page.locator('.expr-item', { hasText: 'pixel_dot' }).waitFor({ timeout: 15000 });
+await alice.page.keyboard.press('Escape');
+await alice.page.locator('.channel .channel-name').getByText('clips', { exact: true }).click();
+await bob.page.locator('.channel .channel-name').getByText('clips', { exact: true }).click();
+await bob.page.waitForTimeout(500);
+await alice.page.locator('.chat:not(.thread-chat) .composer textarea:not([disabled])').fill('party :pixel_dot: time');
+await alice.page.keyboard.press('Enter');
+await bob.page.locator('.message-text img.custom-emoji[alt=":pixel_dot:"]').waitFor({ timeout: 20000 });
+log('✅ custom server emoji upload and show for other members');
+
+// ---- invite links become an embed with a Join button
+await alice.page.locator('.server-header').click();
+await alice.page.getByRole('button', { name: /Invite People/ }).click();
+await alice.page.waitForFunction(() => document.querySelector('.modal .copy-row input')?.value.includes('/invite/'));
+const invite2 = await alice.page.locator('.modal .copy-row input').inputValue();
+await alice.page.keyboard.press('Escape');
+await alice.page.locator('.chat:not(.thread-chat) .composer textarea:not([disabled])').fill(`come join ${invite2}`);
+await alice.page.keyboard.press('Enter');
+const embed = bob.page.locator('.invite-embed', { hasText: 'Venband HQ' }).last();
+await embed.waitFor({ timeout: 20000 });
+await embed.getByRole('button', { name: /Join|Open/ }).waitFor({ timeout: 10000 });
+log('✅ invite links show an embed with the server name and a Join button');
+
+// ---- templates: a Gaming server comes with its channels; discovery application goes to staff
+await alice.page.locator('.rail-item[aria-label="Add a server"]').click();
+await alice.page.locator('.modal .template-card', { hasText: 'Gaming' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
+const fragName = `Frag Squad ${run}`;
+await alice.page.locator('.modal input').first().fill(fragName);
+await alice.page.locator('.modal').getByRole('button', { name: 'Next' }).click();
+await alice.page.locator('.modal .check-row input[type=checkbox]').check();
+await alice.page.locator('.modal textarea').first().fill('We play every night');
+await alice.page.locator('.modal .chip', { hasText: 'Gaming' }).first().click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Create server' }).click();
+await alice.page.locator('.server-header', { hasText: fragName }).waitFor({ timeout: 20000 });
+for (const ch of ['looking-for-group', 'game-guides', 'Lobby', 'Tournament Stage']) await alice.page.locator('.channel .channel-name').getByText(ch, { exact: true }).waitFor({ timeout: 15000 });
+log('✅ server templates create their channels (forum, stage, voice included)');
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Discovery Applications' }).click();
+const app = alice.page.locator('.queue-card', { hasText: fragName });
+await app.waitFor({ timeout: 15000 });
+await app.getByRole('button', { name: 'Approve' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await app.locator('.invite-status.approved').waitFor({ timeout: 15000 }).catch(async () => {
+  await alice.page.locator('.mod-filters .vselect').first().click();
+  await alice.page.getByRole('option', { name: 'All' }).click();
+  await app.locator('.invite-status.approved').waitFor({ timeout: 15000 });
+});
+await alice.page.locator('.sp-close').click();
+log('✅ discovery applications reach the staff queue and can be approved');
+
+// ---- server folders: drop a server on another
+const hqBtn = alice.page.locator('.rail-item[aria-label="Venband HQ"]');
+const fragBtn = alice.page.locator(`.rail-item[aria-label="${fragName}"]`);
+await fragBtn.dragTo(hqBtn);
+await alice.page.locator('.rail-item.folder').waitFor({ timeout: 10000 });
+await alice.page.locator('.rail-item.folder').click();
+await alice.page.locator(`.folder-panel .rail-item[aria-label="${fragName}"]`).waitFor({ timeout: 10000 });
+await alice.page.locator('.folder-panel [aria-label="Close folder"]').click();
+log('✅ dragging a server onto another makes a folder');
+
+// ---- public pages work signed out
+{
+  const anonCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const anon = await anonCtx.newPage();
+  await anon.goto(APP + 'status');
+  await anon.locator('.status-row').nth(5).waitFor({ timeout: 15000 });
+  await anon.locator('.status-pill.ok', { hasText: 'Operational' }).first().waitFor({ timeout: 20000 });
+  if (SHOTS) await anon.screenshot({ path: `${SHOTS}/20-status.png` });
+  await anon.goto(APP + 'Tos');
+  await anon.getByRole('heading', { name: 'Terms of Service' }).waitFor({ timeout: 10000 });
+  await anon.goto(APP + 'discovery');
+  await anon.locator(`.public-server[data-server-id="${hqId}"]`).waitFor({ timeout: 15000 });
+  if (SHOTS) await anon.screenshot({ path: `${SHOTS}/21-discovery.png` });
+  await anon.goto(APP + 'applications');
+  await anon.getByText('Log in to make applications').waitFor({ timeout: 10000 });
+  await anon.goto(APP + 'Voogle');
+  await anon.getByRole('heading', { name: 'Voogle', exact: true }).waitFor({ timeout: 10000 });
+  await anonCtx.close();
+  log('✅ /status, /tos, /discovery, /applications and /voogle work signed out');
+}
+
+// ---- bots: a management bot joins by invite, posts through the API, answers /serverinfo
+const hqChat = execSync(`psql ${DB} -Atc "select id from public.channels where server_id = '${hqId}' and name = 'chat'"`).toString().trim();
+await alice.page.goto(APP + 'applications');
+await alice.page.locator('.preset-card', { hasText: 'Server management' }).click();
+await alice.page.locator('.create-app input').fill('HQ Helper');
+await alice.page.getByRole('button', { name: 'Create bot' }).click();
+await alice.page.locator('.app-dash-head h1', { hasText: 'HQ Helper' }).waitFor({ timeout: 15000 });
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/22-bot-dashboard.png` });
+await alice.page.getByLabel('Server invite').fill(invite2);
+await alice.page.getByRole('button', { name: 'Add bot' }).click();
+await alice.page.locator('.form-notice', { hasText: 'joined the server' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.app-dash .tabs button', { hasText: 'Token' }).click();
+await alice.page.getByRole('button', { name: 'Make a token' }).click();
+const botToken = await alice.page.getByLabel('Bot token').inputValue();
+if (!/^vb_[0-9a-f]{32}_/.test(botToken)) throw new Error('unexpected token ' + botToken.slice(0, 12));
+const apiRes = await fetch(APP + 'api/bot', {
+  method: 'POST',
+  headers: { authorization: `Bot ${botToken}`, 'content-type': 'application/json' },
+  body: JSON.stringify({ action: 'send', channel: hqChat, content: 'hello from the **bot API**', embed: { title: 'Release notes', description: 'v2 is out', color: '#3ba55d' } }),
+});
+if (apiRes.status !== 200) throw new Error('bot API failed: ' + (await apiRes.text()));
+const badRes = await fetch(APP + 'api/bot', { method: 'POST', headers: { authorization: 'Bot vb_nope', 'content-type': 'application/json' }, body: '{"action":"me"}' });
+if (badRes.status !== 401) throw new Error('bad token should be 401, got ' + badRes.status);
+await bob.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+const botMsg = bob.page.locator('.bot-message', { hasText: 'hello from the' });
+await botMsg.waitFor({ timeout: 20000 });
+await botMsg.locator('.bot-tag').waitFor();
+await botMsg.locator('.bot-embed', { hasText: 'Release notes' }).waitFor();
+await bob.page.locator('.members .bot-member', { hasText: 'HQ Helper' }).waitFor({ timeout: 10000 }).catch(() => {});
+log('✅ bots: added by pasting an invite, token API posts with a BOT tag and embed (bad tokens get 401)');
+await bob.page.locator('.composer textarea:not([disabled])').fill('/server');
+await bob.page.locator('.mention-pop', { hasText: 'serverinfo' }).waitFor({ timeout: 10000 });
+await bob.page.keyboard.press('Enter');
+await bob.page.keyboard.press('Enter');
+await bob.page.locator('.bot-message .bot-embed', { hasText: 'Members' }).waitFor({ timeout: 20000 });
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/23-bot-command.png` });
+log('✅ slash commands autocomplete and preset bots answer them');
+
+// ---- connect a site: webhook URL posts into a channel
+await alice.page.goto(APP + 'applications');
+await alice.page.locator('.preset-card', { hasText: 'Connect a site' }).click();
+await alice.page.locator('.create-app input').fill('Shop Feed');
+await alice.page.getByRole('button', { name: 'Create bot' }).click();
+await alice.page.getByLabel('Server invite').fill(invite2);
+await alice.page.getByRole('button', { name: 'Add bot' }).click();
+await alice.page.locator('.form-notice', { hasText: 'joined the server' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.bot-settings .vselect').first().click();
+await alice.page.getByRole('option', { name: '#chat' }).click();
+await alice.page.getByRole('button', { name: 'Create webhook URL' }).click();
+const hookUrl = await alice.page.locator('.secret-box input').inputValue();
+const hookRes = await fetch(hookUrl.replace(/^https?:\/\/[^/]+\//, APP), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: 'New order #1042', username: 'Shop' }) });
+if (hookRes.status !== 200) throw new Error('webhook failed: ' + (await hookRes.text()));
+await bob.page.locator('.bot-message', { hasText: 'New order #1042' }).waitFor({ timeout: 20000 });
+log('✅ connect-a-site webhooks post into the chosen channel');
+
+// ---- Voogle: required verification, then alt lookup without any IP data
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.server-header').click();
+await alice.page.getByRole('button', { name: /Server Settings/ }).click();
+await alice.page.locator('.settings-nav button', { hasText: 'Voogle' }).click();
+await alice.page.locator('.check-row', { hasText: 'Use Voogle in this server' }).locator('input').check();
+await alice.page.locator('.check-row', { hasText: 'must verify' }).locator('input').check();
+// alice and bob share this machine and network, so Voogle rightly sees them as linked: only review real risk
+await alice.page.getByLabel('Send to moderators at risk score').fill('100');
+await alice.page.locator('.settings-content').getByRole('button', { name: 'Save' }).click();
+await alice.page.locator('.settings-content .form-notice', { hasText: 'Saved' }).waitFor({ timeout: 10000 });
+await alice.page.keyboard.press('Escape');
+await bob.page.reload();
+const gate = bob.page.locator('.voogle-gate');
+await gate.waitFor({ timeout: 20000 });
+if (await bob.page.locator('.composer textarea:not([disabled])').count()) throw new Error('should not be able to talk before verifying');
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/24-voogle-gate.png` });
+await gate.getByRole('button', { name: 'Verify' }).click();
+await gate.waitFor({ state: 'detached', timeout: 20000 });
+await bob.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
+log('✅ Voogle: members verify before talking, then the composer unlocks');
+await alice.page.goto(APP + 'voogle');
+await alice.page.getByLabel('User').fill('@bob_' + run);
+await alice.page.getByRole('button', { name: 'Look up' }).click();
+await alice.page.locator('.risk-badge').waitFor({ timeout: 15000 });
+const lookupText = await alice.page.locator('.lookup-result').innerText();
+if (/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(lookupText)) throw new Error('lookup leaked an IP address');
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/25-voogle-lookup.png` });
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.server-header').waitFor({ timeout: 20000 });
+log('✅ Voogle lookups show a risk score and likely alts, never IPs');
+
+// ---- server moderation: timeouts, warnings, audit log
+const { createHmac } = await import('node:crypto');
+function totp(secret, offset = 0) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const c of secret.replace(/=+$/, '').toUpperCase()) bits += alphabet.indexOf(c).toString(2).padStart(5, '0');
+  const key = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000) + offset));
+  const h = createHmac('sha1', key).update(counter).digest();
+  const o = h[h.length - 1] & 15;
+  return String(((h.readUInt32BE(o) & 0x7fffffff) % 1e6)).padStart(6, '0');
+}
+await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+const bobMember = alice.page.locator('.members .member', { hasText: 'Bob' }).first();
+await bobMember.click({ button: 'right' });
+await alice.page.locator('.ctx-timeouts .chip', { hasText: '5m' }).click();
+await alice.page.locator('.modal input').fill('cool off');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await bob.page.locator('.timeout-bar', { hasText: 'cool off' }).waitFor({ timeout: 20000 });
+if (await bob.page.locator('.composer textarea:not([disabled])').count()) throw new Error('timed out members should not be able to type');
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/30-timeout.png` });
+await bobMember.click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Remove Timeout' }).click();
+await bob.page.locator('.timeout-bar').waitFor({ state: 'detached', timeout: 20000 });
+await bob.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
+log('✅ timeouts make a member read-only until removed');
+await bobMember.click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: /^Warn / }).click();
+await alice.page.locator('.modal input').fill('please keep it friendly');
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await bob.page.locator('.modal .warning-reason', { hasText: 'please keep it friendly' }).waitFor({ timeout: 20000 });
+await bob.page.locator('.modal').getByRole('button', { name: 'I understand' }).click();
+await bob.page.locator('.modal .warning-reason').waitFor({ state: 'detached', timeout: 10000 });
+log('✅ warnings pop up for the member until they acknowledge them');
+await alice.page.locator('.server-header').click();
+await alice.page.getByRole('button', { name: /Server Settings/ }).click();
+await alice.page.locator('.settings-nav button', { hasText: 'Audit Log' }).click();
+await alice.page.locator('.audit-row', { hasText: 'timed out' }).first().waitFor({ timeout: 15000 });
+await alice.page.locator('.audit-row', { hasText: 'warned' }).first().waitFor({ timeout: 15000 });
+await alice.page.locator('.audit-filters input').fill('warned');
+if ((await alice.page.locator('.audit-row').count()) < 1 || (await alice.page.locator('.audit-row', { hasText: 'timed out' }).count())) throw new Error('audit log search did not filter');
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/31-audit-log.png` });
+log('✅ the audit log records moderation and can be searched');
+
+// ---- server reports: moderators see them (reporter hidden) and jump to the message
+await alice.page.locator('.settings-nav button', { hasText: 'Reports' }).click();
+const srvReport = alice.page.locator('.report-card', { hasText: 'testing reports' });
+await srvReport.waitFor({ timeout: 15000 });
+if (await srvReport.locator('.evidence-msg.reported').count() !== 1) throw new Error('reported message not highlighted');
+await srvReport.getByRole('button', { name: 'Jump to message' }).click();
+await alice.page.locator('.message.flash', { hasText: 'secret after kick' }).waitFor({ timeout: 20000 });
+log('✅ server moderators see reports and jump straight to the reported message');
+
+// ---- removed GIFs show the Terms notice for everyone
+await alice.page.locator('.composer textarea:not([disabled])').fill('https://static.klipy.com/ii/test/removed-me.gif');
+await alice.page.keyboard.press('Enter');
+const gifMsg = alice.page.locator('.message', { has: alice.page.locator('.embed-wrap') }).last();
+await gifMsg.waitFor({ timeout: 20000 });
+await gifMsg.click({ button: 'right' });
+await alice.page.locator('.ctx-menu').getByRole('menuitem', { name: 'Remove GIF from Server' }).click();
+await bob.page.locator('.gif-removed', { hasText: 'venband.com/tos' }).last().waitFor({ timeout: 20000 });
+log('✅ owners can remove a GIF; everyone sees the Terms of Service notice instead');
+
+// ---- link safety
+await alice.page.locator('.composer textarea:not([disabled])').fill('free stuff http://paypa1-login.xyz/claim');
+await alice.page.keyboard.press('Enter');
+await bob.page.locator('.message-text a', { hasText: 'paypa1-login.xyz' }).last().click();
+await bob.page.locator('.modal', { hasText: 'This link looks dangerous' }).waitFor({ timeout: 10000 });
+await bob.page.locator('.modal .link-risks li').first().waitFor();
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/32-link-warning.png` });
+await bob.page.locator('.modal').getByRole('button', { name: 'Go back' }).click();
+log('✅ risky links get a warning before they open');
+
+// ---- custom badges designed by the Venband owner
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Badge Designer' }).click();
+const [chooser] = await Promise.all([alice.page.waitForEvent('filechooser'), alice.page.getByLabel('Upload badge picture').click()]);
+await chooser.setFiles({ name: 'star.png', mimeType: 'image/png', buffer: png });
+await alice.page.locator('.modal').getByRole('button', { name: 'Apply' }).click();
+await alice.page.locator('.badge-designer input').first().fill(`event_${run}`);
+await alice.page.locator('.badge-designer input').nth(1).fill('Summer Event');
+await alice.page.getByRole('button', { name: 'Save badge' }).click();
+await alice.page.locator('.badge-choice', { hasText: `c_event_${run}` }).waitFor({ timeout: 15000 });
+log('✅ the Venband owner can design badges with an uploaded picture');
+
+// ---- security centre: data export, two-factor sign-in
+await alice.page.locator('.sp-tab', { hasText: 'Security' }).click();
+const [exportDl] = await Promise.all([alice.page.waitForEvent('download'), alice.page.getByRole('button', { name: 'Download my data' }).click()]);
+const exported = JSON.parse(await (await import('node:fs/promises')).readFile(await exportDl.path(), 'utf8'));
+if (exported.profile?.username !== `alice_${run}`) throw new Error('export is missing the profile');
+log('✅ data export downloads your account data');
+await alice.page.getByRole('button', { name: 'Set up an authenticator app' }).click();
+const secret = (await alice.page.locator('.mfa-secret').innerText()).trim();
+await alice.page.getByLabel('Setup code').fill(totp(secret));
+await alice.page.getByRole('button', { name: 'Turn on' }).click();
+await alice.page.locator('.pill.active', { hasText: 'On' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.sp-tab', { hasText: 'My Account' }).click();
+await alice.page.getByRole('button', { name: /Log Out/i }).click();
+await alice.page.getByText('Welcome back').waitFor({ timeout: 20000 });
+await alice.page.locator('input[type=email]').fill(alice.email);
+await alice.page.locator('input[type=password]').fill(alice.password);
+await alice.page.locator('.auth-card').getByRole('button', { name: 'Log in' }).click();
+await alice.page.getByText('Two-factor check').waitFor({ timeout: 20000 });
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/33-two-factor.png` });
+await alice.page.getByLabel('Authenticator code').fill(totp(secret, 1));
+await alice.page.locator('.auth-card').getByRole('button', { name: 'Continue' }).click();
+await alice.page.locator('.user-panel').waitFor({ timeout: 30000 });
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
+await alice.page.locator('.message-text', { hasText: 'secret after kick' }).first().waitFor({ timeout: 20000 });
+log('✅ two-factor sign-in asks for the authenticator code, then messages decrypt');
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Security' }).click();
+await alice.page.getByRole('button', { name: 'Turn off' }).click();
+await alice.page.locator('.modal').getByRole('button', { name: 'Turn off' }).click();
+await alice.page.getByRole('button', { name: 'Set up an authenticator app' }).waitFor({ timeout: 15000 });
+log('✅ two-factor sign-in can be turned off again');
+
+// ---- deleted servers can be restored for 7 days
+await alice.page.locator('.sp-close').click();
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.server-header').waitFor({ timeout: 20000 });
+const fragId = execSync(`psql ${DB} -Atc "select id from public.servers where name = '${'Frag Squad ' + run}'"`).toString().trim();
+await alice.page.goto(APP + `channels/${fragId}`);
+await alice.page.locator('.server-header', { hasText: 'Frag Squad' }).click();
+await alice.page.getByRole('button', { name: /Server Settings/ }).click();
+await alice.page.getByRole('button', { name: 'Delete Server' }).click();
+await alice.page.locator('.modal input').last().fill(`Frag Squad ${run}`);
+await alice.page.locator('.modal').last().getByRole('button', { name: 'Save' }).click();
+await alice.page.waitForFunction((id) => !document.querySelector(`.rail-item[aria-label^="Frag Squad"]`), fragId, { timeout: 20000 });
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Security' }).click();
+await alice.page.getByRole('button', { name: 'Restore' }).click();
+await alice.page.locator('.form-notice', { hasText: 'is back' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.sp-close').click();
+await alice.page.reload();
+await alice.page.locator('.user-panel').waitFor({ timeout: 20000 });
+if (!(await execSync(`psql ${DB} -Atc "select status from public.servers where id = '${fragId}'"`).toString().includes('active'))) throw new Error('server not restored');
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.server-header').waitFor({ timeout: 20000 });
+log('✅ deleted servers wait in Settings → Security and can be restored');
+
+// ---- profiles: picture, frame, animated gradient name, long status bubble (live for others)
+await alice.page.locator('.user-panel [title="User settings"]').click();
+await alice.page.locator('.sp-tab', { hasText: 'Profiles' }).click();
+const [picChooser] = await Promise.all([alice.page.waitForEvent('filechooser'), alice.page.getByRole('button', { name: 'Profile picture' }).click()]);
+await picChooser.setFiles({ name: 'me.png', mimeType: 'image/png', buffer: png });
+await alice.page.locator('.modal').getByRole('button', { name: 'Apply' }).click();
+await alice.page.locator('.profile-editor-preview .avatar.has-picture').first().waitFor({ timeout: 15000 });
+await alice.page.locator('.frame-option[aria-label="Neon"]').click();
+await alice.page.getByRole('button', { name: '+ Colour' }).first().click();
+await alice.page.getByRole('button', { name: '+ Colour' }).first().click();
+await alice.page.getByRole('button', { name: 'Animation' }).click().catch(async () => {
+  await alice.page.locator('.name-style-editor .vselect').nth(1).click();
+});
+await alice.page.getByRole('option', { name: 'Shimmer' }).click();
+const longStatus = 'Working on the Venband desktop app all week, then a road trip with friends — send memes, I’ll reply when I’m back online. '.repeat(2).slice(0, 240);
+await alice.page.getByLabel('Custom status').fill(longStatus);
+await alice.page.getByRole('button', { name: 'Save Changes' }).click();
+await alice.page.locator('.notice', { hasText: 'Profile saved' }).waitFor({ timeout: 15000 });
+await alice.page.getByRole('button', { name: 'Publish to the Marketplace' }).first().click();
+await alice.page.locator('.modal input').fill(`Shimmer Pop ${run}`);
+await alice.page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+await alice.page.locator('.notice', { hasText: 'Published' }).waitFor({ timeout: 15000 });
+if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/40-profile-editor.png` });
+await alice.page.locator('.sp-close').click();
+const aliceRow = bob.page.locator('.members .member', { hasText: 'Alice' }).first();
+await aliceRow.locator('.avatar.has-picture.frame-neon').waitFor({ timeout: 20000 });
+await aliceRow.locator('.styled-name.gradient.fx-shimmer').waitFor({ timeout: 20000 });
+await aliceRow.click();
+await bob.page.locator('.modal .status-bubble', { hasText: 'road trip' }).waitFor({ timeout: 10000 });
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/41-profile-card.png` });
+await bob.page.keyboard.press('Escape');
+log('✅ profile picture, frame, gradient name and status bubble show up live for others');
+
+// ---- marketplace in DMs: use someone's published name style
+await bob.page.locator('.rail-item.home').click();
+await bob.page.locator('.nav-item', { hasText: 'Marketplace' }).click();
+await bob.page.locator('.market-view .tabs button', { hasText: 'Name styles' }).click();
+const card = bob.page.locator('.market-card', { hasText: `Shimmer Pop ${run}` });
+await card.waitFor({ timeout: 15000 });
+await card.getByRole('button', { name: 'Use' }).click();
+await bob.page.locator('.market-view .form-notice', { hasText: 'Now using' }).waitFor({ timeout: 10000 });
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/42-marketplace.png` });
+log('✅ the Marketplace in DMs lets people use published name styles');
+
+// ---- custom CSS from a template, with the tutorial
+await bob.page.locator('.user-panel [title="User settings"]').click();
+await bob.page.locator('.sp-tab', { hasText: 'Appearance' }).click();
+await bob.page.locator('.tabs button', { hasText: 'Background & CSS' }).click();
+await bob.page.getByRole('button', { name: 'Watch the tutorial' }).click();
+await bob.page.locator('.css-tutorial .css-tut-code pre').waitFor({ timeout: 5000 });
+await bob.page.waitForTimeout(800);
+if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/43-css-tutorial.png` });
+await bob.page.locator('.css-tutorial').getByRole('button', { name: 'Close' }).click();
+await bob.page.locator('.css-template', { hasText: 'Bigger messages' }).click();
+await bob.page.waitForFunction(() => document.getElementById('venband-custom-css')?.textContent?.includes('font-size: 17px'), null, { timeout: 10000 });
+await bob.page.locator('.css-editor').fill('@import url(https://evil.example/x.css); .message-text { background: url(https://evil.example/t.png) }');
+await bob.page.getByRole('button', { name: 'Apply' }).click();
+const applied = await bob.page.evaluate(() => document.getElementById('venband-custom-css')?.textContent ?? '');
+if (/evil\.example/.test(applied)) throw new Error('custom CSS was not cleaned: ' + applied);
+await bob.page.locator('.toggle-row', { hasText: 'Use my custom CSS' }).locator('input').uncheck();
+await bob.page.locator('.sp-close').click();
+log('✅ custom CSS: templates apply, outside links and @import are stripped, tutorial plays');
+
+// ---- group chats: invite links, owner removes people
+await alice.page.locator('.rail-item.home').click();
+await alice.page.locator('.channel.dm', { hasText: 'Test crew' }).click({ timeout: 20000 });
+await alice.page.getByTitle(/Group settings/).click();
+await alice.page.getByRole('button', { name: 'Create invite link' }).click();
+const groupLink = await alice.page.getByLabel('Group invite link').inputValue();
+await alice.page.keyboard.press('Escape');
+await bob.page.goto(groupLink);
+await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).waitFor({ timeout: 20000 });
+await bob.page.locator('.chat-header', { hasText: 'Test crew' }).waitFor({ timeout: 20000 });
+log('✅ group invite links let people join (up to 15)');
+await alice.page.getByTitle(/Group settings/).click();
+await alice.page.locator('.modal .group-members .member', { hasText: 'Bob' }).getByRole('button', { name: 'Remove' }).click();
+await alice.page.locator('.modal').last().getByRole('button', { name: 'Remove', exact: true }).click();
+await bob.page.locator('.channel.dm', { hasText: 'Test crew' }).waitFor({ state: 'detached', timeout: 20000 });
+await alice.page.goto(APP + `channels/${hqId}`);
+await alice.page.locator('.server-header').waitFor({ timeout: 20000 });
+await bob.page.goto(APP + `channels/${hqId}`);
+await bob.page.locator('.server-header').waitFor({ timeout: 20000 });
+log('✅ the group owner can remove people');
 
 // ---- phone layout
 await bob.page.setViewportSize({ width: 390, height: 844 });
@@ -658,4 +1286,4 @@ try {
 await browser.close();
 log('ALL E2E CHECKS PASSED');
 }
-main().catch(async (e) => { console.log('FAIL', e.message.split('\n')[0]); for (const u of [alice, bob]) { try { if (SHOTS) await u.page.screenshot({ path: `${SHOTS}/fail-${u.name}.png` }); console.log(u.name, 'text:', (await u.page.evaluate(() => document.body.innerText)).slice(0, 700).replace(/\n+/g, ' | ')); } catch {} } process.exit(1); });
+main().catch(async (e) => { console.log('FAIL', e.message.split('\n').slice(0, 14).join('\n')); for (const u of [alice, bob]) { try { if (SHOTS) await u.page.screenshot({ path: `${SHOTS}/fail-${u.name}.png` }); console.log(u.name, 'text:', (await u.page.evaluate(() => document.body.innerText)).slice(0, 700).replace(/\n+/g, ' | ')); } catch {} } process.exit(1); });

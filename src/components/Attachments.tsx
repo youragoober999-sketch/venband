@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isRiskyFile } from '../lib/metadata';
+import { askConfirm } from './Dialogs';
 import type { Attachment } from '../lib/crypto';
 import { CODE_LANGS, downloadDecrypted, extOf, fileIcon, fileKind, saveDecrypted } from '../lib/files';
 import { highlight, LANGUAGE_OPTIONS } from '../lib/highlight';
 import { errorMessage } from '../lib/supabase';
 import { copyText, openMenu } from './ContextMenu';
 import { Icon, Modal } from './ui';
+import { Select } from './Select';
 
 export function formatSize(n: number) {
   if (n < 1024) return `${n} B`;
@@ -53,6 +56,16 @@ function DownloadButton({ a, small }: { a: Attachment; small?: boolean }) {
       title={p !== null ? `Downloading ${Math.round(p * 100)}%` : `Download (${formatSize(a.size)})`}
       onClick={async (e) => {
         e.stopPropagation();
+        if (
+          isRiskyFile(a.name) &&
+          !(await askConfirm({
+            title: 'This file could harm your computer',
+            body: `“${a.name}” is a kind of file that can run programs. Only open it if you trust the person who sent it and expected it.`,
+            confirm: 'Download anyway',
+            danger: true,
+          }))
+        )
+          return;
         setP(0);
         try {
           await saveDecrypted(a, setP);
@@ -95,6 +108,23 @@ function FileCard({ a, children, onOpen }: { a: Attachment; children?: React.Rea
 }
 
 export function AttachmentView({ a }: { a: Attachment }) {
+  const [revealed, setRevealed] = useState(!a.spoiler);
+  if (!revealed)
+    return (
+      <button type="button" className="spoiler-file" onClick={() => setRevealed(true)} aria-label={`Spoiler: ${a.name}. Click to reveal.`}>
+        <span className="spoiler-file-blur" aria-hidden>
+          <span className="att-icon">{fileIcon(a.name)}</span>
+          <span className="attachment-name">{a.name}</span>
+        </span>
+        <span className="spoiler-file-label">
+          <Icon name="eyeOff" size={16} /> SPOILER
+        </span>
+      </button>
+    );
+  return <AttachmentInner a={a} />;
+}
+
+function AttachmentInner({ a }: { a: Attachment }) {
   const kind = fileKind(a);
   const auto = a.size <= AUTO_LOAD[kind] * 1024 * 1024;
   if (kind === 'image') return <ImageAttachment a={a} auto={auto} />;
@@ -118,7 +148,7 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
     );
   return (
     <>
-      <img className="attachment-img" src={url} alt={a.name} onClick={() => setBig(true)} onError={() => setBroken(true)} />
+      <img className="attachment-img" src={url} alt={a.alt || a.name} title={a.alt || undefined} onClick={() => setBig(true)} onError={() => setBroken(true)} />
       {big && (
         <div className="lightbox" onClick={() => setBig(false)}>
           <img src={url} alt={a.name} onClick={(e) => e.stopPropagation()} />
@@ -238,13 +268,7 @@ function CodeAttachment({ a }: { a: Attachment }) {
             {formatSize(a.size)} · {lines.length.toLocaleString()} lines{a.size > MAX_VIEW ? ' (first 2 MB shown)' : ''}
           </div>
         </div>
-        <select className="code-lang" value={lang} onChange={(e) => setLang(e.target.value)} title="Language">
-          {LANGUAGE_OPTIONS.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.label}
-            </option>
-          ))}
-        </select>
+        <Select className="code-lang" value={lang} onChange={setLang} title="Language" searchable options={LANGUAGE_OPTIONS.map((l) => ({ value: l.id, label: l.label }))} />
         <button className="icon-btn" title="Copy" onClick={() => copyText(text)}>
           <Icon name="copy" size={16} />
         </button>
@@ -275,13 +299,7 @@ function CodeViewer({ name, text, lang, setLang, a, onClose }: { name: string; t
       title={
         <span className="viewer-title">
           {name}
-          <select className="code-lang" value={lang} onChange={(e) => setLang(e.target.value)}>
-            {LANGUAGE_OPTIONS.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.label}
-              </option>
-            ))}
-          </select>
+          <Select className="code-lang" value={lang} onChange={setLang} title="Language" searchable options={LANGUAGE_OPTIONS.map((l) => ({ value: l.id, label: l.label }))} />
           <button className="icon-btn" title="Copy everything" onClick={() => copyText(text)}>
             <Icon name="copy" size={16} />
           </button>

@@ -6,6 +6,7 @@
 // the piece count, so pieces can't be swapped, reordered, dropped or added.
 // Each piece is uploaded as its own object, so the server's per-file size
 // limit never applies to the whole file.
+import { stripMetadata } from './metadata';
 import { supabase } from './supabase';
 import { fromB64, randomBytes, toB64, decryptBlob, type Attachment } from './crypto';
 
@@ -33,7 +34,9 @@ async function pool<T>(items: T[], n: number, fn: (item: T) => Promise<void>) {
   );
 }
 
-export async function uploadEncrypted(channelId: string, file: File, onProgress?: (fraction: number) => void): Promise<Attachment> {
+export async function uploadEncrypted(channelId: string, original: File, onProgress?: (fraction: number) => void): Promise<Attachment> {
+  // GPS location, camera details and edit history never leave the device
+  const file = await stripMetadata(original);
   if (file.size > MAX_FILE) throw new Error(`${file.name} is larger than 5 GB.`);
   const raw = randomBytes(32);
   const baseIv = randomBytes(12);
@@ -99,7 +102,7 @@ export async function downloadDecrypted(a: Attachment, onProgress?: (fraction: n
 export async function saveDecrypted(a: Attachment, onProgress?: (fraction: number) => void) {
   const picker = (window as unknown as { showSaveFilePicker?: (o: { suggestedName: string }) => Promise<FileSystemFileHandle> }).showSaveFilePicker;
   if (a.chunks && a.size > 512 * 1024 * 1024 && picker) {
-    const handle = await picker({ suggestedName: a.name });
+    const handle = await picker({ suggestedName: safeFileName(a.name) });
     const out = await handle.createWritable();
     const key = await crypto.subtle.importKey('raw', fromB64(a.key), 'AES-GCM', false, ['decrypt']);
     const base = fromB64(a.iv);
@@ -118,8 +121,14 @@ export async function saveDecrypted(a: Attachment, onProgress?: (fraction: numbe
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = a.name;
+  // keep the name it was sent with (some browsers ignore download= unless the
+  // link is in the document, and then name the file after the blob's id)
+  link.download = safeFileName(a.name);
+  link.rel = 'noopener';
+  link.style.display = 'none';
+  document.body.appendChild(link);
   link.click();
+  link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
@@ -205,4 +214,13 @@ export function fileIcon(name: string): string {
 
 export function extOf(name: string) {
   return ext(name);
+}
+
+/** The original file name, minus characters no file system accepts. */
+export function safeFileName(name: string): string {
+  const cleaned = name
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, '_')
+    .replace(/^[.\s]+|[.\s]+$/g, '')
+    .slice(0, 200);
+  return /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(cleaned) ? `_${cleaned}` : cleaned || 'download';
 }

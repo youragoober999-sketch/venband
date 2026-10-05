@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src data:" />
+<title>Share your screen</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font-family: Inter, "Segoe UI", system-ui, sans-serif; background: #0b0b0f; color: #f5f5f7; }
+  header { padding: 18px 20px 6px; } h1 { font-size: 18px; margin: 0; } p { margin: 4px 0 0; color: #ffffff99; font-size: 13px; }
+  .tabs { display: flex; gap: 6px; padding: 10px 20px; }
+  .tabs button { background: #ffffff10; color: inherit; border: 0; border-radius: 999px; padding: 6px 14px; font: inherit; cursor: pointer; }
+  .tabs button.on { background: #fff; color: #000; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; padding: 6px 20px 20px; max-height: 360px; overflow: auto; }
+  .src { background: #ffffff08; border: 2px solid transparent; border-radius: 12px; padding: 8px; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+  .src:hover { background: #ffffff12; } .src.sel { border-color: #5865f2; }
+  .src img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; border-radius: 8px; display: block; }
+  .src span { display: block; margin-top: 6px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid #ffffff14; }
+  footer button { border: 0; border-radius: 10px; padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  #cancel { background: #ffffff14; color: #fff; } #share { background: #fff; color: #000; } #share:disabled { opacity: .5; }
+</style>
+</head>
+<body>
+  <header><h1>Choose what to share</h1><p>People in the call see this until you stop sharing. Audio from your computer is shared too on Windows.</p></header>
+  <div class="tabs"><button id="t-screen" class="on">Screens</button><button id="t-window">Windows</button></div>
+  <div class="grid" id="grid"></div>
+  <footer><button id="cancel">Cancel</button><button id="share" disabled>Share</button></footer>
+  <script src="picker.js"></script>
+</body>
+</html>

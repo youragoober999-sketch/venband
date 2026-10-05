@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { sessionStore } from '../lib/session';
-import { leaveCall, type RemotePeer } from '../lib/call';
+import { leaveCall, type Call, type RemotePeer } from '../lib/call';
+import { DEFAULT_SOUNDS, serverSounds, type SoundRef } from '../lib/soundboard';
 import { displayName, getProfile } from '../lib/directory';
 import { has, P } from '../lib/permissions';
 import { attenuationOf, callUi, mixer, streamKey, voiceKey, volumeOf, type SinkInput } from '../lib/audio';
-import { updateLayout, updateSettings, useSettings } from '../lib/settings';
+import { getSettings, updateLayout, updateSettings, useSettings } from '../lib/settings';
 import type { ServerData } from '../hooks/data';
 import { useActiveCall } from './Shell';
 import { Avatar, Icon } from './ui';
@@ -109,6 +110,7 @@ export function VoiceView({ data, compact, headerExtra }: { data?: ServerData; c
   const focused = tiles.find((t) => t.key === focus) ?? null;
   const sharing = tiles.some((t) => t.kind === 'screen');
   const canVideo = !data || has(data.myPermissions, P.VIDEO);
+  const canSoundboard = !data || has(data.myPermissions, P.USE_SOUNDBOARD);
   const nameOf = (id: string) => displayName(id, data?.members.find((m) => m.user_id === id)?.nickname);
   const expanded = compact && (focused || sharing);
 
@@ -149,6 +151,7 @@ export function VoiceView({ data, compact, headerExtra }: { data?: ServerData; c
         <button className={`round-btn${call.screen ? ' on' : ''}`} disabled={!canVideo} onClick={() => call.toggleScreen()} title="Share screen">
           <Icon name="screen" />
         </button>
+        <SoundboardButton call={call} canUse={canSoundboard} />
         <button className="round-btn hangup" onClick={() => leaveCall()} title="Disconnect">
           <Icon name="phoneOff" />
         </button>
@@ -225,6 +228,30 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
         checked: locallyMuted,
         onChange: (v) => callUi.set((s) => ({ muted: { ...s.muted, [key]: v } })),
       });
+      if (tile.kind !== 'screen') {
+        const sb = getSettings().soundboard;
+        items.push(
+          {
+            type: 'slider',
+            label: 'Soundboard volume',
+            value: sb.perUser[tile.userId] ?? 100,
+            min: 0,
+            max: 100,
+            step: 5,
+            format: (v) => `${v}%`,
+            onChange: (v) => updateSettings((st) => ({ soundboard: { ...st.soundboard, perUser: { ...st.soundboard.perUser, [tile.userId]: v } } })),
+          },
+          {
+            type: 'check',
+            label: 'Mute their soundboard',
+            checked: sb.muted.includes(tile.userId),
+            onChange: (v) =>
+              updateSettings((st) => ({
+                soundboard: { ...st.soundboard, muted: v ? [...new Set([...st.soundboard.muted, tile.userId])] : st.soundboard.muted.filter((x) => x !== tile.userId) },
+              })),
+          },
+        );
+      }
       if (tile.kind === 'screen')
         items.push({
           label: hidden ? 'Watch stream' : 'Stop watching',
@@ -287,6 +314,63 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
         <button className="tile-more" title="Volume and more" onClick={(e) => (e.stopPropagation(), menu(e))}>
           <Icon name="more" size={16} />
         </button>
+      )}
+    </div>
+  );
+}
+
+/** Soundboard: built-in sounds plus sounds from your servers. */
+function SoundboardButton({ call, canUse }: { call: Call; canUse: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState<(SoundRef & { server: string })[]>([]);
+  const volume = useSettings((s) => s.soundboard.volume);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    serverSounds().then(setCustom);
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const byServer = custom.reduce<Record<string, (SoundRef & { server: string })[]>>((m, x) => ((m[x.server] ??= []).push(x), m), {});
+  return (
+    <div className="soundboard-wrap" ref={ref}>
+      <button className={`round-btn${open ? ' on' : ''}`} disabled={!canUse || call.deafened} onClick={() => setOpen((o) => !o)} title={canUse ? 'Soundboard' : 'You can’t use the soundboard here'}>
+        <Icon name="soundboard" />
+      </button>
+      {open && (
+        <div className="soundboard-pop" role="dialog" aria-label="Soundboard">
+          <div className="soundboard-head">
+            <b>Soundboard</b>
+            <span className="small muted">everyone in the call hears it</span>
+          </div>
+          <div className="soundboard-grid">
+            {DEFAULT_SOUNDS.map((x) => (
+              <button key={x.id} onClick={() => call.playSound(x)} title={x.name}>
+                <span className="sb-emoji">{x.emoji}</span>
+                <span className="sb-name">{x.name}</span>
+              </button>
+            ))}
+          </div>
+          {Object.entries(byServer).map(([server, list]) => (
+            <div key={server}>
+              <div className="small muted soundboard-section">{server}</div>
+              <div className="soundboard-grid">
+                {list.map((x) => (
+                  <button key={x.id} onClick={() => call.playSound(x)} title={x.name}>
+                    <span className="sb-emoji">{x.emoji}</span>
+                    <span className="sb-name">{x.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <label className="soundboard-vol small">
+            Soundboard volume
+            <input type="range" min={0} max={100} step={5} value={volume} onChange={(e) => updateSettings((st) => ({ soundboard: { ...st.soundboard, volume: Number(e.target.value) } }))} />
+            {volume}%
+          </label>
+        </div>
       )}
     </div>
   );

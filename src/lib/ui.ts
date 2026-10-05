@@ -5,6 +5,7 @@ export type SettingsTab =
   | 'account'
   | 'profile'
   | 'privacy'
+  | 'security'
   | 'devices'
   | 'appearance'
   | 'voice'
@@ -12,7 +13,9 @@ export type SettingsTab =
   | 'language'
   | 'notifications'
   | 'moderation'
-  | 'reports';
+  | 'discovery-queue'
+  | 'reports'
+  | 'badges';
 
 export const uiStore = createStore<{
   settings: SettingsTab | null;
@@ -23,7 +26,15 @@ export const uiStore = createStore<{
   switcher: boolean;
   /** message to scroll to (from a message link) */
   jump: string | null;
-}>({ settings: null, modQuery: '', profile: null, drawer: null, switcher: false, jump: null });
+  /** open search panel */
+  search: { q: string; serverId: string | null } | null;
+  /** which page Home shows when no conversation is open */
+  homeTab: 'friends' | 'requests' | 'donate' | 'saved' | 'market';
+}>({ settings: null, modQuery: '', profile: null, drawer: null, switcher: false, jump: null, search: null, homeTab: 'friends' });
+
+export function openSearch(q = '', serverId: string | null = null) {
+  uiStore.set({ search: { q, serverId }, switcher: false });
+}
 
 // narrow layouts show the member list as a slide-in panel
 export const isPhone = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 1000px)').matches;

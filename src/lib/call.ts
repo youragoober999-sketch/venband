@@ -10,7 +10,8 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { sdpSignaturePayload, sign, verify, type Identity } from './crypto';
 import { getCurrentKey, observeKey } from './directory';
-import { acquireScope, setVoiceState } from './presence';
+import { acquireScope, sendRing, setVoiceState } from './presence';
+import { DEFAULT_SOUNDS, isOurAsset, playSound, type SoundRef } from './soundboard';
 import { stopRing } from './notify';
 import { getSettings } from './settings';
 
@@ -118,6 +119,36 @@ export class Call {
   subscribe(l: () => void) {
     this.listeners.add(l);
     return () => this.listeners.delete(l);
+  }
+
+  /** who played a soundboard sound most recently (for the little speaker glow) */
+  lastSound: { from: string; emoji: string; at: number } | null = null;
+  private soundAt = new Map<string, number>();
+
+  /** Play a soundboard sound for everyone in the call (each person plays it locally). */
+  playSound(sound: SoundRef) {
+    if (this.deafened) return;
+    const now = Date.now();
+    if (now - (this.soundAt.get(this.identity.userId) ?? 0) < 1500) return; // no spamming
+    this.soundAt.set(this.identity.userId, now);
+    const clean: SoundRef = { kind: sound.kind, id: sound.id, name: sound.name.slice(0, 40), emoji: sound.emoji.slice(0, 8), url: sound.url };
+    this.rt?.send({ type: 'broadcast', event: 'sound', payload: { from: this.identity.userId, sound: clean } });
+    playSound(clean);
+    this.lastSound = { from: this.identity.userId, emoji: clean.emoji, at: now };
+    this.changed();
+  }
+
+  private onSound(p: { from: string; sound: SoundRef }) {
+    if (!p?.from || !p.sound || this.deafened) return;
+    if (!this.peers.has(p.from) && ![...this.peers.values()].some((x) => x.userId === p.from)) return; // only people in this call
+    const now = Date.now();
+    if (now - (this.soundAt.get(p.from) ?? 0) < 1200) return;
+    this.soundAt.set(p.from, now);
+    if (p.sound.kind === 'default' && !DEFAULT_SOUNDS.some((d) => d.id === p.sound.id)) return;
+    if (p.sound.kind === 'custom' && (!p.sound.url || !isOurAsset(p.sound.url))) return;
+    playSound(p.sound, p.from);
+    this.lastSound = { from: p.from, emoji: String(p.sound.emoji).slice(0, 8), at: now };
+    this.changed();
   }
 
   private changed() {
@@ -241,6 +272,7 @@ export class Call {
     rt.on('presence', { event: 'join' }, () => this.broadcastState()); // newcomers learn our state right away
     rt.on('broadcast', { event: 'signal' }, ({ payload }) => this.onSignal(payload as Signal));
     rt.on('broadcast', { event: 'state' }, ({ payload }) => this.onState(payload as CallMeta));
+    rt.on('broadcast', { event: 'sound' }, ({ payload }) => this.onSound(payload as { from: string; sound: SoundRef }));
     rt.subscribe((status) => {
       if (this.rt !== rt || this.closed) return;
       if (status === 'SUBSCRIBED') {
@@ -516,8 +548,22 @@ export class Call {
 
   // -------------------------------------------------------------- controls --
 
+  /** stage audience / server-muted: the mic stays off until this is cleared */
+  muteLock: string | null = null;
+
+  setMuteLock(reason: string | null) {
+    this.muteLock = reason;
+    if (reason && !this.muted && this.mic?.getAudioTracks().length) {
+      this.muted = true;
+      this.mic.getAudioTracks().forEach((t) => (t.enabled = false));
+      this.publishState();
+    }
+    this.changed();
+  }
+
   toggleMute() {
     if (!this.mic?.getAudioTracks().length) return;
+    if (this.muted && this.muteLock) return; // e.g. you're in the stage audience
     this.muted = !this.muted;
     this.mic.getAudioTracks().forEach((t) => (t.enabled = !this.muted));
     this.publishState();
@@ -568,10 +614,23 @@ export class Call {
     try {
       const { streamRes, streamFps } = getSettings().voice;
       const width = { 720: 1280, 1080: 1920, 1440: 2560 }[streamRes];
+      // Anti-echo: the sharer's computer is playing everyone else's voices.
+      // Without this, "share system audio" captures those voices and sends them
+      // straight back, so people hear themselves. restrictOwnAudio removes
+      // Venband's own playback from the capture (Chrome/Edge 141+); the others
+      // ask the browser not to capture or replay Venband itself.
       this.screen = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: streamFps, max: streamFps }, width: { ideal: width, max: width }, height: { ideal: streamRes, max: streamRes } },
-        audio: true,
-      });
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: false,
+          autoGainControl: false,
+          restrictOwnAudio: true,
+          suppressLocalAudioPlayback: true,
+        } as MediaTrackConstraints,
+        selfBrowserSurface: 'exclude',
+        systemAudio: 'include',
+      } as DisplayMediaStreamOptions);
       const track = this.screen.getVideoTracks()[0];
       if (track) track.contentHint = streamFps >= 60 ? 'motion' : 'detail';
     } catch {
@@ -617,15 +676,18 @@ function bump() {
   activeListeners.forEach((l) => l());
 }
 
-export async function joinCall(identity: Identity, channelId: string, scopeId: string, channelName: string) {
+export async function joinCall(identity: Identity, channelId: string, scopeId: string, channelName: string, opts: { ring?: boolean } = {}) {
   stopRing(); // answering always silences any ringtone
   if (active?.channelId === channelId) return active;
+  // switching calls counts as hanging up the old one (so it doesn't "ring" you back)
+  if (active) recentlyLeft.set(active.channelId, Date.now());
   active?.leave();
   const call = new Call(identity, channelId, scopeId, channelName);
   active = call;
   call.subscribe(bump);
   bump();
   await call.join();
+  if (opts.ring) sendRing(scopeId, channelId);
   return call;
 }
 

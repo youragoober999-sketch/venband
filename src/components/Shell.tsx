@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { watchProfiles } from '../lib/directory';
+import { MarketplaceView } from './Marketplace';
+import { applyCustomCss, safeMode, setSafeMode } from '../lib/customCss';
+import { startBackground } from '../lib/background';
+import { DeletionBanner } from './Security';
+import { useApps, useServerBots } from '../lib/bots';
+import { BotTag, PresetLogo } from './Apps';
 import { sessionStore, updateMyProfile } from '../lib/session';
 import { supabase, errorMessage } from '../lib/supabase';
 import { activeCallVersion, getActiveCall, joinCall, leaveCall, leftRecently, subscribeActiveCall } from '../lib/call';
@@ -13,14 +20,16 @@ import {
   notificationPermission,
   notify,
   playMessageSound,
+  setUnread,
   startRing,
   stopRing,
   unreadStore,
 } from '../lib/notify';
 import { currentPath, go, linkTo, parseRoute, useRoute } from '../lib/router';
 import { socialStore } from '../lib/social';
-import { updateLayout, useSettings } from '../lib/settings';
-import { isPhone, openSettings, setDrawer, uiStore } from '../lib/ui';
+import { RING_MS, ringFor, subscribeRings } from '../lib/presence';
+import { getSettings, updateLayout, updateSettings, useSettings, type ServerFolder } from '../lib/settings';
+import { isPhone, openSearch, openSettings, setDrawer, uiStore } from '../lib/ui';
 import {
   nav,
   openChannel,
@@ -33,7 +42,7 @@ import {
   useServerData,
   type ServerData,
 } from '../hooks/data';
-import { Avatar, Icon, Logo, initials } from './ui';
+import { Avatar, Icon, Logo, initials, nameplateVars, StyledName } from './ui';
 import { ChatView } from './Chat';
 import { CallAudio, VoiceView } from './Voice';
 import { ChannelSettingsModal, CreateChannelModal, CreateJoinModal, createCategory, GroupSettingsModal, InviteModal, NewDmModal, NewGroupModal, startDm } from './Modals';
@@ -45,6 +54,11 @@ import { Badges, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
 import { DiscoveryView, DonateView, FriendsView, MessageRequestsView, RequestBanner } from './Friends';
 import { Resizer } from './Resizer';
+import { showUndo, UndoToast } from './Undo';
+import { GlobalModals, openGlobalModal } from './GlobalModals';
+import { themeVars } from './ServerSettingsExtra';
+import { ForumView, StageView, TimeoutBar, VoogleGate, WarningsNotice, WelcomeScreen } from './ServerViews';
+import { SavedView, SearchPanel } from './Search';
 import { mentionsMe } from './Markdown';
 
 export function useActiveCall() {
@@ -70,9 +84,14 @@ const myRolesByServer = new Map<string, string[]>();
 function useMessageAlerts(servers: Server[]) {
   const serversRef = useRef(servers);
   serversRef.current = servers;
+  const seen = useRef(new Set<string>());
   return useCallback(async (row: MessageRow) => {
     const { me, keyring } = sessionStore.get();
     if (!me || !keyring || row.author_id === me.id || isViewing(row.channel_id)) return;
+    // a reconnecting feed can deliver the same row twice: alert once per message
+    if (seen.current.has(row.id)) return;
+    seen.current.add(row.id);
+    if (seen.current.size > 500) seen.current = new Set([...seen.current].slice(-200));
     const rel = socialStore.get().relations[row.author_id];
     if (rel?.blocked) return;
     const meta = await describeChannel(row.channel_id);
@@ -92,6 +111,8 @@ function useMessageAlerts(servers: Server[]) {
     }
     const mention = !isDm && mentionsMe(text, me.id, myRolesByServer.get(meta.server_id ?? '') ?? []);
     addUnread(row.channel_id, meta.server_id, mention);
+    if ((getSettings().dms.mutedUntil[row.channel_id] ?? 0) > Date.now()) return;
+    if (meta.server_id && getSettings().rail.folders.some((f) => f.muted && f.servers.includes(meta.server_id!))) return;
     if ((!isDm && !mention) || rel?.muted || me.presence === 'dnd' || meta.request_to === me.id) return;
     playMessageSound();
     await loadProfiles([row.author_id]);
@@ -131,6 +152,14 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
   useEffect(() => {
     const path = currentPath();
     const waiting = pending.current !== null && !pending.current.startsWith('tried:');
+    if (waiting && path === lastRoute.current) {
+      // still waiting to open a link, but the person already clicked somewhere else: their click wins
+      const n = nav.get();
+      if (n.serverId || n.discover || (n.channelByServer['@me'] && n.channelByServer['@me'] !== pending.current)) {
+        pending.current = null;
+        return;
+      }
+    }
     if (path === lastRoute.current && !waiting) return;
     lastRoute.current = path;
     const r = parseRoute();
@@ -166,6 +195,13 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
           startDm(r.target).catch(() => go('channels/@me', { replace: true }));
         }
       }
+    } else if (r.kind === 'group-invite') {
+      const code = r.code;
+      go('channels/@me', { replace: true });
+      supabase.rpc('join_group', { p_code: code }).then(({ data, error }) => {
+        if (error) return alert(errorMessage(error));
+        openChannel('@me', data as string);
+      });
     } else {
       go('channels/@me', { replace: true, keepQuery: true });
     }
@@ -174,7 +210,15 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
 
   // view -> URL
   useEffect(() => {
-    if (pending.current && !pending.current.startsWith('tried:')) return;
+    if (pending.current && !pending.current.startsWith('tried:')) {
+      // still waiting for the DM list to open a link — unless the person has
+      // already clicked somewhere else, which wins
+      const n = nav.get();
+      const moved = Boolean(n.serverId || n.discover || (n.channelByServer['@me'] && n.channelByServer['@me'] !== pending.current));
+      if (!moved) return;
+      pending.current = null;
+      lastRoute.current = null;
+    }
     const s = nav.get();
     let path: string;
     if (s.discover) path = 'discover';
@@ -225,6 +269,8 @@ export function Shell() {
   const { servers, dms, loaded, reload } = useMyServers(onMessage);
   const me = sessionStore.use((s) => s.me)!;
   useEffect(() => setServersForAlerts(servers), [servers]);
+  useLooks();
+  useEffect(() => watchProfiles(me.id), [me.id]);
   const serverId = nav.use((s) => s.serverId);
   const discover = nav.use((s) => s.discover);
   useEffect(() => {
@@ -234,6 +280,7 @@ export function Shell() {
   const [modal, setModal] = useState<null | 'create-join'>(null);
   const drawer = uiStore.use((s) => s.drawer);
   const switcher = uiStore.use((s) => s.switcher);
+  const search = uiStore.use((s) => s.search);
   useDirectory();
   // phone layout: going somewhere closes the slide-in panels
   const navState = nav.use((s) => s);
@@ -262,6 +309,30 @@ export function Shell() {
     knownServers.current = now;
   }, [loaded, servers, serverId]);
 
+  // came from a voice invite: jump into that voice channel once we're in the server
+  useEffect(() => {
+    let pending: { server: string; channel: string } | null = null;
+    try {
+      pending = JSON.parse(sessionStorage.getItem('venband:join-voice') ?? 'null');
+    } catch {
+      /* ignore */
+    }
+    if (!pending || !servers.some((x) => x.id === pending!.server)) return;
+    sessionStorage.removeItem('venband:join-voice');
+    const { server, channel } = pending;
+    supabase
+      .from('channels')
+      .select('id, name, type')
+      .eq('id', channel)
+      .maybeSingle()
+      .then(({ data: ch }) => {
+        if (!ch) return openServer(server);
+        openChannel(server, ch.id);
+        const id = sessionStore.get().identity;
+        if (id && (ch.type === 'voice' || ch.type === 'stage')) joinCall(id, ch.id, server, ch.name);
+      });
+  }, [servers]);
+
   // accept ?invite=CODE links
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get('invite');
@@ -276,6 +347,9 @@ export function Shell() {
   return (
     <div className={`shell${drawer ? ` drawer-${drawer}` : ''}`}>
       <AppBanner />
+      <SafeModeBanner />
+      <DeletionBanner />
+      <WarningsNotice />
       <TopBar servers={servers} dms={dms} />
       <div className="shell-body">
         <ServerRail servers={servers} dms={dms} current={serverId} discover={discover} onAdd={() => setModal('create-join')} reload={reload} />
@@ -291,7 +365,10 @@ export function Shell() {
         )}
         <div className="drawer-scrim" onClick={() => setDrawer(null)} />
       </div>
-      {switcher && <QuickSwitcher servers={servers} dms={dms} onClose={() => uiStore.set({ switcher: false })} />}
+      {switcher && <QuickSwitcher servers={servers} dms={dms} onClose={() => uiStore.set({ switcher: false })} onCreateServer={() => setModal('create-join')} />}
+      {search && <SearchPanel servers={servers} />}
+      <UndoToast />
+      <GlobalModals />
       <CallAudio />
       <div className="toasts">
         {dms
@@ -360,6 +437,145 @@ function ServerRail({
     openMenu(e, items);
   }
 
+  // ---- order + folders (saved in your synced settings)
+  const rail = useSettings((s) => s.rail);
+  const railFolders = rail.folders;
+  const [openFolder, setOpenFolder] = useState<string | null>(null);
+  const [railDnd, setRailDnd] = useState<{ drag: string | null; over: string | null; where: 'before' | 'after' | 'into' }>({ drag: null, over: null, where: 'into' });
+  const inFolder = new Set(railFolders.flatMap((f) => f.servers));
+  type RailItem = { kind: 'server'; key: string; server: Server } | { kind: 'folder'; key: string; folder: ServerFolder };
+  const railItems: RailItem[] = useMemo(() => {
+    const all: RailItem[] = [
+      ...railFolders.map((f) => ({ kind: 'folder' as const, key: `f:${f.id}`, folder: { ...f, servers: f.servers.filter((id) => servers.some((x) => x.id === id)) } })),
+      ...servers.filter((x) => !inFolder.has(x.id)).map((x) => ({ kind: 'server' as const, key: x.id, server: x })),
+    ].filter((i) => i.kind === 'server' || i.folder.servers.length > 0);
+    const rank = (k: string) => {
+      const i = rail.order.indexOf(k);
+      return i === -1 ? 10_000 : i;
+    };
+    return all.sort((x, y) => {
+      const px = x.kind === 'folder' && x.folder.pinned ? 0 : 1;
+      const py = y.kind === 'folder' && y.folder.pinned ? 0 : 1;
+      return px - py || rank(x.key) - rank(y.key);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servers, rail]);
+
+  const saveRail = (order: string[], folders: ServerFolder[]) => {
+    const prev = getSettings().rail;
+    updateSettings({ rail: { order, folders } });
+    return prev;
+  };
+
+  function railDragStart(e: React.DragEvent, key: string) {
+    e.dataTransfer.setData('application/x-venband-server', key);
+    e.dataTransfer.effectAllowed = 'move';
+    setRailDnd({ drag: key, over: null, where: 'into' });
+  }
+  function railDragOver(e: React.DragEvent, key: string) {
+    if (!railDnd.drag || railDnd.drag === key) return;
+    e.preventDefault();
+    const r = e.currentTarget.getBoundingClientRect();
+    const y = (e.clientY - r.top) / r.height;
+    // folders can't go inside folders: only before / after
+    const where = y < 0.28 ? 'before' : y > 0.72 ? 'after' : railDnd.drag.startsWith('f:') ? (y < 0.5 ? 'before' : 'after') : 'into';
+    setRailDnd((d) => ({ ...d, over: key, where }));
+  }
+  function railDrop(e: React.DragEvent, target: string) {
+    e.preventDefault();
+    const { drag, where } = railDnd;
+    setRailDnd({ drag: null, over: null, where: 'into' });
+    if (!drag || drag === target) return;
+    let folders = railFolders.map((f) => ({ ...f, servers: f.servers.filter((id) => id !== drag) })).filter((f) => f.servers.length > 0 || `f:${f.id}` === drag);
+    let order = railItems.map((i) => i.key).filter((k) => k !== drag);
+    let undoText = 'Moved server';
+    if (where === 'into') {
+      if (target.startsWith('f:')) {
+        folders = folders.map((f) => (`f:${f.id}` === target ? { ...f, servers: [...f.servers, drag] } : f));
+        undoText = 'Added to folder';
+      } else {
+        // dropping a server on a server makes a folder of both
+        const f: ServerFolder = { id: crypto.randomUUID(), name: 'New folder', color: '#5865f2', servers: [target, drag] };
+        folders = [...folders.map((x) => ({ ...x, servers: x.servers.filter((id) => id !== target) })), f];
+        order = order.map((k) => (k === target ? `f:${f.id}` : k));
+        undoText = 'Folder created';
+      }
+    } else {
+      const i = order.indexOf(target);
+      order.splice(where === 'before' ? i : i + 1, 0, drag);
+    }
+    const prev = saveRail(order, folders);
+    showUndo(undoText, () => updateSettings({ rail: prev }));
+  }
+
+  function folderMenu(e: React.MouseEvent, f: ServerFolder) {
+    const set = (patch: Partial<ServerFolder>) => updateSettings((st) => ({ rail: { ...st.rail, folders: st.rail.folders.map((x) => (x.id === f.id ? { ...x, ...patch } : x)) } }));
+    openMenu(e, [
+      { type: 'header', label: f.name },
+      {
+        label: 'Rename Folder',
+        icon: 'edit',
+        onClick: async () => {
+          const name = await askText({ title: 'Rename folder', label: 'Folder name', initial: f.name, maxLength: 40 });
+          if (name?.trim()) set({ name: name.trim() });
+        },
+      },
+      { label: f.pinned ? 'Unpin Folder' : 'Pin to Top', icon: 'pin', onClick: () => set({ pinned: !f.pinned }) },
+      { label: f.muted ? 'Unmute Folder' : 'Mute Folder', icon: f.muted ? 'bell' : 'bellOff', hint: f.muted ? '' : 'no sounds or pings', onClick: () => set({ muted: !f.muted }) },
+      {
+        type: 'custom',
+        render: (close) => (
+          <div className="ctx-colors">
+            {['#5865f2', '#eb459e', '#57f287', '#fee75c', '#ed4245', '#ffffff', '#9b59b6', '#1abc9c'].map((c) => (
+              <button key={c} style={{ background: c }} aria-label={`Color ${c}`} onClick={() => (set({ color: c }), close())} />
+            ))}
+          </div>
+        ),
+      },
+      { type: 'sep' },
+      { label: 'Remove Folder', icon: 'folder', danger: true, hint: 'servers stay', onClick: () => updateSettings((st) => ({ rail: { ...st.rail, folders: st.rail.folders.filter((x) => x.id !== f.id) } })) },
+    ]);
+  }
+
+  const serverButton = (s: Server, inPanel = false) => {
+    const st = serverState(s.id);
+    const folder = railFolders.find((f) => f.servers.includes(s.id));
+    return (
+      <button
+        key={s.id}
+        className={`rail-item${current === s.id ? ' active' : ''}${s.status && s.status !== 'active' ? ' frozen' : ''}${railDnd.over === s.id ? ` drop-${railDnd.where}` : ''}${railDnd.drag === s.id ? ' dragging' : ''}`}
+        onClick={() => {
+          openServer(s.id);
+          if (inPanel) setOpenFolder(null);
+        }}
+        onContextMenu={(e) => serverMenu(e, s)}
+        data-tip={s.name}
+        aria-label={s.name}
+        style={{ background: current === s.id ? s.icon_color : undefined }}
+        draggable
+        onDragStart={(e) => railDragStart(e, s.id)}
+        onDragOver={(e) => railDragOver(e, s.id)}
+        onDrop={(e) => railDrop(e, s.id)}
+        onDragEnd={() => setRailDnd({ drag: null, over: null, where: 'into' })}
+      >
+        <span className={`rail-pill${st.any ? ' unread' : ''}`} />
+        {s.icon_url ? (
+          <img className="rail-icon" src={s.icon_url} alt="" />
+        ) : (
+          <span className="rail-initials" style={{ color: current === s.id ? '#fff' : undefined }}>
+            {initials(s.name)}
+          </span>
+        )}
+        {st.mentions > 0 && !folder?.muted && <span className="badge">{st.mentions}</span>}
+        {s.verified && (
+          <span className="rail-verified">
+            <VerifiedMark size={14} />
+          </span>
+        )}
+      </button>
+    );
+  };
+
   return (
     <nav className="rail" aria-label="Servers">
       <button className={`rail-item home${current === null && !discover ? ' active' : ''}`} onClick={() => openServer(null)} title="Direct messages">
@@ -367,35 +583,67 @@ function ServerRail({
         {dmUnread > 0 && <span className="badge">{dmUnread > 99 ? '99+' : dmUnread}</span>}
       </button>
       <div className="rail-sep" />
-      {servers.map((s) => {
-        const st = serverState(s.id);
-        return (
-          <button
-            key={s.id}
-            className={`rail-item${current === s.id ? ' active' : ''}${s.status && s.status !== 'active' ? ' frozen' : ''}`}
-            onClick={() => openServer(s.id)}
-            onContextMenu={(e) => serverMenu(e, s)}
-            data-tip={s.name}
-            aria-label={s.name}
-            style={{ background: current === s.id ? s.icon_color : undefined }}
+      {railItems.map((it) =>
+        it.kind === 'server' ? (
+          serverButton(it.server)
+        ) : (
+          <div
+            key={it.folder.id}
+            className={`rail-folder${openFolder === it.folder.id ? ' open' : ''}${railDnd.over === `f:${it.folder.id}` ? ` drop-${railDnd.where}` : ''}`}
+            style={{ ['--folder' as string]: it.folder.color }}
           >
-            <span className={`rail-pill${st.any ? ' unread' : ''}`} />
-            {s.icon_url ? (
-              <img className="rail-icon" src={s.icon_url} alt="" />
-            ) : (
-              <span className="rail-initials" style={{ color: current === s.id ? '#fff' : undefined }}>
-                {initials(s.name)}
+            <button
+              className="rail-item folder"
+              data-tip={it.folder.name}
+              aria-label={`Folder ${it.folder.name}`}
+              aria-expanded={openFolder === it.folder.id}
+              draggable
+              onDragStart={(e) => railDragStart(e, `f:${it.folder.id}`)}
+              onDragOver={(e) => railDragOver(e, `f:${it.folder.id}`)}
+              onDrop={(e) => railDrop(e, `f:${it.folder.id}`)}
+              onDragEnd={() => setRailDnd({ drag: null, over: null, where: 'into' })}
+              onClick={() => setOpenFolder(openFolder === it.folder.id ? null : it.folder.id)}
+              onContextMenu={(e) => folderMenu(e, it.folder)}
+            >
+              <span className={`rail-pill${it.folder.servers.some((id) => serverState(id).any) ? ' unread' : ''}`} />
+              <span className="folder-grid">
+                {it.folder.servers.slice(0, 4).map((id) => {
+                  const sv = servers.find((x) => x.id === id);
+                  return sv ? (
+                    sv.icon_url ? <img key={id} src={sv.icon_url} alt="" /> : <span key={id} style={{ background: sv.icon_color }}>{initials(sv.name)[0]}</span>
+                  ) : null;
+                })}
               </span>
-            )}
-            {st.mentions > 0 && <span className="badge">{st.mentions}</span>}
-            {s.verified && (
-              <span className="rail-verified">
-                <VerifiedMark size={14} />
-              </span>
-            )}
-          </button>
-        );
-      })}
+              {it.folder.pinned && <span className="folder-pin"><Icon name="pin" size={10} /></span>}
+              {!it.folder.muted && it.folder.servers.reduce((n, id) => n + serverState(id).mentions, 0) > 0 && (
+                <span className="badge">{it.folder.servers.reduce((n, id) => n + serverState(id).mentions, 0)}</span>
+              )}
+            </button>
+          </div>
+        ),
+      )}
+      {openFolder && railFolders.find((f) => f.id === openFolder) && (
+        <div className="folder-panel" role="dialog" aria-label="Folder">
+          {(() => {
+            const f = railFolders.find((x) => x.id === openFolder)!;
+            return (
+              <>
+                <div className="folder-panel-head">
+                  <span className="folder-dot" style={{ background: f.color }} />
+                  <b className="grow ellipsis">{f.name}</b>
+                  {f.muted && <Icon name="bellOff" size={14} />}
+                  <button className="icon-btn small" onClick={() => setOpenFolder(null)} aria-label="Close folder">
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
+                <div className="folder-panel-list">
+                  {f.servers.map((id) => servers.find((x) => x.id === id)).filter(Boolean).map((sv) => serverButton(sv!, true))}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
       <div className="rail-bottom">
         <div className="rail-sep" />
         <button className="rail-item add" onClick={onAdd} data-tip="Add a server" aria-label="Add a server">
@@ -446,7 +694,11 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
   const [newGroup, setNewGroup] = useState(false);
   const [groupSettings, setGroupSettings] = useState(false);
   const [filter, setFilter] = useState('');
-  const [homeTab, setHomeTab] = useState<'friends' | 'requests' | 'donate'>('friends');
+  const homeTab = uiStore.use((s) => s.homeTab);
+  const setHomeTab = (t: typeof homeTab) => uiStore.set({ homeTab: t });
+  const dmPrefs = useSettings((s) => s.dms);
+  const [showArchived, setShowArchived] = useState(false);
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
   const myId = sessionStore.use((s) => s.me?.id);
   const requests = dms.filter((d) => d.channel.request_to === myId);
   const current = dms.find((d) => d.channel.id === selected) ?? null;
@@ -476,29 +728,107 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
     };
   }, [waiting]);
 
-  const pinnedFirst = useMemo(() => {
-    const pin = (d: DmChannel) => Boolean(d.other && relations[d.other.id]?.pinned);
-    return [...dms]
-      .filter((d) => d.channel.request_to !== myId)
-      .filter((d) => !filter || d.title.toLowerCase().includes(filter.toLowerCase()))
-      .sort((a, b) => Number(pin(b)) - Number(pin(a)));
-  }, [dms, relations, filter, myId]);
+  const visibleDms = useMemo(
+    () =>
+      dms
+        .filter((d) => d.channel.request_to !== myId)
+        .filter((d) => !filter || d.title.toLowerCase().includes(filter.toLowerCase()) || (d.other && displayName(d.other.id).toLowerCase().includes(filter.toLowerCase()))),
+    [dms, filter, myId],
+  );
+  const isPinned = (d: DmChannel) => dmPrefs.pinned.includes(d.channel.id) || Boolean(d.other && relations[d.other.id]?.pinned);
+  const isArchived = (d: DmChannel) => dmPrefs.archived.includes(d.channel.id) && !(unread.counts[d.channel.id] > 0);
+  const inFolder = (d: DmChannel) => dmPrefs.folders.find((f) => f.channels.includes(d.channel.id));
+  const pinnedDms = visibleDms.filter((d) => isPinned(d) && !isArchived(d));
+  const archivedDms = visibleDms.filter(isArchived);
+  const looseDms = visibleDms.filter((d) => !isPinned(d) && !isArchived(d) && !inFolder(d));
+
+  function setDmPrefs(patch: (p: typeof dmPrefs) => Partial<typeof dmPrefs>) {
+    updateSettings((st) => ({ dms: { ...st.dms, ...patch(st.dms) } }));
+  }
+  const toggleIn = (list: string[], id: string, on: boolean) => (on ? [...new Set([...list, id])] : list.filter((x) => x !== id));
+  const mutedUntil = (id: string) => dmPrefs.mutedUntil[id] ?? 0;
+  const muteFor = (id: string, ms: number | null) =>
+    setDmPrefs((p) => ({ mutedUntil: { ...p.mutedUntil, [id]: ms === null ? Number.MAX_SAFE_INTEGER : ms === 0 ? 0 : Date.now() + ms } }));
+
+  function organiseMenu(d: DmChannel): Entry[] {
+    const id = d.channel.id;
+    const muted = mutedUntil(id) > Date.now();
+    const folder = inFolder(d);
+    return [
+      { label: isPinned(d) ? 'Unpin Conversation' : 'Pin to Top', icon: 'pin', onClick: () => setDmPrefs((p) => ({ pinned: toggleIn(p.pinned, id, !p.pinned.includes(id)) })) },
+      muted
+        ? { label: `Unmute (muted ${mutedUntil(id) === Number.MAX_SAFE_INTEGER ? 'until you unmute' : `until ${new Date(mutedUntil(id)).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`})`, icon: 'bell', onClick: () => muteFor(id, 0) }
+        : { type: 'header', label: 'Mute conversation' },
+      !muted && { label: 'For 15 minutes', icon: 'bellOff', onClick: () => muteFor(id, 15 * 60_000) },
+      !muted && { label: 'For 1 hour', icon: 'bellOff', onClick: () => muteFor(id, 3_600_000) },
+      !muted && { label: 'For 8 hours', icon: 'bellOff', onClick: () => muteFor(id, 8 * 3_600_000) },
+      !muted && { label: 'For 24 hours', icon: 'bellOff', onClick: () => muteFor(id, 24 * 3_600_000) },
+      !muted && { label: 'Until I turn it back on', icon: 'bellOff', onClick: () => muteFor(id, null) },
+      { type: 'sep' },
+      { label: 'Mark Unread', icon: 'unread', onClick: () => setUnread(id, null, Math.max(1, unread.counts[id] ?? 1)) },
+      { label: dmPrefs.archived.includes(id) ? 'Unarchive' : 'Archive', icon: 'archive', onClick: () => setDmPrefs((p) => ({ archived: toggleIn(p.archived, id, !p.archived.includes(id)) })) },
+      { type: 'header', label: 'Folder' },
+      ...dmPrefs.folders
+        .filter((f) => f.id !== folder?.id)
+        .map((f) => ({ label: `Move to ${f.name}`, icon: 'folder', onClick: () => setDmPrefs((p) => ({ folders: p.folders.map((x) => ({ ...x, channels: x.id === f.id ? [...new Set([...x.channels, id])] : x.channels.filter((c) => c !== id) })) })) })),
+      folder && { label: `Remove from ${folder.name}`, icon: 'folder', onClick: () => setDmPrefs((p) => ({ folders: p.folders.map((x) => ({ ...x, channels: x.channels.filter((c) => c !== id) })) })) },
+      {
+        label: 'New folder…',
+        icon: 'plus',
+        onClick: async () => {
+          const name = await askText({ title: 'New folder', label: 'Folder name', placeholder: 'Close friends', maxLength: 40 });
+          if (!name?.trim()) return;
+          setDmPrefs((p) => ({ folders: [...p.folders.map((x) => ({ ...x, channels: x.channels.filter((c) => c !== id) })), { id: crypto.randomUUID(), name: name.trim(), channels: [id] }] }));
+        },
+      },
+      { type: 'sep' },
+    ];
+  }
 
   function convoMenu(e: React.MouseEvent, d: DmChannel) {
     const unreadCount = unread.counts[d.channel.id] ?? 0;
     if (d.other) {
-      openMenu(e, [unreadCount > 0 && { label: 'Mark As Read', icon: 'check', onClick: () => markRead(d.channel.id) }, ...userMenu(d.other.id)]);
+      openMenu(e, [unreadCount > 0 && { label: 'Mark As Read', icon: 'check', onClick: () => markRead(d.channel.id) }, ...organiseMenu(d), ...userMenu(d.other.id)]);
       return;
     }
     openMenu(e, [
       { type: 'header', label: d.title },
       unreadCount > 0 && { label: 'Mark As Read', icon: 'check', onClick: () => markRead(d.channel.id) },
+      ...organiseMenu(d),
       { label: 'Group Settings', icon: 'users', onClick: () => (openChannel('@me', d.channel.id), setGroupSettings(true)) },
       { label: 'Copy Link', icon: 'link', onClick: () => copyText(linkTo(`channels/@me/${d.channel.id}`)) },
       { type: 'sep' },
       { label: 'Copy Channel ID', icon: 'copy', onClick: () => copyText(d.channel.id) },
     ]);
   }
+
+  const dmRow = (d: DmChannel) => {
+    const p = d.other ? getProfile(d.other.id) : null;
+    const muted = mutedUntil(d.channel.id) > Date.now();
+    return (
+      <button
+        key={d.channel.id}
+        className={`channel dm${selected === d.channel.id ? ' active' : ''}${muted ? ' muted-convo' : ''}`}
+        onClick={() => openChannel('@me', d.channel.id)}
+        onContextMenu={(e) => convoMenu(e, d)}
+      >
+        <ConvoAvatar dm={d} size={32} />
+        <span className="channel-name">
+          {d.other ? displayName(d.other.id) : d.title}
+          {d.channel.is_group ? (
+            <small className="convo-sub">{d.members.length + 1} members</small>
+          ) : p?.status_text ? (
+            <small className="convo-sub">
+              {p.status_emoji} {p.status_text}
+            </small>
+          ) : null}
+        </span>
+        {muted && <Icon name="bellOff" size={12} />}
+        {isPinned(d) && <Icon name="pin" size={12} />}
+        {(unread.counts[d.channel.id] ?? 0) > 0 && !muted && <span className="badge inline">{unread.counts[d.channel.id]}</span>}
+      </button>
+    );
+  };
 
   return (
     <>
@@ -524,6 +854,14 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
             <Icon name="compass" size={20} />
             <span className="channel-name">Discover</span>
           </button>
+          <button className={`channel nav-item${!current && homeTab === 'saved' ? ' active' : ''}`} onClick={() => (setHomeTab('saved'), openFriends())}>
+            <Icon name="bookmark" size={20} />
+            <span className="channel-name">Saved Messages</span>
+          </button>
+          <button className={`channel nav-item${!current && homeTab === 'market' ? ' active' : ''}`} onClick={() => (setHomeTab('market'), openFriends())}>
+            <Icon name="sparkles" size={20} />
+            <span className="channel-name">Marketplace</span>
+          </button>
           <button className={`channel nav-item${!current && homeTab === 'donate' ? ' active' : ''}`} onClick={() => (setHomeTab('donate'), openFriends())}>
             <Icon name="star" size={20} />
             <span className="channel-name">Donate</span>
@@ -539,31 +877,53 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
               </button>
             </span>
           </div>
-          {pinnedFirst.map((d) => {
-            const p = d.other ? getProfile(d.other.id) : null;
+          {pinnedDms.length > 0 && <div className="dm-section-label">Pinned</div>}
+          {pinnedDms.map(dmRow)}
+          {dmPrefs.folders.map((f) => {
+            const list = visibleDms.filter((d) => f.channels.includes(d.channel.id) && !isPinned(d) && !isArchived(d));
+            const open = !collapsedFolders[f.id];
+            const unreadIn = list.reduce((n, d) => n + (unread.counts[d.channel.id] ?? 0), 0);
             return (
-              <button
-                key={d.channel.id}
-                className={`channel dm${selected === d.channel.id ? ' active' : ''}`}
-                onClick={() => openChannel('@me', d.channel.id)}
-                onContextMenu={(e) => convoMenu(e, d)}
-              >
-                <ConvoAvatar dm={d} size={32} />
-                <span className="channel-name">
-                  {d.other ? displayName(d.other.id) : d.title}
-                  {d.channel.is_group ? (
-                    <small className="convo-sub">{d.members.length + 1} members</small>
-                  ) : p?.status_text ? (
-                    <small className="convo-sub">
-                      {p.status_emoji} {p.status_text}
-                    </small>
-                  ) : null}
-                </span>
-                {d.other && relations[d.other.id]?.pinned && <Icon name="pin" size={12} />}
-                {(unread.counts[d.channel.id] ?? 0) > 0 && <span className="badge inline">{unread.counts[d.channel.id]}</span>}
-              </button>
+              <div key={f.id} className="dm-folder">
+                <button
+                  className="dm-folder-head"
+                  onClick={() => setCollapsedFolders((c) => ({ ...c, [f.id]: open }))}
+                  onContextMenu={(e) =>
+                    openMenu(e, [
+                      { type: 'header', label: f.name },
+                      {
+                        label: 'Rename Folder',
+                        icon: 'edit',
+                        onClick: async () => {
+                          const name = await askText({ title: 'Rename folder', label: 'Name', initial: f.name, maxLength: 40 });
+                          if (name?.trim()) setDmPrefs((p) => ({ folders: p.folders.map((x) => (x.id === f.id ? { ...x, name: name.trim() } : x)) }));
+                        },
+                      },
+                      { label: 'Delete Folder', icon: 'trash', danger: true, onClick: () => setDmPrefs((p) => ({ folders: p.folders.filter((x) => x.id !== f.id) })) },
+                    ])
+                  }
+                  aria-expanded={open}
+                >
+                  <Icon name="chevron" size={12} />
+                  <Icon name="folder" size={14} />
+                  <span className="grow">{f.name}</span>
+                  {!open && unreadIn > 0 && <span className="badge inline">{unreadIn}</span>}
+                </button>
+                {open && list.map(dmRow)}
+                {open && !list.length && <p className="empty-hint small">Right-click a conversation → Move to {f.name}</p>}
+              </div>
             );
           })}
+          {(pinnedDms.length > 0 || dmPrefs.folders.length > 0) && looseDms.length > 0 && <div className="dm-section-label">Conversations</div>}
+          {looseDms.map(dmRow)}
+          {archivedDms.length > 0 && (
+            <button className="dm-folder-head archived-toggle" onClick={() => setShowArchived((v) => !v)} aria-expanded={showArchived}>
+              <Icon name="archive" size={14} />
+              <span className="grow">Archived ({archivedDms.length})</span>
+              <Icon name="chevron" size={12} />
+            </button>
+          )}
+          {showArchived && archivedDms.map(dmRow)}
           {!dms.length && <p className="empty-hint">No conversations yet. Start one with the + button.</p>}
         </div>
         <CallDock />
@@ -603,7 +963,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
                   {!inCall && (
                     <button
                       className={`btn small ${othersInCall.length ? 'success' : 'secondary'}`}
-                      onClick={() => joinCall(identity, current.channel.id, current.channel.id, current.title)}
+                      onClick={() => joinCall(identity, current.channel.id, current.channel.id, current.title, { ring: !othersInCall.length })}
                     >
                       <Icon name="phone" size={16} /> {othersInCall.length ? 'Join call' : 'Call'}
                     </button>
@@ -626,6 +986,18 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           <MessageRequestsView requests={requests} onOpen={(d) => openChannel('@me', d.channel.id)} />
         ) : homeTab === 'donate' ? (
           <DonateView />
+        ) : homeTab === 'market' ? (
+          <MarketplaceView />
+        ) : homeTab === 'saved' ? (
+          <SavedView
+            header={
+              <header className="chat-header">
+                <Icon name="bookmark" />
+                <h3>Saved Messages</h3>
+                <span className="topic small muted">Only you can see these</span>
+              </header>
+            }
+          />
         ) : (
           <FriendsView />
         )}
@@ -684,6 +1056,37 @@ function ServerView({ serverId }: { serverId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memberKey, data.channels.length, keyring]);
 
+  // the server's own look, unless you turned server themes off
+  const themeMode = useSettings((s) => s.serverThemes);
+  const theme = data.server?.theme;
+  useEffect(() => {
+    if (!theme || themeMode === 'never') return;
+    const vars = themeVars(themeMode === 'merge' ? { accent: theme.accent } : theme) as Record<string, string>;
+    const root = document.documentElement;
+    const before = Object.fromEntries(Object.keys(vars).map((k) => [k, root.style.getPropertyValue(k)]));
+    for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+    root.dataset.serverTheme = 'on';
+    return () => {
+      for (const [k, v] of Object.entries(before)) (v ? root.style.setProperty(k, v) : root.style.removeProperty(k));
+      delete root.dataset.serverTheme;
+    };
+  }, [theme, themeMode]);
+
+  // rules / welcome screen / onboarding for members who haven't been through it
+  const [welcome, setWelcome] = useState<'checking' | 'show' | 'done'>('checking');
+  const needsWelcome = Boolean(data.server && data.server.owner_id !== me.id && ((data.server.rules?.length ?? 0) > 0 || data.server.welcome?.message || (data.server.onboarding?.questions?.length ?? 0) > 0));
+  useEffect(() => {
+    if (!data.server) return;
+    if (!needsWelcome) return setWelcome('done');
+    supabase
+      .from('member_onboarding')
+      .select('completed_at, rules_accepted_at')
+      .eq('server_id', serverId)
+      .eq('user_id', me.id)
+      .maybeSingle()
+      .then(({ data: row }) => setWelcome(row?.completed_at && (row.rules_accepted_at || !(data.server!.rules?.length ?? 0)) ? 'done' : 'show'));
+  }, [serverId, needsWelcome, me.id, data.server]);
+
   if (!data.server) return <div className="main loading-main"><div className="spinner" /></div>;
   const status = data.server.status ?? 'active';
 
@@ -705,7 +1108,23 @@ function ServerView({ serverId }: { serverId: string }) {
                 : 'This server was banned by Venband staff.'}
           </div>
         )}
-        {channel?.type === 'voice' ? (
+        {data.server.voogle?.enabled && data.server.voogle.required && <VoogleGate data={data} />}
+        <TimeoutBar data={data} />
+        {welcome === 'show' && (
+          <WelcomeScreen
+            data={data}
+            onDone={() => {
+              setWelcome('done');
+              data.reload();
+            }}
+            onLater={() => setWelcome('done')}
+          />
+        )}
+        {channel?.type === 'forum' ? (
+          <ForumView channel={channel} data={data} />
+        ) : channel?.type === 'stage' ? (
+          <StageView channel={channel} data={data} />
+        ) : channel?.type === 'voice' ? (
           <VoiceChannelView
             channel={channel}
             data={data}
@@ -719,7 +1138,7 @@ function ServerView({ serverId }: { serverId: string }) {
           <ChatView
             channel={channel}
             title={channel.name}
-            canSend={has(data.myPermissions, P.SEND_MESSAGES)}
+            canSend={has(data.myPermissions, P.SEND_MESSAGES) && (channel.type !== 'announcement' || has(data.myPermissions, P.MANAGE_MESSAGES))}
             canManage={has(data.myPermissions, P.MANAGE_MESSAGES)}
             data={data}
             headerExtra={
@@ -896,6 +1315,54 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
     ]);
   }
 
+  // ---- drag & drop
+  const [dnd, setDnd] = useState<{ drag: string | null; over: { id: string; where: 'before' | 'after' } | null; overCategory?: string }>({ drag: null, over: null });
+  const themeColors = data.server?.theme ?? {};
+
+  async function moveChannel(id: string, to: { beforeId: string | null; afterId: string | null; category: string }) {
+    const moving = data.channels.find((c) => c.id === id);
+    if (!moving) return;
+    const before = data.channels.map((c) => ({ id: c.id, position: c.position, category: c.category }));
+    // the order as shown, with the moved channel taken out and dropped in its new place
+    const ordered = groups.flatMap(([, list]) => list).filter((c) => c.id !== id);
+    let at = ordered.length;
+    if (to.beforeId) at = ordered.findIndex((c) => c.id === to.beforeId);
+    else if (to.afterId) at = ordered.findIndex((c) => c.id === to.afterId) + 1;
+    else {
+      const lastInCat = ordered.map((c) => c.category).lastIndexOf(to.category);
+      at = lastInCat === -1 ? ordered.length : lastInCat + 1;
+    }
+    ordered.splice(Math.max(0, at), 0, { ...moving, category: to.category });
+    const items = ordered.map((c, i) => ({ id: c.id, position: i, category: c.id === id ? to.category : c.category }));
+    const changedCategory = moving.category !== to.category;
+    let sync = false;
+    if (changedCategory) {
+      const sibling = data.channels.find((c) => c.category === to.category && c.id !== id);
+      if (sibling && sibling.is_private !== moving.is_private) {
+        sync = await askConfirm({
+          title: `Move #${moving.name} to ${to.category || 'no category'}`,
+          body: `Keep this channel’s current permissions, or sync them with the ${to.category} category (${sibling.is_private ? 'private' : 'visible to everyone'})?`,
+          confirm: 'Sync with category',
+        });
+        if (sync) {
+          await supabase.from('channels').update({ is_private: sibling.is_private }).eq('id', id);
+          if (sibling.is_private) {
+            const access = data.channelAccess.filter((a) => a.channel_id === sibling.id).map((a) => ({ channel_id: id, role_id: a.role_id }));
+            await supabase.from('channel_role_access').delete().eq('channel_id', id);
+            if (access.length) await supabase.from('channel_role_access').insert(access);
+          }
+        }
+      }
+    }
+    const { error } = await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: items });
+    if (error) return alert(errorMessage(error));
+    data.reload();
+    showUndo(`Moved #${moving.name}`, async () => {
+      await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: before });
+      data.reload();
+    });
+  }
+
   const voiceUsers = (channelId: string) => {
     const seen = new Set<string>();
     return presence.filter((p) => p.voice_channel_id === channelId && !seen.has(p.user_id) && seen.add(p.user_id));
@@ -905,6 +1372,12 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
     openMenu(e, [
       { type: 'header', label: c.type === 'voice' ? c.name : `#${c.name}` },
       (unread.counts[c.id] ?? 0) > 0 && { label: 'Mark As Read', icon: 'check', onClick: () => markRead(c.id) },
+      (c.type === 'voice' || c.type === 'stage') &&
+        has(data.myPermissions, P.CREATE_INVITE) && {
+          label: call?.channelId === c.id ? 'Invite Friends to This Call' : 'Invite Friends to Voice',
+          icon: 'userPlus',
+          onClick: () => openGlobalModal({ kind: 'invite-to-voice', serverId: data.server!.id, serverName: data.server!.name, channelId: c.id, channelName: c.name }),
+        },
       { label: 'Copy Link', icon: 'link', onClick: () => copyText(linkTo(`channels/${data.server!.id}/${c.id}`)) },
       canManage && { label: 'Edit Channel', icon: 'settings', onClick: () => setEditing(c) },
       canManage && {
@@ -928,9 +1401,21 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
         <div key={category || '_'}>
           {category && (
             <div
-              className="category"
+              className={`category${dnd.overCategory === category ? ' drop-into' : ''}`}
+              style={themeColors.categories?.[category] || themeColors.category ? { color: themeColors.categories?.[category] ?? themeColors.category } : undefined}
               onClick={() => setCollapsed((c) => ({ ...c, [category]: !c[category] }))}
               onContextMenu={(e) => listMenu(e, category)}
+              onDragOver={(e) => {
+                if (!dnd.drag) return;
+                e.preventDefault();
+                setDnd((d) => ({ ...d, over: null, overCategory: category }));
+              }}
+              onDragLeave={() => setDnd((d) => ({ ...d, overCategory: undefined }))}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dnd.drag) moveChannel(dnd.drag, { beforeId: null, afterId: null, category });
+                setDnd({ drag: null, over: null });
+              }}
             >
               <span>
                 <span className={`caret${collapsed[category] ? ' closed' : ''}`}>
@@ -957,19 +1442,38 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
             .map((c) => (
               <div key={c.id}>
                 <div
-                  className={`channel${selected === c.id ? ' active' : ''}`}
+                  className={`channel${selected === c.id ? ' active' : ''}${dnd.over?.id === c.id ? ` drop-${dnd.over.where}` : ''}${dnd.drag === c.id ? ' dragging' : ''}`}
                   role="button"
                   tabIndex={0}
+                  style={c.color || themeColors.channel ? { color: c.color ?? themeColors.channel } : undefined}
+                  draggable={canManage}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-venband-channel', c.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDnd({ drag: c.id, over: null });
+                  }}
+                  onDragEnd={() => setDnd({ drag: null, over: null })}
+                  onDragOver={(e) => {
+                    if (!dnd.drag || dnd.drag === c.id) return;
+                    e.preventDefault();
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setDnd((d) => ({ ...d, over: { id: c.id, where: e.clientY < r.top + r.height / 2 ? 'before' : 'after' } }));
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (dnd.drag && dnd.over) moveChannel(dnd.drag, { beforeId: dnd.over.where === 'before' ? c.id : null, afterId: dnd.over.where === 'after' ? c.id : null, category: c.category });
+                    setDnd({ drag: null, over: null });
+                  }}
                   onClick={() => {
                     openChannel(data.server!.id, c.id);
-                    if (c.type === 'voice' && canConnect && call?.channelId !== c.id) {
+                    if ((c.type === 'voice' || c.type === 'stage') && canConnect && call?.channelId !== c.id) {
                       joinCall(identity, c.id, data.server!.id, c.name);
                     }
                   }}
                   onContextMenu={(e) => channelMenu(e, c)}
                   onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLElement).click()}
                 >
-                  <Icon name={c.type === 'voice' ? 'speaker' : c.id === data.server?.welcome_channel_id ? 'hand' : 'hash'} size={18} />
+                  <Icon name={channelIcon(c, data.server?.welcome_channel_id)} size={18} />
                   <span className={`channel-name${unread.counts[c.id] && selected !== c.id ? ' unread' : ''}`}>{c.name}</span>
                   {c.is_private && <Icon name="lock" size={12} />}
                   {(unread.mentions[c.id] ?? 0) > 0 && selected !== c.id && <span className="badge inline">{unread.mentions[c.id]}</span>}
@@ -986,7 +1490,7 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
                     </button>
                   )}
                 </div>
-                {c.type === 'voice' &&
+                {(c.type === 'voice' || c.type === 'stage') &&
                   voiceUsers(c.id).map((p) => (
                     <div key={p.user_id} className="voice-user" onContextMenu={(e) => openMenu(e, userMenu(p.user_id, { data }))} onClick={() => openProfile(p.user_id, data.server!.id)}>
                       <Avatar profile={getProfile(p.user_id)} size={22} />
@@ -1004,6 +1508,14 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
       {creating && <CreateChannelModal data={data} initialCategory={creating.category} onClose={() => setCreating(null)} />}
     </div>
   );
+}
+
+function channelIcon(c: Channel, welcomeId?: string | null): string {
+  if (c.type === 'voice') return 'speaker';
+  if (c.type === 'stage') return 'stage';
+  if (c.type === 'forum') return 'thread';
+  if (c.type === 'announcement') return 'megaphone';
+  return c.id === welcomeId ? 'hand' : 'hash';
 }
 
 function VoiceChannelView({ channel, data, chatButton }: { channel: Channel; data: ServerData; chatButton: React.ReactNode }) {
@@ -1065,18 +1577,21 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
               <button
                 key={m.user_id}
                 className={`member nameplate-row nameplate-${p?.nameplate ?? 'none'}${on ? '' : ' offline'}`}
+                style={nameplateVars(p)}
                 onClick={() => openProfile(m.user_id, data.server!.id)}
                 onContextMenu={(e) => openMenu(e, userMenu(m.user_id, { data }))}
               >
                 <Avatar profile={p} size={32} online={on} />
                 <span className="member-text">
                   <span className="member-name" style={{ color: top?.color }}>
-                    {displayName(m.user_id, m.nickname)}
+                    <StyledName style={p?.name_style} fallbackColor={top?.color}>
+                      {displayName(m.user_id, m.nickname)}
+                    </StyledName>
                     <Badges ids={p?.badges} max={2} size={13} />
-                    <ServerTag tag={p?.server_tag} />
+                    <ServerTag tag={p?.server_tag} serverId={p?.tag_server_id} />
                   </span>
                   {p?.status_text && (
-                    <span className="member-status">
+                    <span className="member-status" title={p.status_text}>
                       {p.status_emoji} {p.status_text}
                     </span>
                   )}
@@ -1094,7 +1609,32 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
           })}
         </div>
       ))}
+      <BotMembers serverId={data.server!.id} />
     </aside>
+  );
+}
+
+function BotMembers({ serverId }: { serverId: string }) {
+  const bots = useServerBots(serverId);
+  const apps = useApps(bots.map((b) => b.app_id));
+  if (!bots.length) return null;
+  return (
+    <div>
+      <div className="members-title">Bots — {bots.length}</div>
+      {bots.map((b) => {
+        const a = apps[b.app_id];
+        return (
+          <div key={b.id} className="member bot-member" title={a?.description || undefined}>
+            {a ? <PresetLogo preset={a.preset} color={a.color} size={32} /> : <Icon name="bot" size={22} />}
+            <span className="member-text">
+              <span className="member-name">
+                {a?.name ?? 'Bot'} <BotTag />
+              </span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1204,56 +1744,106 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
 }
 
 /** Ctrl+K: jump to any conversation, server or friend. */
-function QuickSwitcher({ servers, dms, onClose }: { servers: Server[]; dms: DmChannel[]; onClose: () => void }) {
+type PaletteItem = { key: string; label: string; sub: string; icon: React.ReactNode; go: () => void; kind: 'place' | 'command' | 'search' };
+
+/** Ctrl+K: jump anywhere or run a command. Prefixes: > commands, # channels, @ people, * servers. */
+function QuickSwitcher({ servers, dms, onClose, onCreateServer }: { servers: Server[]; dms: DmChannel[]; onClose: () => void; onCreateServer: () => void }) {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
   const friends = socialStore.use((s) => s.friends);
+  const [channels, setChannels] = useState<{ id: string; name: string; server_id: string; type: string }[]>([]);
+  const call = useActiveCall();
+  useEffect(() => {
+    const ids = servers.map((x) => x.id);
+    if (!ids.length) return;
+    supabase
+      .from('channels')
+      .select('id, name, server_id, type')
+      .in('server_id', ids)
+      .then(({ data }) => setChannels((data ?? []) as typeof channels));
+  }, [servers]);
+  const commands: PaletteItem[] = useMemo(() => {
+    const c = (key: string, label: string, icon: string, go: () => void, sub = 'Command'): PaletteItem => ({ key: `cmd:${key}`, label, sub, icon: <Icon name={icon} size={18} />, go, kind: 'command' });
+    return [
+      c('settings', 'Open settings', 'settings', () => openSettings('account')),
+      c('appearance', 'Change theme', 'palette', () => openSettings('appearance')),
+      c('notifications', 'Notification settings', 'bell', () => openSettings('notifications')),
+      c('voice', 'Voice & video settings', 'mic', () => openSettings('voice')),
+      c('privacy', 'Privacy & safety', 'shield', () => openSettings('privacy')),
+      c('saved', 'Open saved messages', 'bookmark', () => (uiStore.set({ homeTab: 'saved' }), openFriends())),
+      c('search', 'Search messages', 'search', () => openSearch('', null)),
+      c('discover', 'Discover servers', 'compass', openDiscover),
+      c('friends', 'Open friends', 'users', openFriends),
+      c('create-server', 'Create or join a server', 'plus', onCreateServer),
+      c('readall', 'Mark everything as read', 'check', () => Object.keys(unreadStore.get().counts).forEach(markRead)),
+      call && c('mute', call.muted ? 'Unmute microphone' : 'Mute microphone', call.muted ? 'mic' : 'micOff', () => call.toggleMute(), 'Call'),
+      call && c('deafen', call.deafened ? 'Undeafen' : 'Deafen', 'headphones', () => call.toggleDeafen(), 'Call'),
+      call && c('leave', 'Leave call', 'phoneOff', leaveCall, 'Call'),
+      c('reduce-motion', 'Toggle reduced motion', 'sparkles', () => updateSettings((st) => ({ chat: { ...st.chat, reduceMotion: !st.chat.reduceMotion } }))),
+    ].filter(Boolean) as PaletteItem[];
+  }, [call, onCreateServer]);
   const items = useMemo(() => {
-    const out: { key: string; label: string; sub: string; icon: React.ReactNode; go: () => void }[] = [];
-    for (const d of dms)
-      out.push({
-        key: d.channel.id,
-        label: d.other ? displayName(d.other.id) : d.title,
-        sub: d.channel.is_group ? 'Group' : 'Direct message',
-        icon: <ConvoAvatar dm={d} size={24} />,
-        go: () => openChannel('@me', d.channel.id),
-      });
-    for (const sv of servers)
-      out.push({
-        key: sv.id,
-        label: sv.name,
-        sub: 'Server',
-        icon: (
-          <span className="server-icon-sm" style={{ background: sv.icon_color, width: 24, height: 24 }}>
-            {initials(sv.name)}
-          </span>
-        ),
-        go: () => openServer(sv.id),
-      });
-    for (const f of Object.values(friends).filter((x) => x.accepted && !dms.some((d) => d.other?.id === x.other)))
-      out.push({
-        key: f.other,
-        label: displayName(f.other),
-        sub: 'Friend',
-        icon: <Avatar profile={getProfile(f.other)} size={24} />,
-        go: () => startDm(f.other).catch((e) => alert(errorMessage(e))),
-      });
-    const needle = q.trim().toLowerCase();
-    return needle ? out.filter((i) => i.label.toLowerCase().includes(needle) || getProfile(i.key)?.username?.includes(needle)) : out;
-  }, [dms, servers, friends, q]);
+    const out: PaletteItem[] = [];
+    let needle = q.trim().toLowerCase();
+    let only: null | 'command' | 'channel' | 'person' | 'server' = null;
+    if (needle.startsWith('>')) (only = 'command'), (needle = needle.slice(1).trim());
+    else if (needle.startsWith('#')) (only = 'channel'), (needle = needle.slice(1).trim());
+    else if (needle.startsWith('@')) (only = 'person'), (needle = needle.slice(1).trim());
+    else if (needle.startsWith('*')) (only = 'server'), (needle = needle.slice(1).trim());
+    if (!only || only === 'person') {
+      for (const d of dms)
+        out.push({ key: d.channel.id, label: d.other ? displayName(d.other.id) : d.title, sub: d.channel.is_group ? 'Group' : 'Direct message', icon: <ConvoAvatar dm={d} size={24} />, go: () => openChannel('@me', d.channel.id), kind: 'place' });
+      for (const f of Object.values(friends).filter((x) => x.accepted && !dms.some((d) => d.other?.id === x.other)))
+        out.push({ key: f.other, label: displayName(f.other), sub: 'Friend', icon: <Avatar profile={getProfile(f.other)} size={24} />, go: () => startDm(f.other).catch((e) => alert(errorMessage(e))), kind: 'place' });
+    }
+    if (!only || only === 'server')
+      for (const sv of servers)
+        out.push({
+          key: sv.id,
+          label: sv.name,
+          sub: 'Server',
+          icon: <span className="server-icon-sm" style={{ background: sv.icon_color, width: 24, height: 24 }}>{initials(sv.name)}</span>,
+          go: () => openServer(sv.id),
+          kind: 'place',
+        });
+    if (!only || only === 'channel')
+      for (const ch of channels)
+        out.push({
+          key: ch.id,
+          label: ch.name,
+          sub: servers.find((x) => x.id === ch.server_id)?.name ?? 'Channel',
+          icon: <Icon name={ch.type === 'voice' ? 'speaker' : 'hash'} size={18} />,
+          go: () => openChannel(ch.server_id, ch.id),
+          kind: 'place',
+        });
+    if (!only || only === 'command') out.push(...commands);
+    const filtered = needle
+      ? out.filter((i) => i.label.toLowerCase().includes(needle) || i.sub.toLowerCase().includes(needle) || getProfile(i.key)?.username?.includes(needle))
+      : only
+        ? out
+        : out.filter((i) => i.kind === 'place').slice(0, 12).concat(commands.slice(0, 6));
+    if (q.trim() && !only)
+      filtered.push({ key: 'search', label: `Search messages for “${q.trim()}”`, sub: 'Enter', icon: <Icon name="search" size={18} />, go: () => openSearch(q.trim(), null), kind: 'search' });
+    return filtered;
+  }, [dms, servers, friends, channels, commands, q]);
   useEffect(() => setSel(0), [q]);
   const pick = (i: number) => {
-    items[i]?.go();
-    onClose();
+    const it = items[i];
+    if (!it) return;
+    it.go();
+    if (it.kind !== 'search') onClose();
+    else uiStore.set({ switcher: false });
   };
+  let lastKind: string | null = null;
   return (
     <div className="modal-backdrop switcher-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="switcher" role="dialog" aria-label="Quick switcher">
+      <div className="switcher" role="dialog" aria-label="Command palette">
         <input
           autoFocus
-          placeholder="Where would you like to go?"
+          placeholder="Go to a conversation, channel or server, or type > for commands"
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          aria-label="Search or run a command"
           onKeyDown={(e) => {
             if (e.key === 'Escape') onClose();
             if (e.key === 'ArrowDown') (e.preventDefault(), setSel((v) => Math.min(items.length - 1, v + 1)));
@@ -1261,17 +1851,24 @@ function QuickSwitcher({ servers, dms, onClose }: { servers: Server[]; dms: DmCh
             if (e.key === 'Enter') pick(sel);
           }}
         />
-        <div className="switcher-list">
-          {items.slice(0, 30).map((it, i) => (
-            <button key={it.key} className={`switcher-item${i === sel ? ' active' : ''}`} onMouseEnter={() => setSel(i)} onClick={() => pick(i)}>
-              {it.icon}
-              <span className="grow">{it.label}</span>
-              <span className="small muted">{it.sub}</span>
-            </button>
-          ))}
+        <div className="switcher-list" role="listbox">
+          {items.slice(0, 40).map((it, i) => {
+            const head = it.kind !== lastKind ? (it.kind === 'command' ? 'Commands' : it.kind === 'search' ? 'Search' : null) : null;
+            lastKind = it.kind;
+            return (
+              <Fragment key={it.key}>
+                {head && <div className="switcher-group">{head}</div>}
+                <button role="option" aria-selected={i === sel} className={`switcher-item${i === sel ? ' active' : ''}`} onMouseEnter={() => setSel(i)} onClick={() => pick(i)}>
+                  {it.icon}
+                  <span className="grow">{it.label}</span>
+                  <span className="small muted">{it.sub}</span>
+                </button>
+              </Fragment>
+            );
+          })}
           {!items.length && <p className="muted small switcher-empty">Nothing matches “{q}”.</p>}
         </div>
-        <div className="switcher-hint small muted">↑↓ to move · Enter to go · Esc to close</div>
+        <div className="switcher-hint small muted">↑↓ move · Enter go · <b>&gt;</b> commands · <b>#</b> channels · <b>@</b> people · <b>*</b> servers · Esc close</div>
       </div>
     </div>
   );
@@ -1284,14 +1881,40 @@ function openCallChannel(scopeId: string, channelId: string) {
 }
 
 /** Shows a "is calling you" toast when the other DM participant is in a call we're not in. */
+function usePhone() {
+  const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 700px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 700px)');
+    const on = () => setPhone(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return phone;
+}
+
 function IncomingCall({ dm }: { dm: DmChannel }) {
+  const phone = usePhone();
   const presence = useScopePresence(dm.channel.id);
   const identity = sessionStore.use((s) => s.identity)!;
   const me = sessionStore.use((s) => s.me)!;
   const relations = socialStore.use((s) => s.relations);
   const call = useActiveCall();
   const [dismissedAt, setDismissedAt] = useState(0);
-  const caller = presence.find((p) => p.voice_channel_id === dm.channel.id && p.user_id !== identity.userId && !relations[p.user_id]?.blocked);
+  const [, tick] = useState(0);
+  useEffect(() => subscribeRings(() => tick((x) => x + 1)), []);
+  // A call rings for a short while after someone presses "Call", like a phone.
+  // Rejoining, refreshing or sitting in a call never rings anyone: the DM
+  // shows "Join call" instead.
+  const ring = ringFor(dm.channel.id);
+  const caller = ring
+    ? presence.find((p) => p.voice_channel_id === dm.channel.id && p.user_id === ring.from && !relations[p.user_id]?.blocked)
+    : undefined;
+  const ringEndsIn = ring ? RING_MS - (Date.now() - ring.at) : null;
+  useEffect(() => {
+    if (ringEndsIn === null || ringEndsIn <= 0) return;
+    const t = setTimeout(() => tick((x) => x + 1), ringEndsIn + 50);
+    return () => clearTimeout(t);
+  }, [ringEndsIn]);
   // already in this call — here, or in another tab / on another device → don't ring
   const meAlreadyIn = presence.some((p) => p.voice_channel_id === dm.channel.id && p.user_id === identity.userId);
   const ringing = caller && call?.channelId !== dm.channel.id && !meAlreadyIn;
@@ -1313,6 +1936,37 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
   // you just hung up and they stayed: no pop-up (it looked like they were
   // calling you again). The DM header's "Join call" button rejoins.
   if (!active || leftRecently(dm.channel.id)) return null;
+  const accept = () => {
+    openChannel('@me', dm.channel.id);
+    joinCall(identity, dm.channel.id, dm.channel.id, name);
+  };
+  if (phone)
+    return (
+      <div className="phone-call-screen" role="alertdialog" aria-label={`${name} is calling you`}>
+        <div className="pcs-top">
+          <span className="pcs-label">
+            <Icon name="lock" size={12} /> Venband {dm.channel.is_group ? 'group call' : 'call'} · end-to-end encrypted
+          </span>
+          <ConvoAvatar dm={dm} size={112} />
+          <h2>{name}</h2>
+          <span className="pcs-status">{quiet ? 'is in a call' : 'is calling you…'}</span>
+        </div>
+        <div className="pcs-actions">
+          <div className="pcs-action">
+            <button className="round-btn hangup big" aria-label="Decline" onClick={() => setDismissedAt(Date.now())}>
+              <Icon name="phoneOff" size={30} />
+            </button>
+            <span>Decline</span>
+          </div>
+          <div className="pcs-action">
+            <button className="round-btn accept big" aria-label="Accept" onClick={accept}>
+              <Icon name="phone" size={30} />
+            </button>
+            <span>Accept</span>
+          </div>
+        </div>
+      </div>
+    );
   return (
     <div className="toast incoming-call" role="alert">
       <ConvoAvatar dm={dm} size={40} />
@@ -1326,10 +1980,7 @@ function IncomingCall({ dm }: { dm: DmChannel }) {
       <button
         className="round-btn accept small"
         title="Join call"
-        onClick={() => {
-          openChannel('@me', dm.channel.id);
-          joinCall(identity, dm.channel.id, dm.channel.id, name);
-        }}
+        onClick={accept}
       >
         <Icon name="phone" size={18} />
       </button>
@@ -1401,5 +2052,44 @@ function ConvoAvatar({ dm, size }: { dm: DmChannel; size: number }) {
       <Avatar profile={a} size={size * 0.68} />
       {b && <Avatar profile={b} size={size * 0.68} />}
     </span>
+  );
+}
+
+/** Custom CSS and your background picture (both off in safe mode). */
+function useLooks() {
+  const css = useSettings((s) => s.customCss);
+  useEffect(() => applyCustomCss(css.enabled, css.code), [css.enabled, css.code]);
+  useEffect(() => {
+    startBackground();
+    const onKey = (e: KeyboardEvent) => {
+      // Ctrl+Shift+Alt+S: safe mode, in case your own CSS hides everything
+      if (e.ctrlKey && e.shiftKey && e.altKey && e.key.toLowerCase() === 's') {
+        setSafeMode(!safeMode());
+        window.location.reload();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+}
+
+function SafeModeBanner() {
+  if (!safeMode()) return null;
+  return (
+    <div className="app-banner">
+      <Icon name="shield" size={16} />
+      <span>Safe mode: your custom CSS and background picture are switched off for this tab.</span>
+      <button
+        className="btn small secondary"
+        onClick={() => {
+          setSafeMode(false);
+          const u = new URL(window.location.href);
+          u.searchParams.delete('safe');
+          window.location.replace(u.toString());
+        }}
+      >
+        Turn off safe mode
+      </button>
+    </div>
   );
 }

@@ -5,6 +5,10 @@ import {
   channelKeyCheck,
   decryptMessage,
   encryptMessage,
+  fromB64,
+  randomBytes,
+  toB64,
+  toB64Url,
   newChannelKey,
   safeEqual,
   sign,
@@ -228,6 +232,60 @@ export class Keyring {
         await this.distribute(channelId);
       }
     }
+  }
+
+  /** The newest epoch we hold a key for (reactions etc. use it when the message's own epoch isn't known). */
+  hasAnyKey(channelId: string) {
+    return Boolean(this.keys.get(channelId)?.size);
+  }
+
+  private subkeys = new Map<string, Promise<CryptoKey>>();
+  /** Purpose-specific key derived from a channel epoch key (never reuses the message key). */
+  private subkey(channelId: string, epoch: number, purpose: string, kind: 'aes' | 'hmac'): Promise<CryptoKey> | null {
+    const raw = this.keys.get(channelId)?.get(epoch);
+    if (!raw) return null;
+    const id = `${channelId}|${epoch}|${purpose}|${kind}`;
+    let k = this.subkeys.get(id);
+    if (!k) {
+      k = (async () => {
+        const base = await crypto.subtle.importKey('raw', raw, 'HKDF', false, ['deriveKey']);
+        const info = new TextEncoder().encode(`venband/${purpose}/${kind}`);
+        const salt = new TextEncoder().encode(`venband/${channelId}`);
+        return kind === 'aes'
+          ? crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt, info }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+          : crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt, info }, base, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign']);
+      })();
+      this.subkeys.set(id, k);
+    }
+    return k;
+  }
+
+  /** Encrypt a short string (reaction emoji, thread title…) bound to `aad`. */
+  async sealSmall(channelId: string, epoch: number, purpose: string, aad: string, text: string) {
+    const key = await this.subkey(channelId, epoch, purpose, 'aes');
+    if (!key) throw new Error('Waiting for this conversation’s encryption key.');
+    const iv = randomBytes(12);
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(aad) }, key, new TextEncoder().encode(text));
+    return { iv: toB64(iv), ciphertext: toB64(ct) };
+  }
+
+  async openSmall(channelId: string, epoch: number, purpose: string, aad: string, iv: string, ciphertext: string): Promise<string | null> {
+    const key = await this.subkey(channelId, epoch, purpose, 'aes');
+    if (!key) return null;
+    try {
+      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(iv), additionalData: new TextEncoder().encode(aad) }, key, fromB64(ciphertext));
+      return new TextDecoder().decode(pt);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Opaque, deterministic tag (lets the server enforce "one per person" without seeing the value). */
+  async tag(channelId: string, epoch: number, purpose: string, data: string): Promise<string> {
+    const key = await this.subkey(channelId, epoch, purpose, 'hmac');
+    if (!key) throw new Error('Waiting for this conversation’s encryption key.');
+    const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
+    return toB64Url(new Uint8Array(mac).slice(0, 18));
   }
 
   async encrypt(channelId: string, messageId: string, payload: MessagePayload) {

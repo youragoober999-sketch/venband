@@ -6,6 +6,8 @@ const anonKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.en
   | undefined;
 
 export const configured = Boolean(url && anonKey);
+export const supabaseUrl = (url ?? '').replace(/\/$/, '');
+export const supabaseKey = anonKey ?? '';
 
 // The anon/publishable key is public by design; every table is protected by
 // Row Level Security (see supabase/migrations).

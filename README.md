@@ -20,7 +20,7 @@
 - **Moderation:** kick, ban and unban. Removing someone automatically rotates the encryption key of every channel they could read.
 - **Messaging:** real-time messages with replies, edits, deletes, `code`, **bold**, *italic*, links, typing indicators and online status.
 - **Encrypted file attachments:** images, video and audio preview inline. Files can be up to 25 MB.
-- **Group chats:** up to 10 people, with names, adding people and leaving. Leaving swaps the group's encryption key.
+- **Group chats:** up to 15 people, with names, an owner who can remove people, an add-friends list, invite links and leaving. Removing or leaving swaps the group's encryption key.
 - **Direct messages:** 1-on-1 DMs, including DM calls that ring the other person.
 - **Voice, video and screen sharing:** calls use WebRTC with mute, deafen, camera, screen share (with audio), speaking indicators and a focus view.
 - **Security fingerprints:** you can check another user's fingerprint to make sure nobody is intercepting your conversation, and you get a warning if someone's key changes.
@@ -35,6 +35,13 @@
 - **Reports:** anyone can report a message or a person. Because messages are end-to-end encrypted, the report carries the messages the reporter chose to share. Administrators and the owner review them in **Settings → Report Centre** and can ban or limit the account right there.
 - **Message requests:** DMs from people you share no server or friendship with wait in Message Requests until you accept them.
 - **Moderation (Venband staff):** search any user or server; apply badges; make an account limited, very limited or banned; put a server in review (frozen), pass or fail the review, verify it or ban it. Every action is written to an audit log.
+- **Bots and the developer portal:** make bots at `/applications` from presets (Verification, Server management, Connect a site) or write your own with the token-based bot API (`POST /api/bot`), slash commands and webhooks (`POST /api/hooks`). Paste an invite in a bot's dashboard to add it to a server. Bots can't read end-to-end encrypted messages; what they post is plain text and carries a BOT tag.
+- **Voogle verification:** servers can require members to verify before they talk. Voogle blocks too many accounts from one device or network and catches ban evasion. Only peppered hashes are stored, and moderators only ever see "99% sure alt" / "Likely alt" — never IP addresses or device details. Look up alts at `/voogle`.
+- **Apps:** a desktop app for Windows/macOS/Linux in `desktop/` (installer + portable, auto-updates with a full-screen update prompt, tray, badges, `venband://` links, screen-share picker, safe mode) and Android/iOS apps in `mobile/` (Capacitor). See `desktop/README.md` and `mobile/README.md`.
+- **Make it yours:** profile pictures and banners (cropped on your device), animated frames, name fonts and gradient/animated names, long statuses as a bubble, custom nameplates, custom CSS (cleaned, with templates, a tutorial and safe mode), a background picture from your files, and a Marketplace in DMs to share themes, nameplates, name styles and CSS.
+- **Safety and security:** two-factor sign-in (authenticator apps), a Security Center (log out other devices, data export, account deletion with a grace period), server recycle bin, photo metadata stripping, risky-file and link-safety warnings.
+- **Server moderation:** reports for server moderators (reporter stays anonymous, pictures included, jump to the message), timeouts, warnings, a searchable audit log, and owners can remove GIFs. Venband owners and founders can design custom badges.
+- **Public pages:** `/status` (live checks plus incidents staff can post), `/tos`, `/privacy`, `/guidelines`, `/changelog` and `/discovery` work without an account.
 - **Quality of life:** right-click menus everywhere, per-person and per-stream volume up to 200%, stream attenuation, resizable panels, and real URLs (`/sign-in`, `/register`, `/channels/@me/<user>`, `/channels/<server>/<channel>`).
 
 ## How it runs (no PC required)

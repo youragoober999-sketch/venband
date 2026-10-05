@@ -28,6 +28,15 @@ export function addUnread(channelId: string, serverId: string | null, mention: b
   updateTitle();
 }
 
+/** Set a channel's unread count (e.g. "mark unread from here"). */
+export function setUnread(channelId: string, serverId: string | null, n: number) {
+  unreadStore.set((s) => ({
+    counts: { ...s.counts, [channelId]: n },
+    serverOf: serverId ? { ...s.serverOf, [channelId]: serverId } : s.serverOf,
+  }));
+  updateTitle();
+}
+
 export function markRead(channelId: string) {
   const s = unreadStore.get();
   if (!s.counts[channelId] && !s.mentions[channelId]) return;
@@ -51,6 +60,8 @@ function updateTitle() {
       .filter(([id]) => !serverOf[id])
       .reduce((a, [, v]) => a + v, 0) + Object.values(mentions).reduce((a, v) => a + v, 0);
   document.title = n ? `(${n}) Venband` : 'Venband';
+  // the desktop app shows the same count on the taskbar / dock
+  (window as unknown as { venbandDesktop?: { setBadge: (n: number) => void } }).venbandDesktop?.setBadge(n);
 }
 
 // --------------------------------------------------- desktop notifications --
@@ -93,30 +104,39 @@ function audio() {
   return ctx;
 }
 
-/** Short two-note blip for new messages. */
+let lastBlip = 0;
+
+/** One soft, low two-note chime for new messages (at most once every 1.5 s). */
 export function playMessageSound() {
+  const now = Date.now();
+  if (now - lastBlip < 1500) return;
+  lastBlip = now;
   try {
-    pluck(1046.5, 0, 0.35, 0.07);
-    pluck(1568, 0.09, 0.45, 0.06);
+    pluck(587.33, 0, 0.5, 0.05); // D5
+    pluck(440, 0.11, 0.7, 0.045); // A4
   } catch {
     /* audio blocked until the user interacts with the page */
   }
 }
 
-/** A soft mallet-like note: quick attack, natural decay. */
+/** A soft, warm mallet note: gentle attack, long natural decay, highs rolled off. */
 function pluck(freq: number, start: number, length: number, volume: number) {
   const a = audio();
   const t0 = a.currentTime + start;
   const gain = a.createGain();
   gain.gain.setValueAtTime(0.0001, t0);
-  gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.012);
+  gain.gain.exponentialRampToValueAtTime(volume * soundVolume(), t0 + 0.025);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + length);
-  gain.connect(a.destination);
-  // body + a quiet octave overtone gives a marimba-ish colour
-  for (const [mult, type, level] of [[1, 'triangle', 1], [2, 'sine', 0.25]] as const) {
+  const lowpass = a.createBiquadFilter();
+  lowpass.type = 'lowpass';
+  lowpass.frequency.value = Math.min(2400, freq * 3);
+  lowpass.Q.value = 0.4;
+  gain.connect(lowpass).connect(a.destination);
+  // a pure body plus a faint octave keeps it round rather than piercing
+  for (const [mult, level] of [[1, 1], [2, 0.12]] as const) {
     const o = a.createOscillator();
     const g = a.createGain();
-    o.type = type;
+    o.type = 'sine';
     o.frequency.value = freq * mult;
     g.gain.value = level;
     o.connect(g).connect(gain);
@@ -125,12 +145,23 @@ function pluck(freq: number, start: number, length: number, volume: number) {
   }
 }
 
+/** Notification volume 0–1 from settings (localStorage, default 0.8). */
+function soundVolume() {
+  try {
+    const v = Number(localStorage.getItem('venband:notify-volume') ?? '0.8');
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
+  } catch {
+    return 0.8;
+  }
+}
+
 let ringTimer: ReturnType<typeof setInterval> | null = null;
 let ringKind: 'incoming' | 'outgoing' | null = null;
 
 // Notes in Hz: a bright rising phrase for incoming calls, a calm pair for ring-back.
-const INCOMING = [659.25, 783.99, 987.77, 1174.66, 987.77, 1318.51]; // E5 G5 B5 D6 B5 E6
-const OUTGOING = [523.25, 659.25]; // C5 E5
+// Lower, calmer phrases than before.
+const INCOMING = [392, 493.88, 587.33, 493.88]; // G4 B4 D5 B4
+const OUTGOING = [349.23, 440]; // F4 A4
 
 /** Loop a ringtone: 'incoming' for the person being called, 'outgoing' ring-back for the caller. */
 export function startRing(kind: 'incoming' | 'outgoing') {
@@ -141,9 +172,9 @@ export function startRing(kind: 'incoming' | 'outgoing') {
   const play = () => {
     try {
       if (kind === 'incoming') {
-        INCOMING.forEach((f, i) => pluck(f, i * 0.13, 0.7, 0.16));
+        INCOMING.forEach((f, i) => pluck(f, i * 0.18, 0.9, 0.08));
       } else {
-        OUTGOING.forEach((f, i) => pluck(f, i * 0.28, 1.1, 0.07));
+        OUTGOING.forEach((f, i) => pluck(f, i * 0.32, 1.2, 0.05));
       }
     } catch {
       /* audio blocked until the user interacts with the page */

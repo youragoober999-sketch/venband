@@ -9,6 +9,7 @@ import {
   requestPasswordReset,
   resendVerification,
   sessionStore,
+  verifyMfa,
   signIn,
   signOut,
   signUp,
@@ -81,7 +82,7 @@ export function AuthScreen() {
   useEffect(() => {
     const r = parseRoute();
     // deep link while logged out: show the login form at /sign-in
-    if (r.kind === 'home' || r.kind === 'server' || r.kind === 'discover') {
+    if (r.kind === 'home' || r.kind === 'server' || r.kind === 'discover' || r.kind === 'group-invite') {
       try {
         sessionStorage.setItem('venband:return-to', currentPath());
       } catch {
@@ -417,6 +418,59 @@ export function UnlockScreen() {
           <button type="button" className="btn link" onClick={() => signOut()}>
             Log out
           </button>
+        </p>
+      </form>
+    </AuthLayout>
+  );
+}
+
+/** Second sign-in step for accounts with an authenticator app. */
+export function MfaScreen() {
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <AuthLayout>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setError(null);
+          try {
+            await verifyMfa(code);
+          } catch (err) {
+            setError(friendlyError(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <h1>Two-factor check</h1>
+        <p className="sub">Open your authenticator app and enter the 6-digit code for Venband.</p>
+        <Field label="Code">
+          <input
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            required
+            maxLength={7}
+            pattern="[0-9 ]{6,7}"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/[^0-9 ]/g, ''))}
+            className="otp-input"
+            aria-label="Authenticator code"
+          />
+        </Field>
+        {error && <div className="form-error">{error}</div>}
+        <button className="btn primary full" disabled={busy || code.replace(/\s/g, '').length !== 6}>
+          {busy ? 'Checking…' : 'Continue'}
+        </button>
+        <p className="switch">
+          Lost your phone? Use another device where you’re still logged in to turn two-factor off, or{' '}
+          <button type="button" className="btn link" onClick={() => signOut()}>
+            log out
+          </button>
+          .
         </p>
       </form>
     </AuthLayout>

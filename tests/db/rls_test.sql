@@ -56,7 +56,7 @@ select set_config('t.general', (select id::text from public.channels where serve
 select set_config('t.voice', (select id::text from public.channels where server_id = current_setting('t.server')::uuid and type = 'voice'), false);
 
 do $t$ begin
-  assert public.server_permissions(current_setting('t.server')::uuid) = 4095, 'owner has all perms';
+  assert public.server_permissions(current_setting('t.server')::uuid) = 2147483647, 'owner has all perms';
   assert (select count(*) from public.roles where server_id = current_setting('t.server')::uuid) = 1;
 end $t$;
 
@@ -127,7 +127,7 @@ do $t$ begin
   assert pg_temp.affected($$delete from public.messages$$) = 0, 'cannot delete alice message';
   assert pg_temp.affected($$update public.messages set ciphertext = 'x'$$) = 0, 'cannot edit alice message';
   assert pg_temp.affected($$delete from public.server_members where user_id <> auth.uid()$$) = 0, 'cannot kick';
-  assert pg_temp.affected($$update public.roles set permissions = 4095$$) = 0, 'cannot escalate @everyone';
+  assert pg_temp.affected($$update public.roles set permissions = 2147483647$$) = 0, 'cannot escalate @everyone';
 end $t$;
 select pg_temp.must_fail($$insert into public.roles (server_id, name, permissions, position)
   values (current_setting('t.server')::uuid, 'hax', 1, 1)$$);
@@ -371,7 +371,7 @@ end $t$;
 select public.mod_server_action(current_setting('t.server')::uuid, 'approve');
 select public.mod_server_action(current_setting('t.server')::uuid, 'verify');
 do $t$ begin
-  assert public.server_permissions(current_setting('t.server')::uuid) = 4095;
+  assert public.server_permissions(current_setting('t.server')::uuid) = 2147483647;
   assert (select verified from public.servers where id = current_setting('t.server')::uuid);
 end $t$;
 
@@ -476,3 +476,435 @@ do $t$ begin
   assert not public.username_available('alice');
 end $t$;
 reset role;
+
+-- ============================================================ messaging ----
+-- owner m1, member m2, outsider m3
+reset role;
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000f1', 'm1@example.com', '{"username":"msgowner"}'),
+  ('00000000-0000-0000-0000-0000000000f2', 'm2@example.com', '{"username":"msgmember"}'),
+  ('00000000-0000-0000-0000-0000000000f3', 'm3@example.com', '{"username":"msgoutsider"}');
+insert into public.user_keys (key_id, user_id, enc_public, sign_public) values
+  ('msgKey00000000000001', '00000000-0000-0000-0000-0000000000f1', 'e', 's'),
+  ('msgKey00000000000002', '00000000-0000-0000-0000-0000000000f2', 'e', 's'),
+  ('msgKey00000000000003', '00000000-0000-0000-0000-0000000000f3', 'e', 's');
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+select set_config('t.ms', public.create_server('Messaging test')::text, false);
+select set_config('t.mc', (select id::text from public.channels where server_id = current_setting('t.ms')::uuid and name = 'chat'), false);
+reset role;
+insert into public.server_members (server_id, user_id) values (current_setting('t.ms')::uuid, '00000000-0000-0000-0000-0000000000f2');
+insert into public.channel_epochs (channel_id, epoch, key_check, created_by) values (current_setting('t.mc')::uuid, 1, 'kc', '00000000-0000-0000-0000-0000000000f1');
+update public.channels set key_rotation_needed = false where id = current_setting('t.mc')::uuid;
+do $t$ begin
+  assert (select permissions & 4096 from public.roles where server_id = current_setting('t.ms')::uuid and is_default) = 4096, 'new servers let everyone react';
+end $t$;
+set role authenticated;
+
+-- owner posts, member replies
+select set_config('t.m1', gen_random_uuid()::text, false);
+insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature)
+values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, auth.uid(), 'msgKey00000000000001', 1, 'iv', 'ct-one', 'sig');
+
+-- reactions: members only, one of each per person, encrypted blob only
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+insert into public.reactions (message_id, channel_id, user_id, epoch, tag, iv, ciphertext)
+values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, auth.uid(), 1, 'tagtagtagtag', 'iv', 'ct');
+select pg_temp.must_fail($$insert into public.reactions (message_id, channel_id, user_id, epoch, tag, iv, ciphertext)
+  values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, auth.uid(), 1, 'tagtagtagtag', 'iv', 'ct')$$);
+select pg_temp.must_fail($$insert into public.reactions (message_id, channel_id, user_id, epoch, tag, iv, ciphertext)
+  values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, '00000000-0000-0000-0000-0000000000f1', 1, 'othertagtag1', 'iv', 'ct')$$);
+-- members can't pin in servers without Manage Messages
+select pg_temp.must_fail($$insert into public.pins (message_id, channel_id) values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid)$$);
+-- saved messages: own only
+insert into public.saved_messages (message_id, channel_id) values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid);
+do $t$ begin
+  assert (select count(*) from public.saved_messages) = 1;
+  assert public.my_row_count('saved_messages') = 1;
+end $t$;
+
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', false);
+do $t$ begin
+  assert (select count(*) from public.reactions where message_id = current_setting('t.m1')::uuid) = 0, 'outsider sees no reactions';
+  assert (select count(*) from public.saved_messages) = 0, 'saved messages are private';
+end $t$;
+select pg_temp.must_fail($$insert into public.reactions (message_id, channel_id, user_id, epoch, tag, iv, ciphertext)
+  values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, auth.uid(), 1, 'outsidertag1', 'iv', 'ct')$$);
+select pg_temp.must_fail($$insert into public.saved_messages (message_id, channel_id) values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid)$$);
+
+-- pins: owner can
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+insert into public.pins (message_id, channel_id) values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid);
+
+-- edits keep the previous ciphertext; members can read the history
+update public.messages set ciphertext = 'ct-two' where id = current_setting('t.m1')::uuid;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+do $t$ begin
+  assert (select ciphertext from public.message_revisions where message_id = current_setting('t.m1')::uuid) = 'ct-one', 'old version kept';
+end $t$;
+
+-- threads: member creates, owner locks, member can no longer post; member can't unlock
+insert into public.threads (root_id, channel_id, name) values (current_setting('t.m1')::uuid, current_setting('t.mc')::uuid, 'side chat');
+insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature, thread_root)
+values (gen_random_uuid(), current_setting('t.mc')::uuid, auth.uid(), 'msgKey00000000000002', 1, 'iv', 'ct', 'sig', current_setting('t.m1')::uuid);
+do $t$ begin
+  assert (select message_count from public.threads where root_id = current_setting('t.m1')::uuid) = 1, 'reply counted';
+end $t$;
+select pg_temp.must_fail($$update public.threads set locked = true where root_id = current_setting('t.m1')::uuid$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+update public.threads set locked = true where root_id = current_setting('t.m1')::uuid;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+select pg_temp.must_fail($$insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature, thread_root)
+  values (gen_random_uuid(), current_setting('t.mc')::uuid, auth.uid(), 'msgKey00000000000002', 1, 'iv', 'ct', 'sig', current_setting('t.m1')::uuid)$$);
+-- nobody can fake the reply count
+select pg_temp.must_fail($$update public.threads set message_count = 999 where root_id = current_setting('t.m1')::uuid$$);
+do $t$ begin
+  assert (select message_count from public.threads where root_id = current_setting('t.m1')::uuid) = 1, 'count cannot be faked';
+end $t$;
+
+-- anonymous poll: totals for everyone, individual votes hidden
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+select set_config('t.poll', gen_random_uuid()::text, false);
+insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature)
+values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, auth.uid(), 'msgKey00000000000001', 1, 'iv', 'poll', 'sig');
+insert into public.polls (message_id, channel_id, option_count, anonymous) values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, 3, true);
+insert into public.poll_votes (message_id, channel_id, options) values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, '{2}');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+select pg_temp.must_fail($$insert into public.poll_votes (message_id, channel_id, options) values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, '{0,1}')$$);
+select pg_temp.must_fail($$insert into public.poll_votes (message_id, channel_id, options) values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, '{7}')$$);
+insert into public.poll_votes (message_id, channel_id, options) values (current_setting('t.poll')::uuid, current_setting('t.mc')::uuid, '{2}');
+do $t$ begin
+  assert (select count(*) from public.poll_votes where message_id = current_setting('t.poll')::uuid) = 1, 'only my own vote is visible';
+  assert (select votes from public.poll_results(current_setting('t.poll')::uuid) where option = 2) = 2, 'totals are visible';
+end $t$;
+
+-- deleted messages are kept (encrypted) for moderators, not for members
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+select set_config('t.gone', gen_random_uuid()::text, false);
+insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature)
+values (current_setting('t.gone')::uuid, current_setting('t.mc')::uuid, auth.uid(), 'msgKey00000000000002', 1, 'iv', 'oops', 'sig');
+delete from public.messages where id = current_setting('t.gone')::uuid;
+do $t$ begin
+  assert (select count(*) from public.deleted_messages) = 0, 'members cannot browse deleted messages';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+do $t$ begin
+  assert (select ciphertext from public.deleted_messages where id = current_setting('t.gone')::uuid) = 'oops', 'moderators see the deleted (still encrypted) message';
+end $t$;
+
+-- scheduled messages: delivered later, but only if the author may still send
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f2', false);
+select set_config('t.sched', gen_random_uuid()::text, false);
+insert into public.scheduled_messages (id, channel_id, author_key_id, epoch, iv, ciphertext, signature, send_at)
+values (current_setting('t.sched')::uuid, current_setting('t.mc')::uuid, 'msgKey00000000000002', 1, 'iv', 'later', 'sig', now() + interval '1 hour');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', false);
+do $t$ begin
+  assert (select count(*) from public.scheduled_messages) = 0, 'scheduled messages are private';
+end $t$;
+reset role;
+update public.scheduled_messages set send_at = now() - interval '1 minute';
+do $t$ begin
+  assert public.deliver_scheduled_messages() = 1;
+  assert exists (select 1 from public.messages where id = current_setting('t.sched')::uuid and ciphertext = 'later');
+end $t$;
+-- a kicked author's queued message is dropped
+insert into public.scheduled_messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature, send_at)
+values (gen_random_uuid(), current_setting('t.mc')::uuid, '00000000-0000-0000-0000-0000000000f2', 'msgKey00000000000002', 1, 'iv', 'after kick', 'sig', now() - interval '1 minute');
+delete from public.server_members where server_id = current_setting('t.ms')::uuid and user_id = '00000000-0000-0000-0000-0000000000f2';
+do $t$ begin
+  assert public.deliver_scheduled_messages() = 0;
+  assert not exists (select 1 from public.messages where ciphertext = 'after kick');
+end $t$;
+
+-- ============================================================== servers ----
+reset role;
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000a1', 's1@example.com', '{"username":"srvowner"}'),
+  ('00000000-0000-0000-0000-0000000000a2', 's2@example.com', '{"username":"srvjoiner"}');
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select set_config('t.gs', public.create_server('Gamers', '#ff0000', 'gaming')::text, false);
+do $t$ begin
+  assert (select count(*) from public.channels where server_id = current_setting('t.gs')::uuid) >= 10, 'gaming template made its channels';
+  assert exists (select 1 from public.channels where server_id = current_setting('t.gs')::uuid and type = 'stage'), 'template includes a stage';
+  assert exists (select 1 from public.channels where server_id = current_setting('t.gs')::uuid and type = 'forum'), 'template includes a forum';
+  assert (select welcome_channel_id from public.servers where id = current_setting('t.gs')::uuid) is not null;
+end $t$;
+-- vanity links need 500+ members or verification
+select pg_temp.must_fail($$select public.set_vanity(current_setting('t.gs')::uuid, 'gamers')$$);
+-- nobody sets discovery approval or vanity directly
+select pg_temp.must_fail($$update public.servers set discovery_status = 'approved' where id = current_setting('t.gs')::uuid$$);
+select pg_temp.must_fail($$update public.servers set vanity = 'sneaky' where id = current_setting('t.gs')::uuid$$);
+select public.apply_for_discovery(current_setting('t.gs')::uuid, 'come play', '{Gaming}', 'en');
+select pg_temp.must_fail($$select public.discovery_queue('pending', null, null, '')$$);  -- staff only
+-- rules: new members can read but not talk until they accept
+update public.servers set rules = '{"Be nice"}' where id = current_setting('t.gs')::uuid;
+select set_config('t.inv', public.create_invite(current_setting('t.gs')::uuid, 5, 0.5, 0, 'test'), false);
+reset role;
+set role anon;
+do $t$ begin
+  assert (select name from public.invite_preview(current_setting('t.inv'))) = 'Gamers', 'invite preview works signed out';
+  assert (select cardinality(rules) from public.invite_preview(current_setting('t.inv'))) = 1;
+end $t$;
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a2', false);
+select public.join_server(current_setting('t.inv'));
+do $t$ begin
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 0, 'no sending before accepting the rules';
+end $t$;
+select public.complete_onboarding(current_setting('t.gs')::uuid, true, '{}'::jsonb);
+do $t$ begin
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 128, 'can send after accepting';
+end $t$;
+-- announcement channels: members can't post
+reset role;
+insert into public.channel_epochs (channel_id, epoch, key_check, created_by)
+  select id, 1, 'kc', '00000000-0000-0000-0000-0000000000a1' from public.channels where server_id = current_setting('t.gs')::uuid and type = 'announcement';
+update public.channels set key_rotation_needed = false where server_id = current_setting('t.gs')::uuid;
+insert into public.user_keys (key_id, user_id, enc_public, sign_public) values ('srvKey00000000000002', '00000000-0000-0000-0000-0000000000a2', 'e', 's');
+set role authenticated;
+select pg_temp.must_fail($$insert into public.messages (id, channel_id, author_id, author_key_id, epoch, iv, ciphertext, signature)
+  select gen_random_uuid(), id, auth.uid(), 'srvKey00000000000002', 1, 'iv', 'ct', 'sig' from public.channels
+  where server_id = current_setting('t.gs')::uuid and type = 'announcement'$$);
+-- members can't reorder channels or upload emoji without permission
+select pg_temp.must_fail($$select public.reorder_channels(current_setting('t.gs')::uuid, '[]'::jsonb)$$);
+select pg_temp.must_fail($$insert into public.server_expressions (server_id, kind, name, url, mime, size) values (current_setting('t.gs')::uuid, 'emoji', 'hi', 'x', 'image/png', 10)$$);
+-- invite analytics are for managers only
+do $t$ begin
+  assert (select count(*) from public.invite_uses) = 0, 'members can''t see who used invites';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+do $t$ begin
+  assert (select count(*) from public.invite_uses where server_id = current_setting('t.gs')::uuid) = 1, 'owner sees invite use';
+end $t$;
+-- paused invites refuse new joins
+update public.invites set paused = true where code = current_setting('t.inv');
+insert into public.server_expressions (server_id, kind, name, url, mime, size) values (current_setting('t.gs')::uuid, 'emoji', 'hype', 'x', 'image/png', 10);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a2', false);
+do $t$ begin
+  assert (select count(*) from public.my_expressions() where name = 'hype') = 1, 'members can use server emoji';
+end $t$;
+
+-- ============================================== apps, status, Voogle ====
+reset role;
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000b1', 'b1@example.com', '{"username":"botdev"}'),
+  ('00000000-0000-0000-0000-0000000000b2', 'b2@example.com', '{"username":"altone"}'),
+  ('00000000-0000-0000-0000-0000000000b3', 'b3@example.com', '{"username":"alttwo"}');
+insert into auth.sessions (id, user_id, ip) values
+  ('00000000-0000-0000-0000-00000000b5e2', '00000000-0000-0000-0000-0000000000b2', '203.0.113.7'),
+  ('00000000-0000-0000-0000-00000000b5e3', '00000000-0000-0000-0000-0000000000b3', '203.0.113.9');
+set role anon;
+do $t$ begin
+  assert (public.status_ping() ->> 'ok')::boolean, 'status ping works signed out';
+  perform * from public.public_discover('', null);
+end $t$;
+select pg_temp.must_fail($$select public.post_status_update(null, 'Down', 'major', 'investigating', 'x', '{}')$$);
+select pg_temp.must_fail($$select public.bot_api('vb_nope', 'me', '{}')$$);
+reset role;
+set role authenticated;
+-- members can't post status incidents
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+select pg_temp.must_fail($$select public.post_status_update(null, 'Down', 'major', 'investigating', 'x', '{}')$$);
+-- a developer makes a management bot and gets a token
+select set_config('t.app', public.create_application('Helper', 'management')::text, false);
+select set_config('t.token', public.reset_bot_token(current_setting('t.app')::uuid), false);
+do $t$ begin
+  assert current_setting('t.token') like 'vb_%', 'token format';
+  assert (select token_hint from public.applications where id = current_setting('t.app')::uuid) is not null;
+end $t$;
+select pg_temp.must_fail($$select token_hash from public.applications$$);  -- never readable
+select pg_temp.must_fail($$update public.applications set preset = 'custom' where id = current_setting('t.app')::uuid$$);
+-- not a manager of the server: the invite only creates a request
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+update public.invites set paused = false where code = current_setting('t.inv');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+do $t$ begin
+  assert (public.bot_join_server(current_setting('t.app')::uuid, 'https://venband.com/invite/' || current_setting('t.inv')) ->> 'status') = 'requested';
+end $t$;
+-- other people can't use someone else's app
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a2', false);
+select pg_temp.must_fail($$select public.bot_join_server(current_setting('t.app')::uuid, current_setting('t.inv'))$$);
+select pg_temp.must_fail($$select public.reset_bot_token(current_setting('t.app')::uuid)$$);
+-- the server owner approves; the bot then welcomes new members
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.review_bot_request((select id from public.bot_join_requests limit 1), true);
+select set_config('t.install', (select id::text from public.server_bots where app_id = current_setting('t.app')::uuid), false);
+select public.update_bot_settings(current_setting('t.install')::uuid, jsonb_build_object(
+  'welcome_channel', (select id from public.channels where server_id = current_setting('t.gs')::uuid and type = 'text' order by position limit 1),
+  'welcome_text', 'Hi {user}!'));
+select set_config('t.botch', (select id::text from public.channels where server_id = current_setting('t.gs')::uuid and type = 'text' and not is_private order by position limit 1), false);
+reset role;
+set role anon;
+-- the bot API, with its token
+do $t$ declare v jsonb; begin
+  v := public.bot_api(current_setting('t.token'), 'me', '{}');
+  assert jsonb_array_length(v -> 'servers') = 1, 'bot sees its server';
+  perform public.bot_api(current_setting('t.token'), 'send', jsonb_build_object(
+    'channel', current_setting('t.botch'),
+    'content', 'hello from the API', 'embed', jsonb_build_object('title', 'T', 'url', 'javascript:alert(1)')));
+end $t$;
+select pg_temp.must_fail($$select public.bot_api(current_setting('t.token') || 'x', 'me', '{}')$$);
+reset role;
+do $t$ begin
+  assert (select embed ->> 'url' from public.bot_messages where content = 'hello from the API') is null, 'unsafe links are dropped';
+end $t$;
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+select public.join_server(current_setting('t.inv'));
+select public.complete_onboarding(current_setting('t.gs')::uuid, true, '{}'::jsonb);
+do $t$ begin
+  assert exists (select 1 from public.bot_messages where content like 'Hi <@00000000-0000-0000-0000-0000000000b2>!'), 'welcome message posted';
+  assert (select count(*) from public.bot_messages) >= 2, 'members read bot messages';
+  assert (public.use_bot_command((select channel_id from public.bot_messages limit 1), current_setting('t.app')::uuid, 'serverinfo') ->> 'status') = 'handled';
+end $t$;
+-- outsiders can't read bot messages
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+do $t$ begin
+  assert (select count(*) from public.bot_messages) = 0, 'bot messages stay in the server';
+end $t$;
+
+-- Voogle: verification required, max 1 account per device
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.set_voogle_settings(current_setting('t.gs')::uuid, '{"enabled": true, "required": true, "max_accounts": 1}');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+select set_config('request.jwt.claim.session_id', '00000000-0000-0000-0000-00000000b5e2', false);
+select public.complete_onboarding(current_setting('t.gs')::uuid, true, '{}'::jsonb);
+do $t$ begin
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 0, 'no talking until verified';
+  assert (public.voogle_verify(current_setting('t.gs')::uuid, 'devicetoken_aaaaaaaaaaaa', repeat('a', 64)) ->> 'result') = 'passed';
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 128, 'verified members can talk';
+end $t$;
+select pg_temp.must_fail($$select * from public.voogle_signals$$);
+-- the same device on another account is blocked
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+select set_config('request.jwt.claim.session_id', '00000000-0000-0000-0000-00000000b5e3', false);
+select public.join_server(current_setting('t.inv'));
+select public.complete_onboarding(current_setting('t.gs')::uuid, true, '{}'::jsonb);
+do $t$ begin
+  assert (public.voogle_verify(current_setting('t.gs')::uuid, 'devicetoken_aaaaaaaaaaaa', repeat('b', 64)) ->> 'result') = 'blocked';
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 0;
+end $t$;
+-- members can't look up alts; the owner can, without any IP or device data
+select pg_temp.must_fail($$select public.voogle_lookup('00000000-0000-0000-0000-0000000000b2', current_setting('t.gs')::uuid)$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+do $t$ declare v jsonb; begin
+  v := public.voogle_lookup('00000000-0000-0000-0000-0000000000b3', current_setting('t.gs')::uuid);
+  assert (v -> 'alts' -> 0 ->> 'confidence') = '99% sure alt', 'device match is a 99% alt';
+  assert v::text !~ '203\.0\.113', 'no IP addresses in lookups';
+  assert v::text !~ 'devicetoken', 'no device tokens in lookups';
+end $t$;
+reset role;
+
+-- ============================================ moderation & security ====
+set role authenticated;
+-- timeouts make a member read-only; only moderators above them can do it
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+select set_config('request.jwt.claim.session_id', '', false);
+select pg_temp.must_fail($$select public.timeout_member(current_setting('t.gs')::uuid, '00000000-0000-0000-0000-0000000000a1', 10, 'no')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.timeout_member(current_setting('t.gs')::uuid, '00000000-0000-0000-0000-0000000000b2', 10, 'cool off');
+select public.warn_member(current_setting('t.gs')::uuid, '00000000-0000-0000-0000-0000000000b2', 'please be nice');
+do $t$ begin
+  assert exists (select 1 from public.server_audit_log where server_id = current_setting('t.gs')::uuid and action = 'timeout'), 'timeouts are logged';
+  assert exists (select 1 from public.server_audit_log where server_id = current_setting('t.gs')::uuid and action = 'warn'), 'warnings are logged';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+do $t$ begin
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 0, 'timed out members can''t send';
+  assert (select count(*) from public.member_warnings where acknowledged_at is null) = 1, 'you see your warning';
+  assert (select count(*) from public.server_audit_log) = 0, 'members can''t read the audit log';
+end $t$;
+select public.ack_warning((select id from public.member_warnings limit 1));
+-- members can't remove GIFs; the owner can, and only a hash is kept
+select pg_temp.must_fail($$select public.ban_media(current_setting('t.gs')::uuid, repeat('c', 64))$$);
+select pg_temp.must_fail($$select public.ban_media(null, repeat('c', 64))$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.timeout_member(current_setting('t.gs')::uuid, '00000000-0000-0000-0000-0000000000b2', 0, '');
+select public.ban_media(current_setting('t.gs')::uuid, repeat('c', 64));
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+do $t$ begin
+  assert (public.server_permissions(current_setting('t.gs')::uuid) & 128) = 128, 'timeout lifted';
+  assert (select count(*) from public.banned_media where hash = repeat('c', 64)) = 1, 'members see removed GIFs';
+end $t$;
+-- only Venband owners / founders design badges
+select pg_temp.must_fail($$select public.save_custom_badge('cool', 'Cool', '', 'https://x/storage/v1/object/public/badges/a.png')$$);
+-- server reports: moderators see them without the reporter's name
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+insert into public.reports (reporter_id, kind, target_user, server_id, reason)
+  values (auth.uid(), 'message', '00000000-0000-0000-0000-0000000000b2', current_setting('t.gs')::uuid, 'rude');
+select pg_temp.must_fail($$select public.handle_server_report((select id from public.reports where reason = 'rude'), 'actioned', '')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+do $t$ declare r record; begin
+  select * into r from public.server_reports(current_setting('t.gs')::uuid, 'open') limit 1;
+  assert r.reason = 'rude', 'moderators see server reports';
+  assert not (to_jsonb(r) ? 'reporter_id'), 'reporter stays anonymous';
+end $t$;
+select public.handle_server_report((select id from public.server_reports(current_setting('t.gs')::uuid, 'open') limit 1), 'actioned', 'handled');
+-- deleted servers can be restored by the owner within 7 days
+select pg_temp.must_fail($$select public.request_account_deletion()$$);  -- owns servers
+select public.delete_server(current_setting('t.gs')::uuid);
+do $t$ begin
+  assert (select status from public.servers where id = current_setting('t.gs')::uuid) = 'deleted';
+  assert public.server_permissions(current_setting('t.gs')::uuid, '00000000-0000-0000-0000-0000000000b2') = 0, 'deleted servers are frozen';
+end $t$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+select pg_temp.must_fail($$select public.restore_server(current_setting('t.gs')::uuid)$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.restore_server(current_setting('t.gs')::uuid);
+-- account deletion can be requested and cancelled; export works
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+select public.request_account_deletion();
+select public.cancel_account_deletion();
+do $t$ begin
+  assert (public.export_my_data() -> 'profile' ->> 'username') = 'alttwo', 'export includes your profile';
+end $t$;
+-- two-factor: with a verified authenticator, the private key needs an aal2 session
+reset role;
+insert into public.user_keys (key_id, user_id, enc_public, sign_public) values ('mfaKey00000000000003', '00000000-0000-0000-0000-0000000000b3', 'e', 's');
+insert into public.user_private_keys (user_id, key_id, iv, ciphertext) values ('00000000-0000-0000-0000-0000000000b3', 'mfaKey00000000000003', 'iv', 'ct');
+insert into auth.mfa_factors (user_id, status) values ('00000000-0000-0000-0000-0000000000b3', 'verified');
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+do $t$ begin
+  assert (select count(*) from public.user_private_keys) = 0, 'aal1 session can''t read the private key';
+end $t$;
+select set_config('request.jwt.claim.aal', 'aal2', false);
+do $t$ begin
+  assert (select count(*) from public.user_private_keys) = 1, 'aal2 session can';
+end $t$;
+select set_config('request.jwt.claim.aal', '', false);
+reset role;
+
+-- ============================================ profiles & groups (Batch F) ====
+set role authenticated;
+select set_config('request.jwt.claim.aal', '', false);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+-- pictures must be in Venband's own storage, in your own folder
+select pg_temp.must_fail($$update public.profiles set avatar_url = 'https://evil.example/a.png' where id = auth.uid()$$);
+select pg_temp.must_fail($$update public.profiles set avatar_url = 'https://x/storage/v1/object/public/avatars/00000000-0000-0000-0000-0000000000b2/a.webp' where id = auth.uid()$$);
+update public.profiles set avatar_url = 'https://x/storage/v1/object/public/avatars/00000000-0000-0000-0000-0000000000b1/a.webp',
+  avatar_frame = 'neon', name_style = '{"font": "serif", "colors": ["#ff0000", "#00ff00"], "effect": "shimmer"}',
+  status_text = repeat('s', 250) where id = auth.uid();
+select pg_temp.must_fail($$update public.profiles set avatar_frame = 'nope' where id = auth.uid()$$);
+-- marketplace items of other kinds
+insert into public.themes (author_id, name, data, kind) values (auth.uid(), 'Lava plate', '{"colors": ["#f00", "#ff0"]}', 'nameplate');
+-- groups: up to 15, the owner removes people, invite links
+select set_config('t.grp', public.create_group(array['00000000-0000-0000-0000-0000000000b2'::uuid], 'Crew')::text, false);
+select set_config('t.ginv', public.create_group_invite(current_setting('t.grp')::uuid), false);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+do $t$ begin
+  assert (select members from public.group_invite_preview(current_setting('t.ginv'))) = 2, 'invite preview';
+end $t$;
+select public.join_group(current_setting('t.ginv'));
+select pg_temp.must_fail($$select public.remove_group_member(current_setting('t.grp')::uuid, '00000000-0000-0000-0000-0000000000b2')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+select public.remove_group_member(current_setting('t.grp')::uuid, '00000000-0000-0000-0000-0000000000b3');
+select public.leave_group(current_setting('t.grp')::uuid);
+reset role;
+do $t$ begin
+  assert (select count(*) from public.dm_participants where channel_id = current_setting('t.grp')::uuid) = 1, 'owner removed one, then left';
+  assert (select owner_id from public.channels where id = current_setting('t.grp')::uuid) = '00000000-0000-0000-0000-0000000000b2', 'ownership passed on';
+  assert (select count(*) from public.channels where id = current_setting('t.grp')::uuid and key_rotation_needed) = 1, 'removal rotates the key';
+end $t$;

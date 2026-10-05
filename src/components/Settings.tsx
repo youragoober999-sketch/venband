@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { LooksPanel } from './LooksSettings';
 import { supabase, errorMessage } from '../lib/supabase';
 import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
 import { fingerprint, passwordStrength } from '../lib/crypto';
@@ -8,26 +9,35 @@ import { DEFAULT_SETTINGS, updateChat, updateSettings, updateVoice, useSettings 
 import { BUILT_IN_THEMES, sanitizeTheme, THEME_KEYS, type Theme } from '../lib/themes';
 import { describeAgent, listDevices, revokeDevice, type Device } from '../lib/devices';
 import { setRelation, socialStore } from '../lib/social';
-import { LANGUAGES, translationSupported } from '../lib/translate';
-import type { PresenceStatus, Profile, Server } from '../lib/types';
-import { Avatar, ColorPicker, Field, Icon } from './ui';
+import { LANGUAGES, deviceTranslationSupported } from '../lib/translate';
+import { CODE_THEMES } from '../lib/highlight';
+import { PHRASEBOOK_LANGS, PHRASEBOOK_SIZE } from '../lib/phrasebook';
+import type { AvatarFrame, NameEffect, NameFont, PresenceStatus, Profile, Server } from '../lib/types';
+import { Avatar, ColorPicker, Field, Icon, nameplateVars, StyledName } from './ui';
+import { ImageCropper } from './ImageCropper';
+import { askText } from './Dialogs';
+import { Select } from './Select';
 import { Badges } from './Badges';
 import { accountAge, bannerStyle, NAMEPLATES, ServerTag } from './People';
 import { askConfirm } from './Dialogs';
-import { ModerationCenter, ReportCentre } from './Moderation';
+import { BadgeDesigner, DiscoveryQueue, ModerationCenter, ReportCentre } from './Moderation';
 import { Markdown } from './Markdown';
+import { SecurityTab } from './Security';
 
-const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; admin?: boolean }[] = [
+const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; admin?: boolean; designer?: boolean }[] = [
   { id: 'account', label: 'My Account', icon: 'user', group: 'User Settings' },
   { id: 'profile', label: 'Profiles', icon: 'edit', group: 'User Settings' },
-  { id: 'privacy', label: 'Privacy & Safety', icon: 'shield', group: 'User Settings' },
+  { id: 'privacy', label: 'Privacy & Safety', icon: 'eye', group: 'User Settings' },
+  { id: 'security', label: 'Security', icon: 'shield', group: 'User Settings' },
   { id: 'devices', label: 'Devices', icon: 'monitor', group: 'User Settings' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App Settings' },
   { id: 'voice', label: 'Voice & Video', icon: 'mic', group: 'App Settings' },
   { id: 'chat', label: 'Chat', icon: 'message', group: 'App Settings' },
   { id: 'language', label: 'Language', icon: 'globe', group: 'App Settings' },
   { id: 'moderation', label: 'Moderation', icon: 'gavel', group: 'Venband Staff', staff: true },
+  { id: 'discovery-queue', label: 'Discovery Applications', icon: 'compass', group: 'Venband Staff', staff: true },
   { id: 'reports', label: 'Report Centre', icon: 'flag', group: 'Venband Staff', staff: true, admin: true },
+  { id: 'badges', label: 'Badge Designer', icon: 'star', group: 'Venband Staff', designer: true },
 ];
 
 export function SettingsPage() {
@@ -35,6 +45,8 @@ export function SettingsPage() {
   const me = sessionStore.use((s) => s.me)!;
   const staff = (me.platform_role ?? 'user') !== 'user';
   const admin = me.platform_role === 'admin' || me.platform_role === 'owner';
+  // Venband owners and founders design badges
+  const designer = me.platform_role === 'owner' || (me.badges ?? []).includes('founder');
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.modal-backdrop') && closeSettings();
     window.addEventListener('keydown', onKey);
@@ -47,7 +59,7 @@ export function SettingsPage() {
       <nav className="sp-nav">
         <div className="sp-nav-inner">
           {groups.map((g) => {
-            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.admin || admin));
+            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer));
             if (!items.length) return null;
             return (
               <div key={g}>
@@ -67,10 +79,11 @@ export function SettingsPage() {
         </div>
       </nav>
       <main className="sp-content">
-        <div className={`sp-inner${tab === 'moderation' || tab === 'reports' ? ' wide' : ''}`}>
+        <div className={`sp-inner${tab === 'moderation' || tab === 'reports' || tab === 'discovery-queue' || tab === 'badges' ? ' wide' : ''}`}>
           {tab === 'account' && <AccountTab />}
           {tab === 'profile' && <ProfileTab />}
           {tab === 'privacy' && <PrivacyTab />}
+          {tab === 'security' && <SecurityTab />}
           {tab === 'devices' && <DevicesTab />}
           {tab === 'appearance' && <AppearanceTab />}
           {tab === 'voice' && <VoiceTab />}
@@ -78,6 +91,8 @@ export function SettingsPage() {
           {tab === 'language' && <LanguageTab />}
           {tab === 'moderation' && staff && <ModerationCenter />}
           {tab === 'reports' && admin && <ReportCentre />}
+          {tab === 'discovery-queue' && staff && <DiscoveryQueue />}
+          {tab === 'badges' && designer && <BadgeDesigner />}
         </div>
         <button className="sp-close" onClick={closeSettings} title="Close (Esc)">
           <Icon name="x" size={18} />
@@ -98,7 +113,7 @@ function Section({ title, children, desc }: { title: string; desc?: ReactNode; c
   );
 }
 
-function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="toggle-row">
       <span>
@@ -242,7 +257,22 @@ function ProfileTab() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tagServers, setTagServers] = useState<Server[]>([]);
+  const [cropping, setCropping] = useState<{ file: File; kind: 'avatar' | 'banner' } | null>(null);
   const preview: Profile = { ...me, ...draft } as Profile;
+  const pickPicture = (kind: 'avatar' | 'banner') => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp,image/gif';
+    input.onchange = () => input.files?.[0] && setCropping({ file: input.files[0], kind });
+    input.click();
+  };
+  async function publishCosmetic(kind: 'nameplate' | 'name_style') {
+    const name = await askText({ title: kind === 'nameplate' ? 'Publish your nameplate' : 'Publish your name style', label: 'Name it', maxLength: 40 });
+    if (!name?.trim()) return;
+    const data = kind === 'nameplate' ? preview.nameplate_style ?? {} : preview.name_style ?? {};
+    const { error } = await supabase.from('themes').insert({ author_id: me.id, name: name.trim(), description: '', data, kind });
+    setMsg(error ? errorMessage(error) : 'Published! Find it in the Marketplace.');
+  }
   const set = (p: ProfilePatch) => setDraft((d) => ({ ...d, ...p }));
   const dirty = Object.keys(draft).length > 0;
 
@@ -286,6 +316,48 @@ function ProfileTab() {
       <div className="profile-editor">
         <div className="profile-editor-form">
           {msg && <div className="notice">{msg}</div>}
+          {cropping && (
+            <ImageCropper
+              file={cropping.file}
+              opts={cropping.kind === 'avatar' ? { aspect: 1, size: 512, round: true, title: 'Profile picture' } : { aspect: 3, size: 1500, title: 'Profile banner' }}
+              onCancel={() => setCropping(null)}
+              onDone={async (blob) => {
+                const kind = cropping.kind;
+                setCropping(null);
+                try {
+                  const path = `${me.id}/${kind}-${crypto.randomUUID().slice(0, 8)}.webp`;
+                  const { error } = await supabase.storage.from('avatars').upload(path, blob, { contentType: 'image/webp' });
+                  if (error) throw error;
+                  const url = supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+                  set(kind === 'avatar' ? { avatar_url: url } : { banner_url: url });
+                } catch (e) {
+                  setMsg(errorMessage(e));
+                }
+              }}
+            />
+          )}
+          <div className="field">
+            <div className="field-label">Pictures</div>
+            <div className="picture-buttons">
+              <button type="button" className="btn secondary small" onClick={() => pickPicture('avatar')}>
+                <Icon name="upload" size={14} /> Profile picture
+              </button>
+              {preview.avatar_url && (
+                <button type="button" className="btn link small" onClick={() => set({ avatar_url: null })}>
+                  Remove
+                </button>
+              )}
+              <button type="button" className="btn secondary small" onClick={() => pickPicture('banner')}>
+                <Icon name="image" size={14} /> Banner
+              </button>
+              {preview.banner_url && (
+                <button type="button" className="btn link small" onClick={() => set({ banner_url: null })}>
+                  Remove
+                </button>
+              )}
+            </div>
+            <span className="field-hint">Cropped on your device. Saved as WebP, which also drops hidden photo data.</span>
+          </div>
           <Field label="Display name">
             <input maxLength={32} value={preview.display_name} onChange={(e) => set({ display_name: e.target.value })} />
           </Field>
@@ -296,41 +368,116 @@ function ProfileTab() {
             <Field label="Status emoji">
               <input maxLength={8} value={preview.status_emoji ?? ''} placeholder="🎧" onChange={(e) => set({ status_emoji: e.target.value })} />
             </Field>
-            <Field label="Custom status">
-              <input maxLength={128} value={preview.status_text ?? ''} placeholder="Listening to the new album" onChange={(e) => set({ status_text: e.target.value })} />
+            <Field label="Custom status" hint={`${(preview.status_text ?? '').length}/300 · shown as a bubble on your profile`}>
+              <textarea rows={2} maxLength={300} value={preview.status_text ?? ''} placeholder="Listening to the new album" onChange={(e) => set({ status_text: e.target.value })} />
             </Field>
           </div>
           <Field label="Online status">
-            <select value={preview.presence ?? 'online'} onChange={(e) => set({ presence: e.target.value as PresenceStatus })}>
-              {PRESENCE.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
+            <Select value={preview.presence ?? 'online'} onChange={(v) => set({ presence: v as PresenceStatus })} options={PRESENCE.map((p) => ({ value: p.id, label: p.label, icon: <span className={`status-dot inline ${p.id}`} /> }))} />
           </Field>
           <Field label="About me" hint={`${(preview.about ?? '').length}/190 · markdown works`}>
             <textarea maxLength={190} rows={4} value={preview.about ?? ''} onChange={(e) => set({ about: e.target.value })} />
           </Field>
-          <Field label="Avatar color">
+          <Field label="Avatar color" group>
             <ColorPicker value={preview.avatar_color} onChange={(c) => set({ avatar_color: c })} />
           </Field>
-          <Field label="Banner" aside={preview.banner_color2 ? <button className="btn link small" onClick={() => set({ banner_color2: null })}>Solid color</button> : <button className="btn link small" onClick={() => set({ banner_color2: '#000000' })}>Gradient</button>}>
+          <Field label="Banner" group aside={preview.banner_color2 ? <button className="btn link small" onClick={() => set({ banner_color2: null })}>Solid color</button> : <button className="btn link small" onClick={() => set({ banner_color2: '#000000' })}>Gradient</button>}>
             <div className="banner-pickers">
               <ColorPicker value={preview.banner_color ?? preview.avatar_color} onChange={(c) => set({ banner_color: c })} />
               {preview.banner_color2 && <ColorPicker value={preview.banner_color2} onChange={(c) => set({ banner_color2: c })} />}
             </div>
           </Field>
-          <Field label="Nameplate" hint="An animated backdrop behind your name in member lists.">
-            <div className="nameplate-grid">
-              {NAMEPLATES.map((n) => (
-                <button key={n.id} type="button" className={`nameplate-option nameplate-${n.id}${(preview.nameplate ?? 'none') === n.id ? ' selected' : ''}`} onClick={() => set({ nameplate: n.id })}>
-                  {n.label}
+          <Field label="Profile frame" group hint="An animated ring around your picture.">
+            <div className="frame-grid">
+              {FRAMES.map((f) => (
+                <button key={f.id} type="button" className={`frame-option${(preview.avatar_frame ?? 'none') === f.id ? ' selected' : ''}`} onClick={() => set({ avatar_frame: f.id })} aria-label={f.label} title={f.label}>
+                  <Avatar profile={{ ...preview, avatar_frame: f.id }} size={44} />
+                  <span>{f.label}</span>
                 </button>
               ))}
             </div>
           </Field>
-          <Field label="Server tag" hint="Wear a tag from a server you’re in. Server owners set tags in Server Settings.">
+          <Field label="Name style" group hint="Font, colours (two or three make a gradient) and an animation.">
+            <div className="name-style-editor">
+              <Select
+                value={preview.name_style?.font ?? 'default'}
+                onChange={(v) => set({ name_style: { ...(preview.name_style ?? {}), font: v as NameFont } })}
+                options={NAME_FONTS.map((f) => ({ value: f.id, label: f.label }))}
+                ariaLabel="Font"
+              />
+              <Select
+                value={preview.name_style?.effect ?? 'none'}
+                onChange={(v) => set({ name_style: { ...(preview.name_style ?? {}), effect: v as NameEffect } })}
+                options={NAME_EFFECTS.map((f) => ({ value: f.id, label: f.label }))}
+                ariaLabel="Animation"
+              />
+              <div className="name-colors">
+                {(preview.name_style?.colors ?? []).map((c, i) => (
+                  <span key={i} className="name-color">
+                    <input type="color" value={c} aria-label={`Colour ${i + 1}`} onChange={(e) => set({ name_style: { ...(preview.name_style ?? {}), colors: (preview.name_style?.colors ?? []).map((x, j) => (j === i ? e.target.value : x)) } })} />
+                    <button type="button" className="pill-x" aria-label="Remove colour" onClick={() => set({ name_style: { ...(preview.name_style ?? {}), colors: (preview.name_style?.colors ?? []).filter((_, j) => j !== i) } })}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {(preview.name_style?.colors ?? []).length < 3 && (
+                  <button type="button" className="btn secondary small" onClick={() => set({ name_style: { ...(preview.name_style ?? {}), colors: [...(preview.name_style?.colors ?? []), ['#ff6ec4', '#7873f5', '#4ade80'][(preview.name_style?.colors ?? []).length]] } })}>
+                    + Colour
+                  </button>
+                )}
+              </div>
+              <div className="name-style-preview">
+                <StyledName style={preview.name_style}>{preview.display_name}</StyledName>
+              </div>
+              <button type="button" className="btn link small" onClick={() => publishCosmetic('name_style')}>
+                Publish to the Marketplace
+              </button>
+            </div>
+          </Field>
+          <Field label="Nameplate" group hint="An animated backdrop behind your name in member lists.">
+            <div className="nameplate-grid">
+              {[...NAMEPLATES, { id: 'custom', label: 'Custom' }].map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  className={`nameplate-option nameplate-${n.id}${(preview.nameplate ?? 'none') === n.id ? ' selected' : ''}`}
+                  style={n.id === 'custom' ? nameplateVars({ nameplate: 'custom', nameplate_style: preview.nameplate_style?.colors?.length ? preview.nameplate_style : { colors: ['#ff6ec4', '#7873f5'] } }) : undefined}
+                  onClick={() => set(n.id === 'custom' && !preview.nameplate_style?.colors?.length ? { nameplate: 'custom', nameplate_style: { colors: ['#ff6ec4', '#7873f5'], pattern: 'sweep' } } : { nameplate: n.id })}
+                >
+                  {n.label}
+                </button>
+              ))}
+            </div>
+            {preview.nameplate === 'custom' && (
+              <div className="name-style-editor">
+                <div className="name-colors">
+                  {(preview.nameplate_style?.colors ?? []).map((c, i) => (
+                    <input key={i} type="color" value={c} aria-label={`Nameplate colour ${i + 1}`} onChange={(e) => set({ nameplate_style: { ...(preview.nameplate_style ?? {}), colors: (preview.nameplate_style?.colors ?? []).map((x, j) => (j === i ? e.target.value : x)) } })} />
+                  ))}
+                  {(preview.nameplate_style?.colors ?? []).length < 3 && (
+                    <button type="button" className="btn secondary small" onClick={() => set({ nameplate_style: { ...(preview.nameplate_style ?? {}), colors: [...(preview.nameplate_style?.colors ?? []), '#4ade80'] } })}>
+                      + Colour
+                    </button>
+                  )}
+                </div>
+                <Select
+                  value={preview.nameplate_style?.pattern ?? 'sweep'}
+                  onChange={(v) => set({ nameplate_style: { ...(preview.nameplate_style ?? {}), pattern: v as 'sweep' } })}
+                  options={[
+                    { value: 'sweep', label: 'Sweep' },
+                    { value: 'stripes', label: 'Stripes' },
+                    { value: 'dots', label: 'Dots' },
+                    { value: 'waves', label: 'Waves' },
+                  ]}
+                  ariaLabel="Pattern"
+                />
+                <button type="button" className="btn link small" onClick={() => publishCosmetic('nameplate')}>
+                  Publish to the Marketplace
+                </button>
+              </div>
+            )}
+          </Field>
+          <Field label="Server tag" group hint="Wear a tag from a server you’re in. Server owners set tags in Server Settings.">
             <div className="tag-options">
               <button type="button" className={`tag-option${!me.tag_server_id ? ' selected' : ''}`} onClick={() => setTag(null)}>
                 None
@@ -354,7 +501,7 @@ function ProfileTab() {
         </div>
         <div className="profile-editor-preview">
           <div className="field-label">Preview</div>
-          <div className={`profile-card mini nameplate-${preview.nameplate ?? 'none'}`}>
+          <div className={`profile-card mini nameplate-${preview.nameplate ?? 'none'}`} style={nameplateVars(preview)}>
             <div className="profile-banner" style={bannerStyle(preview)} />
             <div className="profile-head">
               <div className="profile-avatar">
@@ -363,15 +510,15 @@ function ProfileTab() {
             </div>
             <div className="profile-body">
               <h2>
-                {preview.display_name} <Badges ids={me.badges} size={16} />
+                <StyledName style={preview.name_style}>{preview.display_name}</StyledName> <Badges ids={me.badges} size={16} />
               </h2>
               <div className="muted">
                 @{me.username}
                 {preview.pronouns ? ` · ${preview.pronouns}` : ''} <ServerTag tag={me.server_tag} />
               </div>
               {(preview.status_text || preview.status_emoji) && (
-                <div className="profile-status">
-                  {preview.status_emoji} {preview.status_text}
+                <div className="status-bubble">
+                  {preview.status_emoji && <span className="status-bubble-emoji">{preview.status_emoji}</span>} {preview.status_text}
                 </div>
               )}
               {preview.about && (
@@ -381,15 +528,47 @@ function ProfileTab() {
               )}
             </div>
           </div>
-          <div className={`member nameplate-row nameplate-${preview.nameplate ?? 'none'}`}>
+          <div className={`member nameplate-row nameplate-${preview.nameplate ?? 'none'}`} style={nameplateVars(preview)}>
             <Avatar profile={preview} size={32} online />
-            <span className="member-name">{preview.display_name}</span>
+            <span className="member-name">
+              <StyledName style={preview.name_style}>{preview.display_name}</StyledName>
+            </span>
           </div>
         </div>
       </div>
     </>
   );
 }
+
+const FRAMES: { id: AvatarFrame; label: string }[] = [
+  { id: 'none', label: 'None' },
+  { id: 'neon', label: 'Neon' },
+  { id: 'flame', label: 'Flame' },
+  { id: 'frost', label: 'Frost' },
+  { id: 'rainbow', label: 'Rainbow' },
+  { id: 'gold', label: 'Gold' },
+  { id: 'sakura', label: 'Sakura' },
+  { id: 'pixel', label: 'Pixel' },
+  { id: 'orbit', label: 'Orbit' },
+  { id: 'hearts', label: 'Hearts' },
+  { id: 'glitch', label: 'Glitch' },
+];
+const NAME_FONTS: { id: NameFont; label: string }[] = [
+  { id: 'default', label: 'Default font' },
+  { id: 'serif', label: 'Serif' },
+  { id: 'mono', label: 'Code' },
+  { id: 'rounded', label: 'Rounded' },
+  { id: 'handwritten', label: 'Handwritten' },
+  { id: 'display', label: 'Bold display' },
+  { id: 'pixel', label: 'Retro' },
+];
+const NAME_EFFECTS: { id: NameEffect; label: string }[] = [
+  { id: 'none', label: 'No animation' },
+  { id: 'shimmer', label: 'Shimmer' },
+  { id: 'glow', label: 'Glow' },
+  { id: 'rainbow', label: 'Rainbow' },
+  { id: 'pulse', label: 'Pulse' },
+];
 
 // --------------------------------------------------------------- privacy --
 
@@ -533,7 +712,7 @@ interface MarketTheme {
   created_at: string;
 }
 
-function ThemeSwatch({ t }: { t: Theme }) {
+export function ThemeSwatch({ t }: { t: Theme }) {
   const v = t.vars;
   return (
     <div className="theme-swatch" style={{ background: t.wallpaper && t.wallpaper !== 'none' ? t.wallpaper : v['bg-0'] }}>
@@ -555,14 +734,15 @@ function AppearanceTab() {
   const themeId = useSettings((s) => s.themeId);
   const installed = useSettings((s) => s.installedThemes);
   const reduceMotion = useSettings((s) => s.chat.reduceMotion);
+  const serverThemes = useSettings((s) => s.serverThemes);
   const me = sessionStore.use((s) => s.me)!;
-  const [view, setView] = useState<'themes' | 'market' | 'create'>('themes');
+  const [view, setView] = useState<'themes' | 'market' | 'create' | 'looks'>('themes');
   const [market, setMarket] = useState<MarketTheme[] | null>(null);
   const [q, setQ] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
 
   const loadMarket = async () => {
-    const { data, error } = await supabase.from('themes').select('*').order('installs', { ascending: false }).order('created_at', { ascending: false }).limit(100);
+    const { data, error } = await supabase.from('themes').select('*').eq('kind', 'theme').order('installs', { ascending: false }).order('created_at', { ascending: false }).limit(100);
     if (error) setMsg(errorMessage(error));
     setMarket((data ?? []) as MarketTheme[]);
   };
@@ -593,7 +773,11 @@ function AppearanceTab() {
         <button className={view === 'create' ? 'active' : ''} onClick={() => setView('create')}>
           <Icon name="plus" size={14} /> Create a Theme
         </button>
+        <button className={view === 'looks' ? 'active' : ''} onClick={() => setView('looks')}>
+          <Icon name="image" size={14} /> Background & CSS
+        </button>
       </div>
+      {view === 'looks' && <LooksPanel />}
       {msg && <div className="notice">{msg}</div>}
       {view === 'themes' && (
         <>
@@ -622,6 +806,23 @@ function AppearanceTab() {
               </div>
             ))}
           </div>
+          <Section title="Server themes" desc="Servers can have their own colors. Choose how they apply to you.">
+            <div className="radio-cards">
+              {(
+                [
+                  ['override', 'Use the server’s look', 'While you’re in a server, its colors replace yours.'],
+                  ['merge', 'Just the accent color', 'Keep your theme, take only the server’s accent color.'],
+                  ['never', 'Always my theme', 'Ignore server themes.'],
+                ] as const
+              ).map(([id, label, desc]) => (
+                <label key={id} className={`radio-card${serverThemes === id ? ' selected' : ''}`}>
+                  <input type="radio" name="serverthemes" checked={serverThemes === id} onChange={() => updateSettings({ serverThemes: id })} />
+                  <b>{label}</b>
+                  <span className="small muted">{desc}</span>
+                </label>
+              ))}
+            </div>
+          </Section>
           <Section title="Motion">
             <Toggle label="Reduce motion" desc="Turn off animations and transitions." checked={reduceMotion} onChange={(v) => updateChat({ reduceMotion: v })} />
           </Section>
@@ -843,16 +1044,16 @@ function VoiceTab() {
   }, [testing, v.inputId, v.inputVolume, v.noiseSuppression, v.echoCancellation, v.autoGain]);
 
   const select = (kind: MediaDeviceKind, value: string, onChange: (id: string) => void) => (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">Default</option>
-      {devices
-        .filter((d) => d.kind === kind && d.deviceId && d.deviceId !== 'default')
-        .map((d, i) => (
-          <option key={d.deviceId} value={d.deviceId}>
-            {d.label || `${kind === 'audioinput' ? 'Microphone' : kind === 'audiooutput' ? 'Speaker' : 'Camera'} ${i + 1}`}
-          </option>
-        ))}
-    </select>
+    <Select
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: '', label: 'Default' },
+        ...devices
+          .filter((d) => d.kind === kind && d.deviceId && d.deviceId !== 'default')
+          .map((d, i) => ({ value: d.deviceId, label: d.label || `${kind === 'audioinput' ? 'Microphone' : kind === 'audiooutput' ? 'Speaker' : 'Camera'} ${i + 1}` })),
+      ]}
+    />
   );
 
   return (
@@ -936,9 +1137,62 @@ function ChatTab() {
           onChange={(v) => updateChat({ autoEmbeds: v })}
         />
         <Toggle label="Autoplay GIFs" checked={c.gifAutoplay} onChange={(v) => updateChat({ gifAutoplay: v })} />
+        <Toggle
+          label="Add previews to links I send"
+          desc="Shows the site name, title and description under your links. Venband’s server fetches the page for you (people you chat with never contact the site), and the preview is encrypted with your message."
+          checked={c.linkPreviews}
+          onChange={(v) => updateChat({ linkPreviews: v })}
+        />
+      </Section>
+      <Section title="Link safety" desc="Venband checks links for look-alike letters, fake brand names, hidden destinations and short links before they open.">
+        <Field label="Ask before opening links">
+          <Select
+            value={c.linkWarnings}
+            onChange={(v) => updateChat({ linkWarnings: v as 'always' | 'risky' | 'off' })}
+            options={[
+              { value: 'always', label: 'For every site I haven’t trusted (recommended)' },
+              { value: 'risky', label: 'Only when a link looks risky' },
+              { value: 'off', label: 'Only for dangerous links' },
+            ]}
+          />
+        </Field>
+        <TrustedSites />
       </Section>
       <Section title="Servers">
         <Toggle label="Show join messages" desc="“Someone just joined” notices in welcome channels." checked={c.showJoins} onChange={(v) => updateChat({ showJoins: v })} />
+      </Section>
+      <Section title="Spelling" desc="Checked on this device with a built-in English dictionary — your text is never sent anywhere.">
+        <div className="radio-cards">
+          {(
+            [
+              ['off', 'Off', 'No spell checking.'],
+              ['suggest', 'Underline mistakes', 'Wavy underline under misspelled words. Right-click (or long-press) a word, or highlight it, for corrections.'],
+              ['auto', 'Fix automatically', 'Common typos are corrected hands-free as you type (teh → the, dont → don’t).'],
+            ] as const
+          ).map(([id, label, desc]) => (
+            <label key={id} className={`radio-card${c.autocorrect === id ? ' selected' : ''}`}>
+              <input type="radio" name="autocorrect" checked={c.autocorrect === id} onChange={() => updateChat({ autocorrect: id })} />
+              <b>{label}</b>
+              <span className="small muted">{desc}</span>
+            </label>
+          ))}
+        </div>
+      </Section>
+      <Section title="Code blocks" desc="Colours for ```code``` in messages, like your code editor.">
+        <Select value={c.codeTheme} onChange={(v) => updateChat({ codeTheme: v as typeof c.codeTheme })} options={CODE_THEMES.map((t) => ({ value: t.id, label: t.label }))} />
+        <div className="md-codeblock-preview">
+          <Markdown text={'```js\n// greet everyone\nconst names = ["Sam", "Ari"];\nfor (const n of names) console.log(`Hi ${n}!`, 42);\n```'} />
+        </div>
+      </Section>
+      <Section title="Messages">
+        <Toggle
+          label="Send long messages as a file"
+          desc="Messages over 2,000 characters are sent as message.txt instead of a giant wall of text."
+          checked={c.longTextAsFile}
+          onChange={(v) => updateChat({ longTextAsFile: v })}
+        />
+        <Toggle label="Keep unsent drafts" desc="If you leave a conversation (or close Venband) while typing, your text is still there when you come back. Stored on this device only." checked={c.saveDrafts} onChange={(v) => updateChat({ saveDrafts: v })} />
+        <Toggle label="24-hour clock" checked={c.clock24} onChange={(v) => updateChat({ clock24: v })} />
       </Section>
       <Section title="Formatting cheat sheet">
         <div className="md-cheats">
@@ -962,28 +1216,27 @@ function LanguageTab() {
   const language = useSettings((s) => s.language);
   const mode = useSettings((s) => s.translateMode);
   const me = sessionStore.use((s) => s.me)!;
-  const supported = translationSupported();
+  const device = deviceTranslationSupported();
   return (
     <>
       <h2>Language</h2>
       <Section title="Your language" desc="Messages in other languages can be translated into this one.">
-        <select
+        <Select
           value={language || navigator.language.split('-')[0]}
-          onChange={(e) => {
-            updateSettings({ language: e.target.value });
-            updateMyProfile({ language: e.target.value }).catch(() => {});
+          searchable
+          onChange={(v) => {
+            updateSettings({ language: v });
+            updateMyProfile({ language: v }).catch(() => {});
             void me;
           }}
-        >
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.native} — {l.name}
-            </option>
-          ))}
-        </select>
+          options={LANGUAGES.map((l) => ({ value: l.code, label: `${l.native} — ${l.name}` }))}
+        />
       </Section>
       <Section title="Translation" desc="Translation happens on your device, so encrypted messages stay private.">
-        {!supported && <div className="notice small">Your browser doesn’t have built-in translation yet. Use a recent Chrome or Edge (version 138 or newer).</div>}
+        <div className="notice small">
+          Venband has a built-in phrasebook ({PHRASEBOOK_SIZE} common phrases and words in {PHRASEBOOK_LANGS.length} languages), so translation always works with nothing to download.
+          {device ? ' Your browser also has on-device translation, which Venband uses when its language model is ready for full sentences.' : ''}
+        </div>
         <div className="radio-cards">
           {(
             [
@@ -1001,5 +1254,22 @@ function LanguageTab() {
         </div>
       </Section>
     </>
+  );
+}
+
+function TrustedSites() {
+  const trusted = useSettings((s) => s.trustedDomains);
+  if (!trusted.length) return <p className="small muted">You haven’t trusted any sites yet.</p>;
+  return (
+    <div className="chip-row">
+      {trusted.map((d) => (
+        <span key={d} className="chip">
+          {d}{' '}
+          <button className="pill-x" aria-label={`Stop trusting ${d}`} onClick={() => updateSettings((s) => ({ trustedDomains: s.trustedDomains.filter((x) => x !== d) }))}>
+            ×
+          </button>
+        </span>
+      ))}
+    </div>
   );
 }

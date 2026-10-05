@@ -4,6 +4,7 @@ import { displayName, getProfile } from '../lib/directory';
 import { respondFriend, removeFriend, sendFriendRequest, setRelation, socialStore } from '../lib/social';
 import { openFriends, openServer, useDirectory } from '../hooks/data';
 import type { DmChannel } from '../lib/types';
+import { openGlobalModal } from './GlobalModals';
 import { Avatar, Icon } from './ui';
 import { Badges, VerifiedMark } from './Badges';
 import { openMenu } from './ContextMenu';
@@ -181,6 +182,9 @@ interface Discoverable {
   verified: boolean;
   members: number;
   joined: boolean;
+  categories?: string[];
+  created_at?: string;
+  vanity?: string | null;
 }
 
 export function DiscoveryView() {
@@ -196,6 +200,18 @@ export function DiscoveryView() {
     return () => clearTimeout(t);
   }, [q]);
 
+  const [cat, setCat] = useState<string | null>(null);
+  const filtered = (items ?? []).filter((s) => !cat || (s.categories ?? []).includes(cat));
+  const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const sections: [string, Discoverable[]][] =
+    q.trim() || cat
+      ? [['Results', filtered]]
+      : [
+          ['Verified communities', filtered.filter((s) => s.verified)],
+          ['Popular right now', [...filtered].filter((s) => !s.verified).sort((a, b) => b.members - a.members).slice(0, 24)],
+          ['New this month', filtered.filter((s) => (s.created_at ?? '') > monthAgo && !s.verified)],
+        ];
+
   async function join(s: Discoverable) {
     if (s.joined) return openServer(s.id);
     const { error } = await supabase.rpc('join_discoverable', { p_server: s.id });
@@ -207,37 +223,67 @@ export function DiscoveryView() {
     <main className="main discovery">
       <div className="discovery-hero">
         <h1>Find your community on Venband</h1>
-        <p>Verified servers and communities with 1,000+ members. Everything inside stays end-to-end encrypted.</p>
+        <p>Verified and approved communities. Everything inside stays end-to-end encrypted.</p>
         <div className="discovery-search">
           <Icon name="search" size={18} />
           <input placeholder="Explore communities" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </div>
-      {error && <div className="form-error">{error}</div>}
-      {!items && <div className="spinner" />}
-      <div className="discovery-grid">
-        {(items ?? []).map((s) => (
-          <button key={s.id} className="discovery-card" data-server-id={s.id} onClick={() => join(s)}>
-            <div
-              className="discovery-banner"
-              style={s.banner_url ? { backgroundImage: `url("${s.banner_url}")`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: s.banner_color ?? s.icon_color }}
-            />
-            <span className="discovery-icon" style={{ background: s.icon_color }}>
-              {s.icon_url ? <img src={s.icon_url} alt="" /> : s.name.slice(0, 2).toUpperCase()}
-            </span>
-            <div className="discovery-info">
-              <div className="discovery-name">
-                {s.verified && <VerifiedMark size={16} />} {s.name}
-              </div>
-              <p className="small muted">{s.description || 'No description yet.'}</p>
-              <div className="small muted discovery-meta">
-                <span className="online-dot" /> {s.members.toLocaleString()} members
-                {s.joined && <span className="tag-soft accent">Joined</span>}
-              </div>
-            </div>
+      <div className="chip-row discovery-cats">
+        {['All', 'Gaming', 'Music', 'Art', 'Education', 'Science & Tech', 'Entertainment', 'Community', 'Anime', 'Sports', 'Creators'].map((c) => (
+          <button key={c} className={`chip${(cat ?? 'All') === c ? ' on' : ''}`} onClick={() => setCat(c === 'All' ? null : c)}>
+            {c}
           </button>
         ))}
       </div>
+      {error && <div className="form-error">{error}</div>}
+      {!items && <div className="spinner" />}
+      {sections.map(([title, list]) =>
+        list.length ? (
+          <section key={title} className="discovery-section">
+            {sections.length > 1 && <h2>{title}</h2>}
+            <div className="discovery-grid">
+              {list.map((s) => (
+                <button key={`${title}-${s.id}`} className="discovery-card" data-server-id={s.id} onClick={() => join(s)}>
+                  <div
+                    className="discovery-banner"
+                    style={s.banner_url ? { backgroundImage: `url("${s.banner_url}")`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: s.banner_color ?? s.icon_color }}
+                  />
+                  <span className="discovery-icon" style={{ background: s.icon_color }}>
+                    {s.icon_url ? <img src={s.icon_url} alt="" /> : s.name.slice(0, 2).toUpperCase()}
+                  </span>
+                  <div className="discovery-info">
+                    <div className="discovery-name">
+                      {s.verified && <VerifiedMark size={16} />} {s.name}
+                    </div>
+                    <p className="small muted">{s.description || 'No description yet.'}</p>
+                    <div className="small muted discovery-meta">
+                      <span className="online-dot" /> {s.members.toLocaleString()} members
+                      {s.joined && <span className="tag-soft accent">Joined</span>}
+                      {(s.categories ?? []).slice(0, 2).map((c) => (
+                        <span key={c} className="tag-soft">
+                          {c}
+                        </span>
+                      ))}
+                      <span
+                        className="discovery-preview"
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openGlobalModal({ kind: 'server-preview', serverId: s.id });
+                        }}
+                      >
+                        Preview
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null,
+      )}
       {items && !items.length && (
         <div className="empty-state small">
           <Icon name="compass" size={48} />

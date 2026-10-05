@@ -49,12 +49,50 @@ function csp(env: Record<string, string>): Plugin {
   };
 }
 
+// In development, serve the Vercel functions in /api (link previews, media proxy).
+function devApi(env: Record<string, string>): Plugin {
+  return {
+    name: 'venband-dev-api',
+    configureServer(server) {
+      Object.assign(process.env, env);
+      server.middlewares.use(async (req, res, next) => {
+        const m = req.url?.match(/^\/api\/([a-z-]+)(\?|$)/);
+        if (!m) return next();
+        try {
+          const mod = await import(/* @vite-ignore */ `${process.cwd()}/api/${m[1]}.js?t=${Date.now()}`);
+          const headers = new Headers();
+          for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v);
+          const method = (req.method ?? 'GET').toUpperCase();
+          const handler = mod[method];
+          if (!handler) {
+            res.statusCode = 405;
+            return res.end('method not allowed');
+          }
+          let body: Buffer | undefined;
+          if (method === 'POST') {
+            const chunks: Buffer[] = [];
+            for await (const c of req) chunks.push(c as Buffer);
+            body = Buffer.concat(chunks);
+          }
+          const response: Response = await handler(new Request(`http://localhost${req.url}`, { method, headers, body: body ? new Uint8Array(body) : undefined }));
+          res.statusCode = response.status;
+          response.headers.forEach((v, k) => res.setHeader(k, v));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        } catch {
+          res.statusCode = 404;
+          res.end('not found');
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
   return {
     // absolute so deep links like /channels/@me/123 load their assets
     base: process.env.VENBAND_BASE ?? '/',
-    plugins: [react(), csp(env)],
+    plugins: [react(), csp(env), devApi(loadEnv(mode, process.cwd(), ''))],
     build: { target: 'es2022', sourcemap: false, chunkSizeWarningLimit: 900 },
   };
 });

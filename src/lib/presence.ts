@@ -19,6 +19,8 @@ export interface PresenceMeta {
   user_id: string;
   session: string;
   voice_channel_id: string | null;
+  /** when they joined that voice channel (ms) — calls only ring for a short while after this */
+  voice_since: number | null;
   muted: boolean;
   deafened: boolean;
   video: boolean;
@@ -29,6 +31,7 @@ interface PresenceRow {
   user_id: string;
   session: string;
   voice_channel_id: string | null;
+  voice_since?: number | null;
 }
 
 interface Flags {
@@ -65,9 +68,10 @@ interface Scope {
 
 const scopes = new Map<string, Scope>();
 let myUserId = '';
-let voiceState: Flags & { scope: string | null; voice_channel_id: string | null } = {
+let voiceState: Flags & { scope: string | null; voice_channel_id: string | null; since: number | null } = {
   scope: null,
   voice_channel_id: null,
+  since: null,
   muted: false,
   deafened: false,
   video: false,
@@ -91,7 +95,7 @@ function inCallHere(s: Scope) {
 function desiredRow(s: Scope): PresenceRow | null {
   const vc = inCallHere(s);
   if (!vc && s.onlineRefs <= 0) return null; // listen-only scope
-  return { user_id: myUserId, session: TAB_SESSION, voice_channel_id: vc };
+  return { user_id: myUserId, session: TAB_SESSION, voice_channel_id: vc, voice_since: vc ? voiceState.since : null };
 }
 
 const rowKey = (r: PresenceRow | null | undefined) => (r ? `${r.user_id}|${r.session}|${r.voice_channel_id ?? ''}` : 'none');
@@ -102,6 +106,7 @@ function recompute(s: Scope) {
   s.merged = s.rows.map((r) => ({
     ...r,
     voice_channel_id: r.voice_channel_id ?? null,
+    voice_since: r.voice_channel_id ? (r.voice_since ?? null) : null,
     ...(r.session === TAB_SESSION ? (inCallHere(s) ? myFlags() : NO_FLAGS) : (s.flags.get(r.session) ?? NO_FLAGS)),
   }));
   s.listeners.forEach((l) => l());
@@ -153,12 +158,35 @@ function open(s: Scope) {
     const st = channel.presenceState<PresenceRow>();
     s.rows = Object.values(st).flatMap((arr) => {
       const m = arr[arr.length - 1] as unknown as PresenceRow;
-      return m ? [{ user_id: m.user_id, session: m.session, voice_channel_id: m.voice_channel_id ?? null }] : [];
+      return m ? [{ user_id: m.user_id, session: m.session, voice_channel_id: m.voice_channel_id ?? null, voice_since: m.voice_since ?? null }] : [];
     });
     recompute(s);
     syncPresence(s);
   });
   channel.on('presence', { event: 'join' }, () => sendFlags(s)); // tell newcomers our call flags
+  // Someone (usually a new member) can't read older messages yet: if we hold
+  // the channel's keys, wrap them for everyone who is missing them. The keys
+  // are encrypted to each member's own public key, so this reveals nothing.
+  channel.on('broadcast', { event: 'need-keys' }, ({ payload }) => {
+    const id = (payload as { channel_id?: string })?.channel_id;
+    if (!id || !/^[0-9a-f-]{36}$/.test(id)) return;
+    import('./session').then(({ sessionStore }) => {
+      const kr = sessionStore.get().keyring;
+      if (!kr) return;
+      setTimeout(() => {
+        kr.loadChannel(id)
+          .then(() => (kr.hasAnyKey(id) ? kr.distribute(id) : undefined))
+          .catch(() => {});
+      }, Math.random() * 1500);
+    });
+  });
+  // someone pressed "Call": ring the others for a little while
+  channel.on('broadcast', { event: 'ring' }, ({ payload }) => {
+    const p = payload as { channel_id?: string; from?: string };
+    if (!p?.channel_id || !p.from || p.from === myUserId) return;
+    rings.set(p.channel_id, { from: p.from, at: Date.now() });
+    ringListeners.forEach((l) => l());
+  });
   channel.on('broadcast', { event: 'voice' }, ({ payload }) => {
     const p = payload as Flags & { session: string };
     if (!p?.session) return;
@@ -260,6 +288,7 @@ const pending = new Map<string, ReturnType<typeof setTimeout>>();
 export function setVoiceState(next: Partial<typeof voiceState>) {
   const prev = voiceState;
   voiceState = { ...voiceState, ...next };
+  if (voiceState.voice_channel_id !== prev.voice_channel_id) voiceState.since = voiceState.voice_channel_id ? Date.now() : null;
   for (const id of new Set([prev.scope, voiceState.scope])) {
     const s = id ? scopes.get(id) : undefined;
     if (!s) continue;
@@ -286,4 +315,48 @@ setInterval(() => {
 
 export function onlineUserIds(scopeId: string): Set<string> {
   return new Set(scopeState(scopeId).map((m) => m.user_id));
+}
+
+/** Ask online members of a server / conversation to share keys for a channel. */
+export function requestKeys(scopeId: string, channelId: string) {
+  const send = () => scopes.get(scopeId)?.channel?.send({ type: 'broadcast', event: 'need-keys', payload: { channel_id: channelId } });
+  const s = scopes.get(scopeId);
+  if (s?.channel && s.joined) {
+    send();
+    return;
+  }
+  const release = acquireScope(scopeId);
+  setTimeout(() => {
+    send();
+    setTimeout(release, 5_000);
+  }, 2_000);
+}
+
+// ------------------------------------------------------------------ rings --
+// A call only rings when someone presses "Call", not when they rejoin, refresh
+// or are simply sitting in a call.
+const rings = new Map<string, { from: string; at: number }>();
+const ringListeners = new Set<() => void>();
+export const RING_MS = 45_000;
+
+export function ringFor(channelId: string): { from: string; at: number } | null {
+  const r = rings.get(channelId);
+  return r && Date.now() - r.at < RING_MS ? r : null;
+}
+export function subscribeRings(l: () => void) {
+  ringListeners.add(l);
+  return () => {
+    ringListeners.delete(l);
+  };
+}
+export function clearRing(channelId: string) {
+  rings.delete(channelId);
+  ringListeners.forEach((l) => l());
+}
+/** Tell the other people in a DM / group that you're calling them. */
+export function sendRing(scopeId: string, channelId: string) {
+  const send = () => scopes.get(scopeId)?.channel?.send({ type: 'broadcast', event: 'ring', payload: { channel_id: channelId, from: myUserId } });
+  // the scope may still be connecting: send now and once more shortly after
+  send();
+  setTimeout(send, 2_000);
 }

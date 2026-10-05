@@ -9,6 +9,7 @@ export type MenuItem =
   | { type: 'check'; label: string; checked: boolean; onChange: (v: boolean) => void }
   | { type: 'slider'; label: string; value: number; min: number; max: number; step?: number; format?: (v: number) => string; onChange: (v: number) => void }
   | { type: 'header'; label: ReactNode }
+  | { type: 'custom'; render: (close: () => void) => ReactNode }
   | { type: 'sep' };
 
 export type Entry = MenuItem | false | null | undefined | 0 | "";
@@ -183,6 +184,7 @@ export function ContextMenuHost() {
       {open.items.map((it, i) => {
         if (it.type === 'sep') return <div key={i} className="ctx-sep" />;
         if (it.type === 'header') return <div key={i} className="ctx-header">{it.label}</div>;
+        if (it.type === 'custom') return <div key={i}>{it.render(closeMenu)}</div>;
         if (it.type === 'check')
           return (
             <button key={i} className="ctx-item" role="menuitemcheckbox" aria-checked={it.checked} onClick={() => (it.onChange(!it.checked), closeMenu())}>

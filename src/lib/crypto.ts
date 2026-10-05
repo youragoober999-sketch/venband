@@ -355,6 +355,10 @@ export function wrapSignaturePayload(
 // ---------------------------------------------------------------- messages --
 
 export interface Attachment {
+  /** blurred until clicked */
+  spoiler?: boolean;
+  /** caption / alt text for screen readers */
+  alt?: string;
   path: string;
   name: string;
   mime: string;
@@ -373,6 +377,12 @@ export interface MessagePayload {
   sentAt: number;
   /** set when this message was forwarded from somewhere else */
   forwarded?: { author: string; at: string };
+  /** a poll: question and options stay encrypted; the server only counts option numbers */
+  poll?: { question: string; options: string[]; multi?: boolean; anonymous?: boolean; expiresAt?: number | null };
+  /** quoted message preview */
+  quote?: { id: string; author: string; text: string; channel: string };
+  /** link preview made by the sender (so receivers never contact the site) */
+  preview?: { url: string; title?: string; description?: string; siteName?: string; image?: string; themeColor?: string };
 }
 
 export interface MessageEnvelope {

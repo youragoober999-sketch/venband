@@ -1,4 +1,7 @@
+import { useEffect } from 'react';
 import { LogoGlyph } from './ui';
+import { createStore } from '../lib/store';
+import { supabase } from '../lib/supabase';
 
 export interface BadgeDef {
   id: string;
@@ -6,6 +9,9 @@ export interface BadgeDef {
   color: string;
   path?: string;
   text?: string;
+  /** custom badges made by Venband owners / founders */
+  image?: string;
+  description?: string;
 }
 
 // Order = display order.
@@ -26,9 +32,33 @@ export const BADGES: BadgeDef[] = [
   { id: 'event_winner', label: 'Event Winner', color: '#ff9f0a', path: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3' },
 ];
 
-export const badgeDef = (id: string) => BADGES.find((b) => b.id === id);
+/** Badges designed in Settings → Badge Designer, loaded once. */
+export const customBadgeStore = createStore<{ list: BadgeDef[]; loaded: boolean }>({ list: [], loaded: false });
+let loadingCustom: Promise<void> | null = null;
+export function loadCustomBadges(force = false) {
+  if (loadingCustom && !force) return loadingCustom;
+  loadingCustom = (async () => {
+    const { data } = await supabase.from('custom_badges').select('id, name, description, image_url').order('created_at');
+    customBadgeStore.set({
+      loaded: true,
+      list: ((data ?? []) as { id: string; name: string; description: string; image_url: string }[]).map((b) => ({ id: b.id, label: b.name, description: b.description, color: '#fff', image: b.image_url })),
+    });
+  })();
+  return loadingCustom;
+}
+export function useAllBadges(): BadgeDef[] {
+  const custom = customBadgeStore.use((s) => s.list);
+  const loaded = customBadgeStore.use((s) => s.loaded);
+  useEffect(() => {
+    if (!loaded) loadCustomBadges();
+  }, [loaded]);
+  return [...BADGES, ...custom];
+}
+
+export const badgeDef = (id: string) => BADGES.find((b) => b.id === id) ?? customBadgeStore.get().list.find((b) => b.id === id);
 
 export function BadgeIcon({ def, size = 16 }: { def: BadgeDef; size?: number }) {
+  if (def.image) return <img className="badge-icon custom" src={def.image} alt="" width={size} height={size} draggable={false} />;
   if (def.id === 'staff')
     return (
       <span className="badge-icon" style={{ color: def.color, width: size, height: size }}>
@@ -50,8 +80,9 @@ export function BadgeIcon({ def, size = 16 }: { def: BadgeDef; size?: number }) 
 
 /** Row of badges. `max` limits how many show inline (next to names). */
 export function Badges({ ids, size = 15, max }: { ids?: string[] | null; size?: number; max?: number }) {
+  const all = useAllBadges();
   if (!ids?.length) return null;
-  const defs = BADGES.filter((b) => ids.includes(b.id));
+  const defs = all.filter((b) => ids.includes(b.id));
   const shown = max ? defs.slice(0, max) : defs;
   return (
     <span className="badges">

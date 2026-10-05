@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self' data:" />
+<title>Venband update</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif; background: #050507; color: #f5f5f7; -webkit-app-region: drag; }
+  body { display: grid; place-items: center; overflow: hidden; }
+  .glow { position: fixed; inset: -30%; background: radial-gradient(40% 40% at 50% 40%, #5865f233, transparent 70%), radial-gradient(30% 30% at 70% 70%, #3ba55d22, transparent 70%); animation: drift 12s ease-in-out infinite alternate; }
+  @keyframes drift { to { transform: translate(4%, -3%) scale(1.05); } }
+  .card { position: relative; width: min(520px, 90vw); text-align: center; padding: 40px 36px 32px; border-radius: 28px; background: #0f0f14cc; border: 1px solid #ffffff14; box-shadow: 0 30px 90px #000c; backdrop-filter: blur(20px); -webkit-app-region: no-drag; animation: pop .45s cubic-bezier(.2,1.4,.4,1) both; }
+  @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.96); } }
+  .logo { width: 84px; height: 84px; margin: 0 auto 18px; border-radius: 22px; display: block; animation: float 3s ease-in-out infinite; }
+  @keyframes float { 50% { transform: translateY(-5px); } }
+  h1 { font-size: 24px; line-height: 1.3; margin: 0 0 10px; letter-spacing: -.02em; }
+  p { color: #ffffffb3; margin: 0 0 6px; font-size: 14.5px; }
+  .ver { font-size: 13px; color: #ffffff80; }
+  .notes { text-align: left; max-height: 120px; overflow: auto; margin: 16px 0 0; padding: 12px 14px; border-radius: 12px; background: #ffffff0a; font-size: 13px; color: #ffffffb3; white-space: pre-wrap; }
+  .notes:empty { display: none; }
+  button { margin-top: 22px; width: 100%; height: 48px; border: 0; border-radius: 14px; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer; color: #000; background: #fff; transition: transform .15s, background .15s; }
+  button:hover { background: #e8e8ee; } button:active { transform: scale(.98); } button:disabled { opacity: .6; cursor: default; }
+  .later { margin-top: 10px; height: 38px; background: transparent; color: #ffffffb3; font-weight: 500; font-size: 14px; display: none; }
+  .bar { height: 6px; border-radius: 3px; background: #ffffff1a; overflow: hidden; margin-top: 20px; display: none; }
+  .bar > span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #5865f2, #3ba55d); transition: width .3s; }
+  .err { color: #ff6b6b; font-size: 13px; margin-top: 12px; min-height: 1em; }
+</style>
+</head>
+<body>
+  <div class="glow"></div>
+  <main class="card" role="dialog" aria-labelledby="t">
+    <img class="logo" src="../build/icon.png" alt="" />
+    <h1 id="t">A new update of venband is available, press update to continue using venband</h1>
+    <p class="ver" id="ver"></p>
+    <div class="notes" id="notes"></div>
+    <div class="bar" id="bar"><span id="fill"></span></div>
+    <button id="go" autofocus>Update</button>
+    <button class="later" id="later">Not now</button>
+    <div class="err" id="err" role="alert"></div>
+  </main>
+  <script src="update.js"></script>
+</body>
+</html>

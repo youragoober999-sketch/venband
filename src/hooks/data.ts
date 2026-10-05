@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { createStore } from '../lib/store';
 import { directoryVersion, loadProfiles, subscribeDirectory } from '../lib/directory';
-import { acquireScope, scopeState, subscribeScope, type PresenceMeta } from '../lib/presence';
+import { acquireScope, requestKeys, scopeState, subscribeScope, type PresenceMeta } from '../lib/presence';
 import { computePermissions } from '../lib/permissions';
 import type { DecryptedMessage } from '../lib/keyring';
 import type { Channel, DmChannel, Member, MemberRole, MessageRow, Role, Server } from '../lib/types';
@@ -128,7 +128,8 @@ export function useMyServers(onMessage?: (row: MessageRow) => void) {
     const ids = (memberships ?? []).map((m) => m.server_id);
     const { data: srv } = ids.length ? await supabase.from('servers').select('*').in('id', ids) : { data: [] };
     const order = new Map((memberships ?? []).map((m) => [m.server_id, m.joined_at]));
-    setServers(((srv ?? []) as Server[]).sort((a, b) => (order.get(a.id)! < order.get(b.id)! ? -1 : 1)));
+    // deleted servers wait in Settings → Security for 7 days
+    setServers(((srv ?? []) as Server[]).filter((x) => x.status !== 'deleted').sort((a, b) => (order.get(a.id)! < order.get(b.id)! ? -1 : 1)));
 
     const { data: parts } = await supabase.from('dm_participants').select('channel_id, user_id');
     const byChannel = new Map<string, string[]>();
@@ -227,16 +228,19 @@ export function useServerData(serverId: string | null): ServerData {
     members: [] as Member[],
     memberRoles: [] as MemberRole[],
     channelAccess: [] as { channel_id: string; role_id: string }[],
+    serverPermissions: null as number | null,
   });
 
   const load = useCallback(async () => {
     if (!serverId) return;
-    const [s, c, r, m, mr] = await Promise.all([
+    const [s, c, r, m, mr, sp] = await Promise.all([
       supabase.from('servers').select('*').eq('id', serverId).maybeSingle(),
       supabase.from('channels').select('*').eq('server_id', serverId).order('position').order('created_at'),
       supabase.from('roles').select('*').eq('server_id', serverId).order('position', { ascending: false }),
       supabase.from('server_members').select('*').eq('server_id', serverId),
       supabase.from('member_roles').select('*').eq('server_id', serverId),
+      // the server's own answer also covers read-only states (rules not accepted, Voogle not passed)
+      supabase.rpc('server_permissions', { p_server: serverId }),
     ]);
     const channels = (c.data ?? []) as Channel[];
     const ca = channels.length
@@ -250,11 +254,12 @@ export function useServerData(serverId: string | null): ServerData {
       members: (m.data ?? []) as Member[],
       memberRoles: (mr.data ?? []) as MemberRole[],
       channelAccess: (ca.data ?? []) as { channel_id: string; role_id: string }[],
+      serverPermissions: typeof sp.data === 'number' ? sp.data : null,
     });
   }, [serverId]);
 
   useEffect(() => {
-    setState({ server: null, channels: [], roles: [], members: [], memberRoles: [], channelAccess: [] });
+    setState({ server: null, channels: [], roles: [], members: [], memberRoles: [], channelAccess: [], serverPermissions: null });
     load();
   }, [load]);
 
@@ -283,7 +288,8 @@ export function useServerData(serverId: string | null): ServerData {
         .sort((a, b) => b.position - a.position);
     const myPermissions =
       me && state.server
-        ? computePermissions(me.id, state.server.owner_id, state.roles, new Set(rolesOf(me.id).map((r) => r.id)))
+        ? computePermissions(me.id, state.server.owner_id, state.roles, new Set(rolesOf(me.id).map((r) => r.id))) &
+          (state.serverPermissions ?? 0x7fffffff)
         : 0;
     return {
       ...state,
@@ -317,7 +323,11 @@ export function useScopePresence(scopeId: string | null, opts: { online?: boolea
 
 const PAGE = 50;
 
-export function useMessages(channel: Channel | null) {
+/**
+ * Messages of a channel (main feed), or of one thread when `threadRoot` is
+ * set. Thread replies never show in the main feed.
+ */
+export function useMessages(channel: Channel | null, threadRoot: string | null = null) {
   const keyring = sessionStore.use((s) => s.keyring);
   const [messages, setMessages] = useState<DecryptedMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -328,7 +338,10 @@ export function useMessages(channel: Channel | null) {
 
   const decryptAll = useCallback(async () => {
     if (!keyring) return;
-    const rows = [...rowsRef.current.values()].sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+    const rows = [...rowsRef.current.values()]
+      .filter((r) => (threadRoot ? r.thread_root === threadRoot : !r.thread_root))
+      // stable order even when two messages share a timestamp
+      .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1));
     await loadProfiles(rows.map((r) => r.author_id));
     const cache = decCache.current;
     const out = await Promise.all(
@@ -342,19 +355,20 @@ export function useMessages(channel: Channel | null) {
       }),
     );
     setMessages(out);
-  }, [keyring]);
+  }, [keyring, threadRoot]);
 
   const fetchPage = useCallback(
     async (before?: string) => {
       if (!channelId) return;
       let q = supabase.from('messages').select('*').eq('channel_id', channelId).order('created_at', { ascending: false }).limit(PAGE);
+      q = threadRoot ? q.eq('thread_root', threadRoot) : q.is('thread_root', null);
       if (before) q = q.lt('created_at', before);
       const { data } = await q;
       for (const r of (data ?? []) as MessageRow[]) rowsRef.current.set(r.id, r);
       setHasMore((data ?? []).length === PAGE);
       await decryptAll();
     },
-    [channelId, decryptAll],
+    [channelId, decryptAll, threadRoot],
   );
 
   useEffect(() => {
@@ -384,14 +398,14 @@ export function useMessages(channel: Channel | null) {
       offKeys();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelId, keyring]);
+  }, [channelId, keyring, threadRoot]);
 
   // live updates
   useEffect(() => {
     if (!channelId || !keyring) return;
     const me = sessionStore.get().identity?.userId;
     const ch = supabase
-      .channel(`dbc:${channelId}`, { config: { private: true } })
+      .channel(`dbc:${channelId}${threadRoot ? `:t${threadRoot.slice(0, 8)}` : ''}`, { config: { private: true } })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` }, (p) => {
         if (p.eventType === 'DELETE') rowsRef.current.delete((p.old as MessageRow).id);
         else rowsRef.current.set((p.new as MessageRow).id, p.new as MessageRow);
@@ -411,7 +425,15 @@ export function useMessages(channel: Channel | null) {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [channelId, keyring, decryptAll]);
+  }, [channelId, keyring, decryptAll, threadRoot]);
+
+  // Messages we can't read yet: ask online members to share the keys (once a minute).
+  const asked = useRef(0);
+  useEffect(() => {
+    if (!channel || !messages.some((m) => m.error === 'missing-key') || Date.now() - asked.current < 60_000) return;
+    asked.current = Date.now();
+    requestKeys(channel.server_id ?? channel.id, channel.id);
+  }, [messages, channel]);
 
   const loadOlder = useCallback(() => {
     const oldest = messages[0]?.row.created_at;

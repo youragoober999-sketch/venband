@@ -1,7 +1,9 @@
-// Message translation that keeps end-to-end encryption intact: it uses the
-// browser's built-in, on-device Translator / LanguageDetector APIs, so the
-// decrypted text never leaves this device.
+// Message translation that keeps end-to-end encryption intact: decrypted text
+// never leaves this device. It uses the browser's on-device Translator when a
+// model is ready, and otherwise Venband's built-in 20-language phrasebook, so
+// translation always works without downloads or servers.
 import { getSettings } from './settings';
+import { detectLanguage, isPhraseLang, phrasebookTranslate } from './phrasebook';
 
 export const LANGUAGES: { code: string; name: string; native: string }[] = [
   { code: 'en', name: 'English', native: 'English' },
@@ -51,7 +53,8 @@ interface DetectorStatic {
 
 const g = globalThis as unknown as { Translator?: TranslatorStatic; LanguageDetector?: DetectorStatic };
 
-export const translationSupported = () => Boolean(g.Translator);
+export const translationSupported = () => true;
+export const deviceTranslationSupported = () => Boolean(g.Translator);
 
 export function myLanguage(): string {
   return getSettings().language || navigator.language.split('-')[0] || 'en';
@@ -64,14 +67,36 @@ const cache = new Map<string, Promise<Translation | null>>();
 export interface Translation {
   text: string;
   from: string;
+  /** 'device' = browser model, 'phrasebook' = built-in word lists */
+  engine: 'device' | 'phrasebook';
 }
 
 async function detect(text: string): Promise<string | null> {
-  if (!g.LanguageDetector) return null;
-  detector ??= g.LanguageDetector.create();
-  const res = await (await detector).detect(text);
-  const top = res[0];
-  return top && top.confidence > 0.5 && top.detectedLanguage !== 'und' ? top.detectedLanguage.split('-')[0] : null;
+  if (g.LanguageDetector) {
+    try {
+      detector ??= g.LanguageDetector.create();
+      const res = await (await detector).detect(text);
+      const top = res[0];
+      if (top && top.confidence > 0.5 && top.detectedLanguage !== 'und') return top.detectedLanguage.split('-')[0];
+    } catch {
+      detector = null;
+    }
+  }
+  return detectLanguage(text);
+}
+
+async function deviceTranslate(text: string, from: string, target: string): Promise<string | null> {
+  if (!g.Translator) return null;
+  const pair = `${from}>${target}`;
+  let tr = translators.get(pair);
+  if (!tr) {
+    const avail = await g.Translator.availability({ sourceLanguage: from, targetLanguage: target });
+    if (avail !== 'available' && avail !== 'readily') return null; // no model on this device: use the phrasebook
+    tr = g.Translator.create({ sourceLanguage: from, targetLanguage: target });
+    translators.set(pair, tr);
+    tr.catch(() => translators.delete(pair));
+  }
+  return (await tr).translate(text);
 }
 
 /**
@@ -83,22 +108,21 @@ export function translate(key: string, text: string, opts: { from?: string } = {
   const cacheKey = `${key}|${target}`;
   const hit = cache.get(cacheKey);
   if (hit) return hit;
-  const job = (async () => {
-    if (!g.Translator) throw new Error('Translation needs a browser with built-in translation (Chrome or Edge 138+).');
-    const plain = text.replace(/```[\s\S]*?```/g, ' ').replace(/https?:\/\/\S+/g, ' ').trim();
+  const job = (async (): Promise<Translation | null> => {
+    const plain = text.replace(/```[\s\S]*?```/g, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/<[@#][&!]?[0-9a-f-]{36}>/g, ' ').trim();
     if (!plain) return null;
     const from = opts.from ?? (await detect(plain));
     if (!from || from === target) return null;
-    const pair = `${from}>${target}`;
-    let tr = translators.get(pair);
-    if (!tr) {
-      const avail = await g.Translator.availability({ sourceLanguage: from, targetLanguage: target });
-      if (avail === 'unavailable') throw new Error(`Your browser can’t translate ${from} → ${target}.`);
-      tr = g.Translator.create({ sourceLanguage: from, targetLanguage: target });
-      translators.set(pair, tr);
-      tr.catch(() => translators.delete(pair));
+    try {
+      const out = await deviceTranslate(text, from, target);
+      if (out) return { text: out, from, engine: 'device' };
+    } catch {
+      /* fall back to the phrasebook */
     }
-    return { text: await (await tr).translate(text), from };
+    if (!isPhraseLang(from) || !isPhraseLang(target)) throw new Error(`Translation from ${languageName(from)} to ${languageName(target)} isn’t in the built-in phrasebook yet.`);
+    const out = phrasebookTranslate(text, from, target);
+    if (!out) throw new Error(`Couldn’t find these words in the ${languageName(from)} phrasebook.`);
+    return { text: out, from, engine: 'phrasebook' };
   })();
   cache.set(cacheKey, job);
   job.catch(() => cache.delete(cacheKey));

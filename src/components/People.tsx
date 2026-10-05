@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { moderate, TIMEOUTS } from './ReportViews';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { fingerprint } from '../lib/crypto';
@@ -9,10 +10,11 @@ import { removeFriend, respondFriend, sendFriendRequest, setRelation, socialStor
 import { openSettings, uiStore } from '../lib/ui';
 import type { Profile } from '../lib/types';
 import { openChannel, openServer, useDirectory, type ServerData } from '../hooks/data';
-import { Avatar, Icon, Modal } from './ui';
+import { Avatar, Icon, Modal, nameplateVars, StyledName } from './ui';
 import { Badges } from './Badges';
 import { copyText, type Entry } from './ContextMenu';
 import { askConfirm, askText } from './Dialogs';
+import { openGlobalModal } from './GlobalModals';
 import { reportUser } from '../lib/reports';
 import { Markdown } from './Markdown';
 import { startDm } from './Modals';
@@ -28,12 +30,27 @@ export const NAMEPLATES: { id: string; label: string }[] = [
   { id: 'gold', label: 'Gold' },
 ];
 
-export function ServerTag({ tag }: { tag?: string | null }) {
+/** A server's tag next to someone's name. Click it to see the server (and join, if it's open). */
+export function ServerTag({ tag, serverId }: { tag?: string | null; serverId?: string | null }) {
   if (!tag) return null;
-  return <span className="server-tag">{tag}</span>;
+  if (!serverId) return <span className="server-tag">{tag}</span>;
+  return (
+    <button
+      type="button"
+      className="server-tag clickable"
+      title="See this server"
+      onClick={(e) => {
+        e.stopPropagation();
+        openGlobalModal({ kind: 'server-preview', serverId });
+      }}
+    >
+      {tag}
+    </button>
+  );
 }
 
 export function bannerStyle(p?: Partial<Profile> | null) {
+  if (p?.banner_url) return { backgroundImage: `url("${p.banner_url}")`, backgroundSize: 'cover', backgroundPosition: 'center' };
   const a = p?.banner_color ?? p?.avatar_color ?? '#2a2a2e';
   const b = p?.banner_color2;
   return { background: b ? `linear-gradient(135deg, ${a}, ${b})` : a };
@@ -58,7 +75,7 @@ async function callUser(userId: string) {
   const { data, error } = await supabase.rpc('open_dm', { p_other: userId });
   if (error) throw error;
   openChannel('@me', data as string);
-  await joinCall(identity, data as string, data as string, displayName(userId));
+  await joinCall(identity, data as string, data as string, displayName(userId), { ring: true });
 }
 
 function report(e: unknown) {
@@ -87,6 +104,7 @@ export function userMenu(userId: string, opts: { data?: ServerData; onProfile?: 
     { label: 'Profile', icon: 'user', onClick: () => (opts.onProfile ? opts.onProfile() : openProfile(userId, data?.server?.id)) },
     !self && { label: 'Message', icon: 'message', onClick: () => startDm(userId).catch(report) },
     !self && { label: 'Call', icon: 'phone', onClick: () => callUser(userId).catch(report) },
+    !self && { label: 'Invite to Server', icon: 'userPlus', onClick: () => openGlobalModal({ kind: 'invite-to-servers', userId }) },
     { type: 'sep' },
     !self && !f && !rel?.blocked && profile && {
       label: 'Add Friend',
@@ -146,6 +164,44 @@ export function userMenu(userId: string, opts: { data?: ServerData; onProfile?: 
         const { error } = await supabase.from('server_members').update({ nickname: v.trim() || null }).eq('server_id', data.server!.id).eq('user_id', me.id);
         if (error) report(error);
         else data.reload();
+      },
+    },
+    data && !self && outranks && has(p, P.MODERATE_MEMBERS) && {
+      type: 'custom',
+      render: (close) => (
+        <div className="ctx-timeouts">
+          <span className="ctx-timeouts-label">
+            <Icon name="clock" size={14} /> {member?.timeout_until && new Date(member.timeout_until) > new Date() ? 'Timed out · change' : `Time out ${name}`}
+          </span>
+          <div className="ctx-timeouts-row">
+            {TIMEOUTS.map(([label, mins]) => (
+              <button
+                key={mins}
+                className="chip small"
+                onClick={async () => {
+                  close();
+                  const t = await moderate('timeout', data.server!.id, userId, mins);
+                  if (t && !/timed out/.test(t)) report(new Error(t));
+                }}
+              >
+                {label.replace(' seconds', 's').replace(' minutes', 'm').replace(' hour', 'h').replace(' days', 'd').replace(' day', 'd').replace(' week', 'w')}
+              </button>
+            ))}
+          </div>
+        </div>
+      ),
+    },
+    data && !self && outranks && has(p, P.MODERATE_MEMBERS) && member?.timeout_until && new Date(member.timeout_until) > new Date() && {
+      label: 'Remove Timeout',
+      icon: 'clock',
+      onClick: () => supabase.rpc('timeout_member', { p_server: data.server!.id, p_user: userId, p_minutes: 0, p_reason: '' }).then(({ error }) => error && report(error)),
+    },
+    data && !self && outranks && (has(p, P.MODERATE_MEMBERS) || has(p, P.KICK_MEMBERS)) && {
+      label: `Warn ${name}`,
+      icon: 'warning',
+      onClick: async () => {
+        const t = await moderate('warn', data.server!.id, userId);
+        if (t && !/was warned/.test(t)) report(new Error(t));
       },
     },
     data && !self && outranks && has(p, P.KICK_MEMBERS) && {
@@ -245,7 +301,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
   const name = displayName(userId, member?.nickname);
   return (
     <Modal title="" onClose={onClose}>
-      <div className={`profile-card nameplate-${shown?.nameplate ?? 'none'}`}>
+      <div className={`profile-card nameplate-${shown?.nameplate ?? 'none'}`} style={nameplateVars(shown)}>
         <div className="profile-banner" style={bannerStyle(shown)} />
         <div className="profile-head">
           <div className="profile-avatar">
@@ -279,17 +335,17 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
         <div className="profile-body">
           <div className="profile-names">
             <h2>
-              {name}
+              <StyledName style={shown?.name_style}>{name}</StyledName>
               <Badges ids={shown?.badges} size={18} />
             </h2>
             <div className="muted">
               @{shown?.username}
               {shown?.pronouns ? ` · ${shown.pronouns}` : ''}
-              <ServerTag tag={shown?.server_tag} />
+              <ServerTag tag={shown?.server_tag} serverId={shown?.tag_server_id} />
             </div>
             {(shown?.status_text || shown?.status_emoji) && (
-              <div className="profile-status">
-                {shown.status_emoji} {shown.status_text}
+              <div className="status-bubble" role="note" aria-label="Status">
+                {shown.status_emoji && <span className="status-bubble-emoji">{shown.status_emoji}</span>} {shown.status_text}
               </div>
             )}
             {rel?.blocked && <div className="notice small">You blocked this person.</div>}

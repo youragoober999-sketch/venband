@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { gifsEnabled, reportGifShare, searchGifs, trendingGifs } from '../lib/klipy';
 import { imagesToGif } from '../lib/gifenc';
 import { updateSettings, useSettings, type GifFavorite } from '../lib/settings';
+import { expressionStore } from '../lib/expressions';
 import { errorMessage } from '../lib/supabase';
 import { Icon } from './ui';
 
-type Tab = 'favorites' | 'search' | 'make';
+type Tab = 'favorites' | 'search' | 'server' | 'make';
 
 export function toggleGifFavorite(g: GifFavorite) {
   updateSettings((s) => ({
@@ -23,6 +24,7 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const serverItems = expressionStore.use((st) => st.list).filter((x) => x.kind === 'gif' || x.kind === 'sticker');
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -85,6 +87,11 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
             <Icon name="search" size={14} /> Search
           </button>
         )}
+        {serverItems.length > 0 && (
+          <button className={tab === 'server' ? 'active' : ''} onClick={() => setTab('server')}>
+            <Icon name="home" size={14} /> Server
+          </button>
+        )}
         <button className={tab === 'make' ? 'active' : ''} onClick={() => setTab('make')}>
           <Icon name="sparkles" size={14} /> Make a GIF
         </button>
@@ -100,6 +107,23 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
             onClose();
           }}
         />
+      ) : tab === 'server' ? (
+        <div className="gif-grid">
+          {serverItems.map((x) => (
+            <button
+              key={x.id}
+              className="gif-tile server-expr"
+              title={`${x.kind === 'sticker' ? 'Sticker' : 'GIF'} :${x.name}: · ${x.server_name}`}
+              onClick={() => {
+                onPick(x.kind === 'sticker' ? `<s:${x.name}:${x.id}>` : x.url);
+                onClose();
+              }}
+            >
+              <img src={x.url} alt={x.name} loading="lazy" />
+              <span className="small">{x.kind === 'sticker' ? 'Sticker' : 'GIF'} · {x.server_name}</span>
+            </button>
+          ))}
+        </div>
       ) : (
         <div className="gif-grid">
           {(tab === 'favorites' ? favorites : items).map((g) => (
@@ -120,15 +144,38 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
   );
 }
 
+/** Star toggle: filled + a little pop when favorited, click the filled star to unfavorite. */
+export function FavoriteStar({ g, fav, className = '' }: { g: GifFavorite; fav: boolean; className?: string }) {
+  const [burst, setBurst] = useState(0);
+  return (
+    <button
+      type="button"
+      className={`gif-star${fav ? ' on' : ''}${className ? ' ' + className : ''}`}
+      title={fav ? 'Remove from favorites' : 'Add to favorites'}
+      aria-label={fav ? 'Remove from favorites' : 'Add to favorites'}
+      aria-pressed={fav}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!fav) setBurst((b) => b + 1);
+        toggleGifFavorite(g);
+      }}
+    >
+      <span key={burst} className={burst && fav ? 'star-pop' : undefined}>
+        <Icon name="star" size={16} filled={fav} />
+      </span>
+      {burst > 0 && fav && <span key={`b${burst}`} className="star-burst" aria-hidden />}
+    </button>
+  );
+}
+
 function GifTile({ g, fav, onPick }: { g: GifFavorite; fav: boolean; onPick: () => void }) {
   return (
     <div className="gif-tile" style={{ aspectRatio: `${g.width || 1} / ${g.height || 1}` }}>
       <button className="gif-img" onClick={onPick} title="Send">
         <img src={g.preview} alt="" loading="lazy" />
       </button>
-      <button className={`gif-star${fav ? ' on' : ''}`} title={fav ? 'Remove from favorites' : 'Add to favorites'} onClick={() => toggleGifFavorite(g)}>
-        <Icon name="star" size={16} />
-      </button>
+      <FavoriteStar g={g} fav={fav} />
     </div>
   );
 }

@@ -13,6 +13,17 @@ export interface GifFavorite {
   height: number;
 }
 
+export interface ServerFolder {
+  id: string;
+  name: string;
+  color: string;
+  servers: string[];
+  pinned?: boolean;
+  muted?: boolean;
+}
+
+export type CodeTheme = 'vscode-dark' | 'vs-2026' | 'github-dark' | 'monokai' | 'one-dark' | 'vscode-light';
+
 export interface Settings {
   themeId: string;
   installedThemes: Theme[];
@@ -34,7 +45,40 @@ export interface Settings {
     gifAutoplay: boolean;
     showJoins: boolean;
     reduceMotion: boolean;
+    /** spelling: off, underline + right-click suggestions, or fix automatically */
+    autocorrect: 'off' | 'suggest' | 'auto';
+    /** colours for code blocks */
+    codeTheme: CodeTheme;
+    /** messages over 2000 characters are sent as a .txt file */
+    longTextAsFile: boolean;
+    /** keep unsent text per conversation on this device */
+    saveDrafts: boolean;
+    clock24: boolean;
+    /** images / videos / GIFs / link embeds: load automatically or on click */
+    mediaAutoload: 'always' | 'wifi' | 'click';
+    /** attach previews (site name, title, description) to links you send */
+    linkPreviews: boolean;
+    /** ask before opening links: every untrusted site, only risky ones, or never */
+    linkWarnings: 'always' | 'risky' | 'off';
   };
+  /** sites you chose to trust in the "Leaving Venband" dialog */
+  trustedDomains: string[];
+  /** a picture from your files behind the app (the picture itself stays on each device) */
+  background: { enabled: boolean; dim: number; blur: number };
+  /** your own CSS, cleaned before use */
+  customCss: { enabled: boolean; code: string };
+  /** how often each emoji was used (for autocomplete ranking) */
+  emojiUsage: Record<string, number>;
+  /** most recent reactions first */
+  recentReactions: string[];
+  /** server list order and folders */
+  rail: { order: string[]; folders: ServerFolder[] };
+  /** how server themes apply to you */
+  serverThemes: 'override' | 'merge' | 'never';
+  /** per-user soundboard volume (0-100) and muted soundboards */
+  soundboard: { volume: number; perUser: Record<string, number>; muted: string[]; joinSound: string | null };
+  /** DM list organisation */
+  dms: { pinned: string[]; archived: string[]; folders: { id: string; name: string; channels: string[] }[]; mutedUntil: Record<string, number> };
   gifFavorites: GifFavorite[];
   layout: { sidebar: number; members: number; callHeight: number };
   /** per-user stream / voice volume, percent (0-200) */
@@ -57,7 +101,29 @@ export const DEFAULT_SETTINGS: Settings = {
     streamRes: 1080,
     streamFps: 30,
   },
-  chat: { autoEmbeds: false, gifAutoplay: true, showJoins: true, reduceMotion: false },
+  chat: {
+    autoEmbeds: false,
+    gifAutoplay: true,
+    showJoins: true,
+    reduceMotion: false,
+    autocorrect: 'suggest',
+    codeTheme: 'vscode-dark',
+    longTextAsFile: true,
+    saveDrafts: true,
+    clock24: false,
+    mediaAutoload: 'always',
+    linkPreviews: true,
+    linkWarnings: 'always',
+  },
+  trustedDomains: [],
+  background: { enabled: false, dim: 35, blur: 18 },
+  customCss: { enabled: false, code: '' },
+  emojiUsage: {},
+  recentReactions: [],
+  dms: { pinned: [], archived: [], folders: [], mutedUntil: {} },
+  rail: { order: [], folders: [] },
+  serverThemes: 'override',
+  soundboard: { volume: 80, perUser: {}, muted: [], joinSound: null },
   gifFavorites: [],
   layout: { sidebar: 248, members: 248, callHeight: 320 },
   volumes: {},
@@ -86,7 +152,35 @@ function merge(raw: unknown): Settings {
     layout: { ...DEFAULT_SETTINGS.layout, ...(r.layout ?? {}) },
     gifFavorites: Array.isArray(r.gifFavorites) ? r.gifFavorites.slice(0, 200) : [],
     volumes: r.volumes && typeof r.volumes === 'object' ? r.volumes : {},
+    emojiUsage: r.emojiUsage && typeof r.emojiUsage === 'object' ? trimUsage(r.emojiUsage) : {},
+    recentReactions: Array.isArray(r.recentReactions) ? r.recentReactions.filter((x) => typeof x === 'string').slice(0, 8) : [],
+    rail: {
+      order: Array.isArray(r.rail?.order) ? r.rail!.order.filter((x) => typeof x === 'string').slice(0, 300) : [],
+      folders: Array.isArray(r.rail?.folders) ? r.rail!.folders.slice(0, 50) : [],
+    },
+    background: { ...DEFAULT_SETTINGS.background, ...(r.background ?? {}) },
+    customCss: {
+      enabled: Boolean(r.customCss?.enabled),
+      code: typeof r.customCss?.code === 'string' ? r.customCss.code.slice(0, 16_000) : '',
+    },
+    trustedDomains: Array.isArray(r.trustedDomains) ? r.trustedDomains.filter((x) => typeof x === 'string').slice(0, 200) : [],
+    serverThemes: r.serverThemes === 'merge' || r.serverThemes === 'never' ? r.serverThemes : 'override',
+    soundboard: { ...DEFAULT_SETTINGS.soundboard, ...(r.soundboard ?? {}) },
+    dms: {
+      pinned: Array.isArray(r.dms?.pinned) ? r.dms!.pinned.slice(0, 100) : [],
+      archived: Array.isArray(r.dms?.archived) ? r.dms!.archived.slice(0, 1000) : [],
+      folders: Array.isArray(r.dms?.folders) ? r.dms!.folders.slice(0, 30) : [],
+      mutedUntil: r.dms?.mutedUntil && typeof r.dms.mutedUntil === 'object' ? r.dms.mutedUntil : {},
+    },
   };
+}
+
+function trimUsage(u: Record<string, number>): Record<string, number> {
+  const top = Object.entries(u)
+    .filter(([, n]) => typeof n === 'number' && n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 150);
+  return Object.fromEntries(top);
 }
 
 const localKey = (userId: string) => `venband:settings:${userId}`;
@@ -96,6 +190,7 @@ function applySideEffects(s: Settings) {
   const theme = [...BUILT_IN_THEMES, ...s.installedThemes].find((t) => t.id === s.themeId) ?? BUILT_IN_THEMES[0];
   if (themeStore.get().active.id !== theme.id || themeStore.get().active !== theme) applyTheme(theme);
   document.documentElement.dataset.reduceMotion = s.chat.reduceMotion ? 'true' : 'false';
+  document.documentElement.dataset.codeTheme = s.chat.codeTheme;
 }
 
 /** Load settings for the signed-in user (local cache first, then the server copy). */
@@ -163,4 +258,12 @@ export function updateLayout(patch: Partial<Settings['layout']>) {
 
 export function resetSettingsStore() {
   settingsStore.set({ s: DEFAULT_SETTINGS, userId: null });
+}
+
+/** Remember that an emoji was used (autocomplete puts your favourites first). */
+export function noteEmojiUse(emoji: string, asReaction = false) {
+  updateSettings((s) => ({
+    emojiUsage: { ...s.emojiUsage, [emoji]: (s.emojiUsage[emoji] ?? 0) + 1 },
+    ...(asReaction ? { recentReactions: [emoji, ...s.recentReactions.filter((e) => e !== emoji)].slice(0, 8) } : {}),
+  }));
 }
