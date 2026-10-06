@@ -1,9 +1,7 @@
-// Message translation that keeps end-to-end encryption intact: decrypted text
-// never leaves this device. It uses the browser's on-device Translator when a
-// model is ready, and otherwise Venband's built-in 20-language phrasebook, so
-// translation always works without downloads or servers.
 import { getSettings } from './settings';
-import { detectLanguage, isPhraseLang, phrasebookTranslate } from './phrasebook';
+import { detectLanguage, isPhraseLang, loadPhrasebook, phrasebookTranslate } from './phrasebook';
+import { letterTranslate } from './letter-translate';
+
 
 export const LANGUAGES: { code: string; name: string; native: string }[] = [
   { code: 'en', name: 'English', native: 'English' },
@@ -67,8 +65,7 @@ const cache = new Map<string, Promise<Translation | null>>();
 export interface Translation {
   text: string;
   from: string;
-  /** 'device' = browser model, 'phrasebook' = built-in word lists */
-  engine: 'device' | 'phrasebook';
+  engine: 'device' | 'phrasebook' | 'letter';
 }
 
 async function detect(text: string): Promise<string | null> {
@@ -82,6 +79,7 @@ async function detect(text: string): Promise<string | null> {
       detector = null;
     }
   }
+  await loadPhrasebook();
   return detectLanguage(text);
 }
 
@@ -91,7 +89,7 @@ async function deviceTranslate(text: string, from: string, target: string): Prom
   let tr = translators.get(pair);
   if (!tr) {
     const avail = await g.Translator.availability({ sourceLanguage: from, targetLanguage: target });
-    if (avail !== 'available' && avail !== 'readily') return null; // no model on this device: use the phrasebook
+    if (avail !== 'available' && avail !== 'readily') return null;
     tr = g.Translator.create({ sourceLanguage: from, targetLanguage: target });
     translators.set(pair, tr);
     tr.catch(() => translators.delete(pair));
@@ -99,10 +97,6 @@ async function deviceTranslate(text: string, from: string, target: string): Prom
   return (await tr).translate(text);
 }
 
-/**
- * Translate `text` into the user's language. Returns null when it's already in
- * that language (or can't be detected). `key` caches per message.
- */
 export function translate(key: string, text: string, opts: { from?: string } = {}): Promise<Translation | null> {
   const target = myLanguage();
   const cacheKey = `${key}|${target}`;
@@ -116,13 +110,26 @@ export function translate(key: string, text: string, opts: { from?: string } = {
     try {
       const out = await deviceTranslate(text, from, target);
       if (out) return { text: out, from, engine: 'device' };
-    } catch {
-      /* fall back to the phrasebook */
-    }
+    } catch {}
+    await loadPhrasebook();
     if (!isPhraseLang(from) || !isPhraseLang(target)) throw new Error(`Translation from ${languageName(from)} to ${languageName(target)} isn’t in the built-in phrasebook yet.`);
     const out = phrasebookTranslate(text, from, target);
-    if (!out) throw new Error(`Couldn’t find these words in the ${languageName(from)} phrasebook.`);
-    return { text: out, from, engine: 'phrasebook' };
+if (out) return { text: out, from, engine: 'phrasebook' };
+
+// Letter-level fallback
+const letterOut = text
+  .split(/(\s+)/)
+  .map(token => {
+    if (/^\s+$/.test(token)) return token;
+    return letterTranslate(token, target) ?? token;
+  })
+  .join('');
+
+if (letterOut !== text) {
+  return { text: letterOut, from, engine: 'letter' };
+}
+
+throw new Error(`Couldn’t find these words in the ${languageName(from)} phrasebook.`);
   })();
   cache.set(cacheKey, job);
   job.catch(() => cache.delete(cacheKey));

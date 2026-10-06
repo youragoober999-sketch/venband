@@ -1,6 +1,8 @@
-// Built-in phrasebook for 20 common languages. Used to translate messages
-// when the browser has no on-device translation model: it never needs a
-// download or a server, so encrypted messages stay on this device.
+// Built-in phrasebook for 20 common languages, extendable at runtime with
+// extra languages fetched from a plain-text file on GitHub. Used to translate
+// messages when the browser has no on-device translation model: the built-in
+// set never needs a download or a server, so encrypted messages still work
+// offline; the remote set is an optional, best-effort enhancement.
 //
 // Each row is one meaning, in this column order:
 export const PHRASEBOOK_LANGS = ['en', 'es', 'pt', 'fr', 'de', 'it', 'nl', 'pl', 'tr', 'ru', 'uk', 'ar', 'hi', 'ja', 'ko', 'zh', 'vi', 'id', 'th', 'sv'] as const;
@@ -175,11 +177,16 @@ for|para/por|para/por|pour|für|per|voor|dla|için|для|для|لـ|के ल
 lol|jaja|kkkk/rsrs|mdr|haha|ahah|haha|haha|ahaha|ахах|ахах|ههههه|हाहा|笑/w|ㅋㅋㅋ|哈哈|haha|wkwk|555|haha
 `;
 
-const table: Record<PhraseLang, string[][]> = Object.fromEntries(PHRASEBOOK_LANGS.map((l) => [l, []])) as unknown as Record<PhraseLang, string[][]>;
+// Keyed by string rather than PhraseLang so languages loaded later from GitHub (see
+// loadPhrasebook below) can be merged in without a type gymnastics.
+const table: Record<string, string[][]> = Object.fromEntries(PHRASEBOOK_LANGS.map((l) => [l, []]));
 // Per language: phrase (lower-case, single-spaced) -> row index; plus the longest phrase length in words/characters.
-const index = new Map<PhraseLang, Map<string, number>>();
-const longest = new Map<PhraseLang, number>();
-const NO_SPACES = new Set<PhraseLang>(['ja', 'zh', 'th']);
+const index = new Map<string, Map<string, number>>();
+const longest = new Map<string, number>();
+const NO_SPACES = new Set<string>(['ja', 'zh', 'th']);
+// Languages the translator will actually offer: the 20 built-in ones, plus whatever
+// loadPhrasebook() successfully merges in from the remote file.
+const knownLangs = new Set<string>(PHRASEBOOK_LANGS);
 
 function norm(s: string) {
   return s.toLocaleLowerCase().replace(/[’`]/g, "'").replace(/\s+/g, ' ').trim();
@@ -200,23 +207,26 @@ rows.forEach((cells, r) => {
   });
 });
 
-const SCRIPT: [RegExp, PhraseLang][] = [
+const SCRIPT: [RegExp, string][] = [
   [/[぀-ヿ]/, 'ja'],
   [/[가-힯]/, 'ko'],
   [/[一-鿿]/, 'zh'],
   [/[฀-๿]/, 'th'],
   [/[؀-ۿ]/, 'ar'],
   [/[ऀ-ॿ]/, 'hi'],
+  [/[Ͱ-Ͽ]/, 'el'],
+  [/[\u0590-\u05FF]/, 'he'],
+  [/[\u0980-\u09FF]/, 'bn'],
 ];
 
 /** Best guess at the language of `text`, or null if it can't tell. */
-export function detectLanguage(text: string): PhraseLang | null {
+export function detectLanguage(text: string): string | null {
   for (const [re, lang] of SCRIPT) if (re.test(text)) return lang;
   const lower = norm(text);
   if (/[Ѐ-ӿ]/.test(text)) return /[іїєґ]/.test(lower) ? 'uk' : 'ru';
   const words = lower.split(/[^\p{L}']+/u).filter(Boolean);
   if (!words.length) return null;
-  let best: PhraseLang | null = null;
+  let best: string | null = null;
   let bestScore = 0;
   for (const lang of PHRASEBOOK_LANGS) {
     if (NO_SPACES.has(lang) || ['ru', 'uk', 'ar', 'hi', 'ko'].includes(lang)) continue;
@@ -243,8 +253,8 @@ export function detectLanguage(text: string): PhraseLang | null {
   return bestScore >= Math.max(1, Math.ceil(words.length / 4)) ? best : null;
 }
 
-export function isPhraseLang(code: string): code is PhraseLang {
-  return (PHRASEBOOK_LANGS as readonly string[]).includes(code);
+export function isPhraseLang(code: string): boolean {
+  return knownLangs.has(code);
 }
 
 /**
@@ -252,8 +262,9 @@ export function isPhraseLang(code: string): code is PhraseLang {
  * phrases are matched first; unknown words are kept as written.
  * Returns null if nothing could be translated.
  */
-export function phrasebookTranslate(text: string, from: PhraseLang, to: PhraseLang): string | null {
+export function phrasebookTranslate(text: string, from: string, to: string): string | null {
   if (from === to) return null;
+  if (!table[from] || !table[to]) return null;
   const m = index.get(from)!;
   const max = longest.get(from) ?? 1;
   const out: string[] = [];
@@ -324,5 +335,68 @@ function tidy(s: string) {
   return s.replace(/ +([,.!?])/g, '$1').replace(/\s{2,}/g, ' ').trim();
 }
 
-/** Number of meanings in the phrasebook (shown in settings). */
+// --- Remote phrasebook (optional) -------------------------------------------
+// A plain-text, pipe-delimited file hosted on GitHub that adds more languages
+// using the exact same row order as ROWS above (one line per meaning). It's
+// fetched once, lazily, and merged into the built-in table; if it's missing,
+// out of sync, or the device is offline, translation just falls back to the
+// 20 built-in languages and nothing breaks.
+const REMOTE_PHRASEBOOK_URL = 'https://raw.githubusercontent.com/darkinkytheonlycuh/AI-Hosting/main/language';
+
+// Column order of the remote file; must match the language skill shared with that repo.
+const REMOTE_LANGS = ['bn', 'fi', 'da', 'no', 'cs', 'el', 'he', 'ro', 'hu'] as const;
+
+let remoteLoad: Promise<void> | null = null;
+
+/**
+ * Fetches and merges the extended, remote-hosted phrasebook. Safe to call many
+ * times and from many places (translate() does, on every call) — the network
+ * request only happens once, and subsequent calls just await the same promise.
+ */
+export function loadPhrasebook(): Promise<void> {
+  remoteLoad ??= (async () => {
+    try {
+      const res = await fetch(REMOTE_PHRASEBOOK_URL, { cache: 'force-cache' });
+      if (!res.ok) return;
+      const text = await res.text();
+      const extraRows = text
+        .replace(/\r\n/g, '\n')
+        .trim()
+        .split('\n')
+        .filter((line) => line && !line.startsWith('//'))
+        .map((line) => line.split('|'));
+      // The remote file has to line up 1:1 with ROWS (same meaning per line) or a
+      // single bad merge could translate "goodbye" into "happy birthday" etc.
+      if (extraRows.length !== rows.length) {
+        console.warn(`[phrasebook] remote file has ${extraRows.length} rows, expected ${rows.length}; skipping`);
+        return;
+      }
+      for (const lang of REMOTE_LANGS) {
+        table[lang] = [];
+        index.set(lang, new Map());
+      }
+      extraRows.forEach((cells, r) => {
+        REMOTE_LANGS.forEach((lang, col) => {
+          const alts = (cells[col] ?? '')
+            .split('/')
+            .map(norm)
+            .filter((a) => a && a !== '-');
+          table[lang][r] = alts;
+          const m = index.get(lang)!;
+          for (const a of alts) {
+            if (!m.has(a)) m.set(a, r);
+            const len = NO_SPACES.has(lang) ? a.replace(/ /g, '').length : a.split(' ').length;
+            longest.set(lang, Math.max(longest.get(lang) ?? 1, len));
+          }
+        });
+      });
+      for (const lang of REMOTE_LANGS) knownLangs.add(lang);
+    } catch {
+      // offline, blocked, or the repo moved — the 20 built-in languages still work
+    }
+  })();
+  return remoteLoad;
+}
+
+/** Number of meanings in the built-in phrasebook (shown in settings). */
 export const PHRASEBOOK_SIZE = rows.length;
