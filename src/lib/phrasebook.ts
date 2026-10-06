@@ -263,12 +263,36 @@ export function isPhraseLang(code: string): boolean {
  * Returns null if nothing could be translated.
  */
 export function phrasebookTranslate(text: string, from: string, to: string): string | null {
+  return phrasebookTranslateDetailed(text, from, to)?.text ?? null;
+}
+
+export interface PhrasebookResult {
+  text: string;
+  /** phrases found in the phrasebook */
+  hits: number;
+  /** words not in the phrasebook that `fallback` rewrote */
+  fallbacks: number;
+}
+
+/**
+ * Same as phrasebookTranslate, but words the phrasebook doesn't know are passed
+ * to `fallback` (e.g. letter-by-letter spelling in the target script). Known
+ * phrases and fallback words are stitched back together in their original order.
+ * Return null from `fallback` to leave a word as written.
+ */
+export function phrasebookTranslateDetailed(
+  text: string,
+  from: string,
+  to: string,
+  fallback?: (word: string) => string | null,
+): PhrasebookResult | null {
   if (from === to) return null;
   if (!table[from] || !table[to]) return null;
   const m = index.get(from)!;
   const max = longest.get(from) ?? 1;
   const out: string[] = [];
   let hits = 0;
+  let fallbacks = 0;
   const join = NO_SPACES.has(to) ? '' : ' ';
   const pick = (r: number) => table[to][r]?.[0];
 
@@ -293,7 +317,7 @@ export function phrasebookTranslate(text: string, from: string, to: string): str
       if (!matched) plain += chars[i++];
     }
     if (plain) out.push(plain);
-    return hits ? tidy(out.join(join || ' ')) : null;
+    return hits ? { text: tidy(out.join(join || ' ')), hits, fallbacks } : null;
   }
 
   // keep punctuation and spacing by splitting into word / non-word runs
@@ -321,11 +345,14 @@ export function phrasebookTranslate(text: string, from: string, to: string): str
       }
     }
     if (!matched) {
-      out.push(words[i].w + words[i].sep);
+      const w = words[i].w;
+      const alt = w && fallback ? fallback(w) : null;
+      if (alt) fallbacks++;
+      out.push((alt ?? w) + words[i].sep);
       i++;
     }
   }
-  return hits ? tidy(out.join(NO_SPACES.has(to) ? '' : '')) : null;
+  return hits || fallbacks ? { text: tidy(out.join('')), hits, fallbacks } : null;
 }
 
 function cap(s: string) {

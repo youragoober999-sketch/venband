@@ -1,6 +1,7 @@
 import { getSettings } from './settings';
-import { detectLanguage, isPhraseLang, loadPhrasebook, phrasebookTranslate } from './phrasebook';
+import { detectLanguage, isPhraseLang, loadPhrasebook, phrasebookTranslateDetailed } from './phrasebook';
 import { letterTranslate } from './letter-translate';
+import { smartTranslate } from './smart-translate';
 
 
 export const LANGUAGES: { code: string; name: string; native: string }[] = [
@@ -65,7 +66,7 @@ const cache = new Map<string, Promise<Translation | null>>();
 export interface Translation {
   text: string;
   from: string;
-  engine: 'device' | 'phrasebook' | 'letter';
+  engine: 'device' | 'smart' | 'phrasebook' | 'letter';
 }
 
 async function detect(text: string): Promise<string | null> {
@@ -111,25 +112,41 @@ export function translate(key: string, text: string, opts: { from?: string } = {
       const out = await deviceTranslate(text, from, target);
       if (out) return { text: out, from, engine: 'device' };
     } catch {}
+
+    // If the browser translator is unavailable or fails, try the smart server translator.
+    // The endpoint should keep provider API keys on the server instead of exposing them in the client.
+    const smartOut = await smartTranslate(text, { from, target });
+    if (smartOut) return { text: smartOut, from, engine: 'smart' };
+
+    // Final fallback: the offline phrasebook/transliteration path.
     await loadPhrasebook();
-    if (!isPhraseLang(from) || !isPhraseLang(target)) throw new Error(`Translation from ${languageName(from)} to ${languageName(target)} isn’t in the built-in phrasebook yet.`);
-    const out = phrasebookTranslate(text, from, target);
-if (out) return { text: out, from, engine: 'phrasebook' };
 
-// Letter-level fallback
-const letterOut = text
-  .split(/(\s+)/)
-  .map(token => {
-    if (/^\s+$/.test(token)) return token;
-    return letterTranslate(token, target) ?? token;
-  })
-  .join('');
+    // Words the phrasebook doesn't know get spelled out in the target script.
+    // Targets with no mapped script (es, fr, ...) return null, so the word stays as written.
+    const spell = (word: string): string | null => {
+      if (!/^[A-Za-z][A-Za-z'-]*$/.test(word)) return null;
+      const spelled = letterTranslate(word.replace(/['-]/g, ''), target);
+      if (!spelled) return null;
+      const lower = spelled.toLocaleLowerCase();
+      return /^[A-Z]/.test(word) ? lower.charAt(0).toLocaleUpperCase() + lower.slice(1) : lower;
+    };
 
-if (letterOut !== text) {
-  return { text: letterOut, from, engine: 'letter' };
-}
+    const inBook = isPhraseLang(from) && isPhraseLang(target);
+    if (inBook) {
+      // known phrases are translated, unknown words are spelled, all kept in order
+      const res = phrasebookTranslateDetailed(text, from, target, spell);
+      if (res) return { text: res.text, from, engine: res.hits ? 'phrasebook' : 'letter' };
+    }
 
-throw new Error(`Couldn’t find these words in the ${languageName(from)} phrasebook.`);
+    // pair isn't covered by the phrasebook at all: spell the whole message
+    const letterOut = text
+      .split(/([^\p{L}\p{M}'-]+)/u)
+      .map((tok, i) => (i % 2 ? tok : spell(tok) ?? tok))
+      .join('');
+    if (letterOut !== text) return { text: letterOut, from, engine: 'letter' };
+
+    if (!inBook) throw new Error(`Translation from ${languageName(from)} to ${languageName(target)} isn’t in the built-in phrasebook yet.`);
+    throw new Error(`Couldn’t find these words in the ${languageName(from)} phrasebook.`);
   })();
   cache.set(cacheKey, job);
   job.catch(() => cache.delete(cacheKey));
