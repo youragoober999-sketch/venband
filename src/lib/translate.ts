@@ -34,6 +34,31 @@ export const LANGUAGES: { code: string; name: string; native: string }[] = [
   { code: 'he', name: 'Hebrew', native: 'עברית' },
   { code: 'ro', name: 'Romanian', native: 'Română' },
   { code: 'hu', name: 'Hungarian', native: 'Magyar' },
+  { code: 'bg', name: 'Bulgarian', native: 'Български' },
+  { code: 'sr', name: 'Serbian', native: 'Српски' },
+  { code: 'mk', name: 'Macedonian', native: 'Македонски' },
+  { code: 'be', name: 'Belarusian', native: 'Беларуская' },
+  { code: 'fa', name: 'Persian', native: 'فارسی' },
+  { code: 'ur', name: 'Urdu', native: 'اردو' },
+  { code: 'ne', name: 'Nepali', native: 'नेपाली' },
+  { code: 'si', name: 'Sinhala', native: 'සිංහල' },
+  { code: 'ta', name: 'Tamil', native: 'தமிழ்' },
+  { code: 'te', name: 'Telugu', native: 'తెలుగు' },
+  { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ' },
+  { code: 'ml', name: 'Malayalam', native: 'മലയാളം' },
+  { code: 'gu', name: 'Gujarati', native: 'ગુજરાતી' },
+  { code: 'pa', name: 'Punjabi', native: 'ਪੰਜਾਬੀ' },
+  { code: 'my', name: 'Burmese', native: 'မြန်မာ' },
+  { code: 'km', name: 'Khmer', native: 'ខ្មែរ' },
+  { code: 'lo', name: 'Lao', native: 'ລາວ' },
+  { code: 'ka', name: 'Georgian', native: 'ქართული' },
+  { code: 'hy', name: 'Armenian', native: 'Հայերեն' },
+  { code: 'am', name: 'Amharic', native: 'አማርኛ' },
+  { code: 'is', name: 'Icelandic', native: 'Íslenska' },
+  { code: 'af', name: 'Afrikaans', native: 'Afrikaans' },
+  { code: 'sw', name: 'Swahili', native: 'Kiswahili' },
+  { code: 'ms', name: 'Malay', native: 'Bahasa Melayu' },
+  { code: 'fil', name: 'Filipino', native: 'Filipino' },
 ];
 
 interface TranslatorLike {
@@ -145,8 +170,8 @@ export function translate(key: string, text: string, opts: { from?: string } = {
       .join('');
     if (letterOut !== text) return { text: letterOut, from, engine: 'letter' };
 
-    if (!inBook) throw new Error(`Translation from ${languageName(from)} to ${languageName(target)} isn’t in the built-in phrasebook yet.`);
-    throw new Error(`Couldn’t find these words in the ${languageName(from)} phrasebook.`);
+    if (!inBook) throw new Error(`Translation from ${languageName(from)} to ${languageName(target)} needs the on-device or online translator — no offline match was found.`);
+    throw new Error(`Couldn't find these words in the ${languageName(from)} phrasebook.`);
   })();
   cache.set(cacheKey, job);
   job.catch(() => cache.delete(cacheKey));

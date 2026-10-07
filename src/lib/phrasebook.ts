@@ -212,18 +212,39 @@ const SCRIPT: [RegExp, string][] = [
   [/[가-힯]/, 'ko'],
   [/[一-鿿]/, 'zh'],
   [/[฀-๿]/, 'th'],
+  [/[ເ-໿]/, 'lo'],
   [/[؀-ۿ]/, 'ar'],
   [/[ऀ-ॿ]/, 'hi'],
   [/[Ͱ-Ͽ]/, 'el'],
   [/[\u0590-\u05FF]/, 'he'],
   [/[\u0980-\u09FF]/, 'bn'],
+  [/[\u0A00-\u0A7F]/, 'pa'],
+  [/[\u0A80-\u0AFF]/, 'gu'],
+  [/[\u0B80-\u0BFF]/, 'ta'],
+  [/[\u0C00-\u0C7F]/, 'te'],
+  [/[\u0C80-\u0CFF]/, 'kn'],
+  [/[\u0D00-\u0D7F]/, 'ml'],
+  [/[\u0D80-\u0DFF]/, 'si'],
+  [/[\u1000-\u109F]/, 'my'],
+  [/[\u1200-\u137F]/, 'am'],
+  [/[\u1780-\u17FF]/, 'km'],
+  [/[\u0530-\u058F]/, 'hy'],
+  [/[\u10A0-\u10FF]/, 'ka'],
 ];
 
 /** Best guess at the language of `text`, or null if it can't tell. */
 export function detectLanguage(text: string): string | null {
   for (const [re, lang] of SCRIPT) if (re.test(text)) return lang;
   const lower = norm(text);
-  if (/[Ѐ-ӿ]/.test(text)) return /[іїєґ]/.test(lower) ? 'uk' : 'ru';
+  if (/[Ѐ-ӿ]/.test(text)) {
+    if (/[їєґ]/.test(lower)) return 'uk';
+    if (/ў/.test(lower)) return 'be';
+    if (/[ЂђЋћЏџ]/.test(text)) return 'sr';
+    if (/[ЌќЃѓ]/.test(text)) return 'mk';
+    if (/[а-я]ъ[а-я]/.test(lower)) return 'bg';
+    if (/[і]/.test(lower)) return 'uk';
+    return 'ru';
+  }
   const words = lower.split(/[^\p{L}']+/u).filter(Boolean);
   if (!words.length) return null;
   let best: string | null = null;
