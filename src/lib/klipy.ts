@@ -62,6 +62,19 @@ async function call(path: string, params: Record<string, string | number>): Prom
 export const searchGifs = (q: string, page = 1) => call('search', { q, page });
 export const trendingGifs = (page = 1) => call('trending', { page });
 
+/** The gif for a share-page slug, e.g. the link https://klipy.com/gifs/anime-megumin-33. */
+export async function gifBySlug(slug: string): Promise<GifFavorite | null> {
+  if (!KEY || !/^[\w-]{1,80}$/.test(slug)) return null;
+  const qs = new URLSearchParams({ slugs: slug, customer_id: customerId() });
+  const res = await fetch(`${BASE}/${encodeURIComponent(KEY)}/gifs/items?${qs}`, { referrerPolicy: 'no-referrer' });
+  if (!res.ok) throw new Error(`GIF lookup failed (${res.status})`);
+  const body = (await res.json()) as { data?: { data?: KlipyItem[] } };
+  const item = (body.data?.data ?? []).find((x) => !x.type || x.type === 'gif');
+  return item ? toGif(item) : null;
+}
+
+export type { GifFavorite } from './settings';
+
 /** Let Klipy know a GIF was shared (improves their trending). Best-effort. */
 export function reportGifShare(id: string) {
   if (!KEY || !/^\w+$/.test(id)) return;

@@ -8,6 +8,7 @@ import { highlightAuto, languageLabel } from '../lib/highlight';
 import { copyText, openMenu } from './ContextMenu';
 import { EXPRESSION_TOKEN, expressionStore, noteUnknownExpression } from '../lib/expressions';
 import { isOurAsset } from '../lib/soundboard';
+import { gifBySlug, type GifFavorite } from '../lib/klipy';
 import { useSettings } from '../lib/settings';
 
 export interface MentionContext {
@@ -279,13 +280,15 @@ function Spoiler({ children }: { children: ReactNode }) {
 // ----------------------------------------------------------------- embeds --
 
 export interface EmbedInfo {
-  kind: 'youtube' | 'spotify' | 'instagram' | 'tiktok' | 'gif';
+  kind: 'youtube' | 'spotify' | 'instagram' | 'tiktok' | 'gif' | 'klipy';
   url: string;
   src: string;
   label: string;
   tall?: boolean;
   /** playlists / albums / shows: show the track list */
   list?: boolean;
+  /** klipy share-page slug (klipy.com/gifs/<slug>); resolved to a gif when rendered */
+  slug?: string;
 }
 
 export function findEmbeds(text: string): EmbedInfo[] {
@@ -346,6 +349,10 @@ export function embedFor(raw: string): EmbedInfo | null {
   if (/(^|\.)klipy\.com$/.test(u.hostname) && /\.(gif|webp|mp4|webm)$/i.test(u.pathname)) {
     return { kind: 'gif', url: raw, src: raw, label: 'GIF' };
   }
+  if (/(^|\.)klipy\.com$/.test(u.hostname)) {
+    const m = u.pathname.match(/^\/gifs\/([\w-]{1,80})/);
+    if (m) return { kind: 'klipy', url: raw, src: raw, label: 'Klipy', slug: m[1] };
+  }
   return null;
 }
 
@@ -364,6 +371,7 @@ export function Embed({ e }: { e: EmbedInfo }) {
       return <video className="embed-gif" src={e.src} autoPlay={autoplay} loop muted playsInline controls={!autoplay} />;
     return <GifImage src={e.src} autoplay={autoplay} />;
   }
+  if (e.kind === 'klipy') return <KlipyEmbed slug={e.slug ?? ''} url={e.url} />;
   if (!loaded && !auto) {
     return (
       <div className={`embed-card ${e.kind}`}>
@@ -400,6 +408,36 @@ export function Embed({ e }: { e: EmbedInfo }) {
       />
     </div>
   );
+}
+
+function KlipyEmbed({ slug, url }: { slug: string; url: string }) {
+  const [g, setG] = useState<GifFavorite | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    gifBySlug(slug)
+      .then((x) => {
+        if (!alive) return;
+        if (x) setG(x);
+        else setFailed(true);
+      })
+      .catch(() => alive && setFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, [slug]);
+  if (failed)
+    return (
+      <div className="embed-card klipy">
+        <div className="embed-provider">Klipy</div>
+        <a className="embed-link" href={url} target="_blank" rel="noopener noreferrer nofollow">
+          {url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 80)}
+        </a>
+        <span className="small muted">Couldn't load this gif.</span>
+      </div>
+    );
+  if (!g) return <div className="embed-card klipy">Klipy · loading gif…</div>;
+  return <img className="embed-gif" src={g.url} alt="GIF" loading="lazy" />;
 }
 
 function GifImage({ src, autoplay }: { src: string; autoplay: boolean }) {

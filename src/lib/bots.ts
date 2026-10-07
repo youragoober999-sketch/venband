@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabase';
 
-export type Preset = 'custom' | 'verification' | 'management' | 'site' | 'wordle';
+export type Preset = 'custom' | 'verification' | 'management' | 'site' | 'wordle' | 'venband';
 
 export interface Application {
   id: string;
@@ -84,6 +84,12 @@ export const PRESETS: { id: Preset; name: string; blurb: string; features: strin
     name: 'Wordle',
     blurb: 'Play a shared Wordle with the whole channel.',
     features: ['/wordle starts a game', 'Guess with /guess WORD', 'Green, yellow and grey feedback every guess', 'New word each game'],
+  },
+  {
+    id: 'venband',
+    name: 'Venband',
+    blurb: 'An official moderation toolkit for your server staff.',
+    features: ['/ban, /kick and /purge', '/info and /serverinfo profile & server cards', '/lock and /unlock any channel', 'Made by the Venband team'],
   },
   {
     id: 'custom',

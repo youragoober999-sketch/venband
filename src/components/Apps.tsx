@@ -17,6 +17,7 @@ const PRESET_ART: Record<Preset, { from: string; to: string; path: string }> = {
   management: { from: '#5865f2', to: '#3b44b8', path: 'M12 8.5A3.5 3.5 0 1 0 12 15.5 3.5 3.5 0 0 0 12 8.5zm8 4.6-1.9.6-.5 1.3.9 1.8-1.6 1.6-1.8-.9-1.3.5-.6 1.9h-2.4l-.6-1.9-1.3-.5-1.8.9-1.6-1.6.9-1.8-.5-1.3L4 13.1v-2.2l1.9-.6.5-1.3-.9-1.8 1.6-1.6 1.8.9 1.3-.5.6-1.9h2.4l.6 1.9 1.3.5 1.8-.9 1.6 1.6-.9 1.8.5 1.3 1.9.6v2.2z' },
   site: { from: '#eb459e', to: '#a12d6c', path: 'M10.6 13.4a1 1 0 0 0 1.4 0l3.5-3.5a3 3 0 0 0-4.2-4.2L9.9 7.1l1.4 1.4 1.4-1.4a1 1 0 0 1 1.4 1.4l-3.5 3.5a1 1 0 0 0 0 1.4zm2.8-2.8a1 1 0 0 0-1.4 0l-3.5 3.5a3 3 0 0 0 4.2 4.2l1.4-1.4-1.4-1.4-1.4 1.4a1 1 0 0 1-1.4-1.4l3.5-3.5a1 1 0 0 0 0-1.4z' },
   wordle: { from: '#6aaa64', to: '#538d4e', path: 'M5 4h14c.6 0 1 .4 1 1v14c0 .6-.4 1-1 1H5a1 1 0 0 1-1-1V5c0-.6.4-1 1-1zm2 4v2h10V8H7zm0 4v2h10v-2H7zm0 4v2h10v-2H7z' },
+  venband: { from: '#ed4245', to: '#b32d30', path: 'M12 2 4 5v6c0 5.1 3.4 9.3 8 11 4.6-1.7 8-5.9 8-11V5l-8-3zm-1.2 14.2-3.7-3.7 1.4-1.4 2.3 2.3 4.7-4.7 1.4 1.4-6.1 6.1z' },
   custom: { from: '#7c5cff', to: '#4b2fd1', path: 'M8 7h8a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3zm1.5 4.5a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zm5 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zM11 3h2v4h-2z' },
 };
 
@@ -187,7 +188,7 @@ function AppList() {
 }
 
 function defaultName(p: Preset) {
-  return { verification: 'Gatekeeper', management: 'Helper', site: 'Site Updates', wordle: 'Wordle', custom: 'My Bot' }[p];
+  return { verification: 'Gatekeeper', management: 'Helper', site: 'Site Updates', wordle: 'Wordle', venband: 'Venband', custom: 'My Bot' }[p];
 }
 
 // ----------------------------------------------------------- dashboard ----

@@ -196,7 +196,20 @@ export function ChatView({
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [messages, joins, botMessages]);
+  }, [messages, joins, botMessages, keyStatus]);
+
+  // Images and embeds finish loading after the layout pass above, growing the
+  // list past the fold. Re-stick to the bottom on any resize while the user
+  // hasn't scrolled up, so opening a DM always lands on the newest messages.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     loadMyReports();
