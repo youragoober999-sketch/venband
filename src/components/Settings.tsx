@@ -519,7 +519,8 @@ function ProfileTab() {
               )}
             </div>
           </div>
-          <div className={`member nameplate-row nameplate-${preview.nameplate ?? 'none'}`} style={nameplateVars(preview)}>
+          <div className="preview-caption">In member lists, your nameplate looks like:</div>
+          <div className={`member nameplate-preview nameplate-row nameplate-${preview.nameplate ?? 'none'}`} style={nameplateVars(preview)}>
             <Avatar profile={preview} size={32} online />
             <span className="member-name">
               <StyledName style={preview.name_style}>{preview.display_name}</StyledName>

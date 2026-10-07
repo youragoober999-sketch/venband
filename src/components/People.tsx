@@ -51,9 +51,9 @@ export function ServerTag({ tag, serverId }: { tag?: string | null; serverId?: s
 
 export function bannerStyle(p?: Partial<Profile> | null) {
   if (p?.banner_url) return { backgroundImage: `url("${p.banner_url}")`, backgroundSize: 'cover', backgroundPosition: 'center' };
-  const a = p?.banner_color ?? p?.avatar_color ?? '#2a2a2e';
+  const a = p?.banner_color ?? p?.avatar_color ?? '#7c5cff';
   const b = p?.banner_color2;
-  return { background: b ? `linear-gradient(135deg, ${a}, ${b})` : a };
+  return { background: b ? `linear-gradient(135deg, ${a}, ${b})` : `linear-gradient(145deg, ${a} 25%, color-mix(in srgb, ${a} 45%, #000))` };
 }
 
 export function accountAge(created?: string): string {
