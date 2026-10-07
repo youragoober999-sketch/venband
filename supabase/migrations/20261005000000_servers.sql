@@ -198,15 +198,18 @@ begin
     perform set_config('venband.vanity', 'off', true);
     return null;
   end if;
-  if not exists (select 1 from public.servers s where s.id = p_server and (s.verified or public.member_count(s.id) >= 500)) then
+  if not (public.is_staff() or (select owner_id from public.servers where id = p_server) = auth.uid())
+     and not exists (select 1 from public.servers s where s.id = p_server and (s.verified or public.member_count(s.id) >= 500)) then
     raise exception 'custom links are for verified servers or servers with 500+ members';
   end if;
   if v !~ '^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$' then raise exception 'use 3-32 letters, numbers or dashes'; end if;
   -- Impersonation guard. Generic words are reserved for everyone. Brand names
-  -- (venband, voogle) are reserved too, unless you're Venband staff or the
-  -- server you manage is that brand (name starts with the word), so the real
-  -- Venband server can claim venband.gg/venband.
-  if not (public.is_staff() or (select lower(name) from public.servers where id = p_server) like v || '%') then
+  -- (venband, voogle) are reserved too, unless you're Venband staff, you own the
+  -- server you manage, or its name starts with the word, so the real Venband
+  -- server can claim venband.gg/venband.
+  if not (public.is_staff()
+          or (select owner_id from public.servers where id = p_server) = auth.uid()
+          or (select lower(name) from public.servers where id = p_server) like v || '%') then
     if v ~ '(venband|voogle)' or v in ('admin', 'staff', 'support', 'official', 'moderator', 'security', 'system', 'help') then
       raise exception 'that link is reserved';
     end if;
