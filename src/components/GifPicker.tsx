@@ -171,7 +171,7 @@ export function FavoriteStar({ g, fav, className = '' }: { g: GifFavorite; fav: 
 
 function GifTile({ g, fav, onPick }: { g: GifFavorite; fav: boolean; onPick: () => void }) {
   return (
-    <div className="gif-tile" style={{ aspectRatio: `${g.width || 1} / ${g.height || 1}` }}>
+    <div className="gif-tile">
       <button className="gif-img" onClick={onPick} title="Send">
         <img src={g.preview} alt="" loading="lazy" />
       </button>

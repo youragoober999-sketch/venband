@@ -50,7 +50,7 @@ import { ServerSettingsModal } from './ServerSettings';
 import { ContextMenuHost, copyText, openMenu, type Entry } from './ContextMenu';
 import { DialogHost, askConfirm, askText } from './Dialogs';
 import { ProfileHost, ServerTag, openProfile, userMenu } from './People';
-import { Badges, VerifiedMark } from './Badges';
+import { Badges, OwnerCrown, RoleIcon, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
 import { DiscoveryView, DonateView, FriendsView, MessageRequestsView, RequestBanner } from './Friends';
 import { Resizer } from './Resizer';
@@ -1572,6 +1572,7 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
           </div>
           {g.members.map((m) => {
             const top = data.rolesOf(m.user_id).find((r) => r.color !== '#99aab5') ?? null;
+            const iconRole = data.rolesOf(m.user_id).find((r) => r.icon) ?? null;
             const p = getProfile(m.user_id);
             const on = isOnline(m.user_id);
             return (
@@ -1585,6 +1586,7 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
                 <Avatar profile={p} size={32} online={on} />
                 <span className="member-text">
                   <span className="member-name" style={{ color: top?.color }}>
+                    {iconRole && <RoleIcon icon={iconRole.icon} size={13} />}
                     <StyledName style={p?.name_style} fallbackColor={top?.color}>
                       {displayName(m.user_id, m.nickname)}
                     </StyledName>
@@ -1597,13 +1599,7 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
                     </span>
                   )}
                 </span>
-                {data.server?.owner_id === m.user_id && (
-                  <span className="owner-crown" title="Server owner">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#ffd60a">
-                      <path d="M3 18h18l-2-11-5 4-2-6-2 6-5-4z" />
-                    </svg>
-                  </span>
-                )}
+                {data.server?.owner_id === m.user_id && <OwnerCrown size={14} label="Server owner" />}
                 {m.user_id === myId && <span className="tag-soft accent">you</span>}
               </button>
             );

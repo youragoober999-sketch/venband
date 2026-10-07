@@ -12,6 +12,7 @@ import { askConfirm, askText } from './Dialogs';
 import { showUndo } from './Undo';
 import { DiscoveryTab, ExpressionsTab, InvitesTab, JoiningTab, ThemeTab } from './ServerSettingsExtra';
 import { Select } from './Select';
+import { RoleIcon } from './Badges';
 
 type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'expressions' | 'theme' | 'joining' | 'discovery' | 'integrations' | 'voogle' | 'reports' | 'audit';
 
@@ -277,7 +278,7 @@ function Roles({ data }: { data: ServerData }) {
               </span>
             )}
             <span className="role-dot" style={{ background: r.color2 ? `linear-gradient(135deg, ${r.color}, ${r.color2})` : r.color }} />
-            {r.icon && <span className="role-icon">{r.icon}</span>}
+            {r.icon && <RoleIcon icon={r.icon} size={14} />}
             <span className="grow ellipsis">{r.name}</span>
             {!movable(r) && !r.is_default && <Icon name="lock" size={12} />}
             <span className="small muted">{data.members.filter((m) => r.is_default || data.rolesOf(m.user_id).some((x) => x.id === r.id)).length}</span>
@@ -300,6 +301,24 @@ function RoleEditor({ role, data, editable }: { role: Role; data: ServerData; ed
   const [hoist, setHoist] = useState(role.hoist);
   const [q, setQ] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
+  const [busyIcon, setBusyIcon] = useState(false);
+  const isImageIcon = (v: string) => /^(https?:)?\/\//i.test(v);
+  async function uploadIcon(file: File) {
+    setBusyIcon(true);
+    try {
+      const blob = await prepareImage(file, 64, 64, true);
+      const ext = blob.type === 'image/gif' ? 'gif' : 'webp';
+      const path = `${data.server!.id}/roles/${role.id}-${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('server-assets').upload(path, blob, { contentType: blob.type, upsert: true });
+      if (upErr) throw upErr;
+      setIcon(supabase.storage.from('server-assets').getPublicUrl(path).data.publicUrl);
+      setMsg(null);
+    } catch (e) {
+      setMsg(errorMessage(e));
+    } finally {
+      setBusyIcon(false);
+    }
+  }
   const mine = data.myPermissions;
   const dirty =
     name !== role.name || color !== role.color || color2 !== (role.color2 ?? null) || icon !== (role.icon ?? '') || description !== (role.description ?? '') ||
@@ -322,7 +341,7 @@ function RoleEditor({ role, data, editable }: { role: Role; data: ServerData; ed
         {!role.is_default && (
           <div className="role-preview">
             <span className="role-preview-name" style={color2 ? { backgroundImage: `linear-gradient(90deg, ${color}, ${color2})` } : { color }}>
-              {icon && <span className="role-icon">{icon}</span>}
+              {icon && <RoleIcon icon={icon} size={14} />}
               {name || 'Role'}
             </span>
             <span className="small muted">how names with this role look</span>
@@ -342,8 +361,25 @@ function RoleEditor({ role, data, editable }: { role: Role; data: ServerData; ed
               </Field>
             </div>
             <div className="row">
-              <Field label="Role icon" hint="an emoji, shown next to names">
-                <input maxLength={16} value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="⭐" />
+              <Field label="Role icon" hint="an emoji or picture, shown next to names">
+                <div className="copy-row">
+                  <input maxLength={300} value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="⭐" />
+                  <label className="btn secondary" style={{ cursor: 'pointer', flex: 'none' }}>
+                    {busyIcon ? 'Uploading…' : isImageIcon(icon) ? 'Change image' : 'Upload image'}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif,image/webp"
+                      hidden
+                      disabled={busyIcon}
+                      onChange={(e) => (e.target.files?.[0] && uploadIcon(e.target.files[0]), (e.target.value = ''))}
+                    />
+                  </label>
+                </div>
+                {isImageIcon(icon) && (
+                  <button type="button" className="btn link small" onClick={() => setIcon('')}>
+                    Remove image
+                  </button>
+                )}
               </Field>
               <Field label="Description">
                 <input maxLength={300} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Helps keep the server friendly" />

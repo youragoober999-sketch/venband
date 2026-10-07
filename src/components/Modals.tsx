@@ -11,6 +11,7 @@ import { ImageCropper } from './ImageCropper';
 import { askConfirm } from './Dialogs';
 import { InviteFriendsList } from './Invite';
 import { inviteCodeFrom, inviteUrl } from '../lib/dmSend';
+import { OwnerCrown } from './Badges';
 import { PERMISSION_GROUPS, PERMISSION_INFO } from '../lib/permissions';
 
 // ------------------------------------------------------ create/join server --
@@ -701,7 +702,6 @@ export function ChannelSettingsModal({ channel, data, onClose }: { channel: Chan
   const [name, setName] = useState(channel.name);
   const [topic, setTopic] = useState(channel.topic);
   const [category, setCategory] = useState(channel.category);
-  const [position, setPosition] = useState(channel.position);
   const [isPrivate, setPrivate] = useState(channel.is_private);
   const initialRoles = data.channelAccess.filter((a) => a.channel_id === channel.id).map((a) => a.role_id);
   const [roles, setRoles] = useState<string[]>(initialRoles);
@@ -711,7 +711,7 @@ export function ChannelSettingsModal({ channel, data, onClose }: { channel: Chan
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    const update: Record<string, unknown> = { name: name.trim(), topic, category, position, is_private: isPrivate };
+    const update: Record<string, unknown> = { name: name.trim(), topic, category, is_private: isPrivate };
     if (isVoice) update.settings = { ...(channel.settings ?? {}), user_limit: Math.max(0, settings.user_limit ?? 0) || null, bitrate: Math.min(384, Math.max(8, settings.bitrate ?? 64)) || null };
     const { error } = await supabase.from('channels').update(update).eq('id', channel.id);
     if (error) return setError(errorMessage(error));
@@ -776,14 +776,10 @@ export function ChannelSettingsModal({ channel, data, onClose }: { channel: Chan
               </Field>
             </div>
           )}
-          <div className="row">
-            <Field label="Category">
+          <Field label="Category">
               <Select value={category} onChange={setCategory} options={[{ value: '', label: 'No category' }, ...serverCategories(data).map((c) => ({ value: c, label: c }))]} />
             </Field>
-            <Field label="Position">
-              <input type="number" value={position} onChange={(e) => setPosition(Number(e.target.value))} />
-            </Field>
-          </div>
+            <p className="small muted">Position is set by dragging channels up and down in the server list.</p>
           <PrivateToggle data={data} isPrivate={isPrivate} setPrivate={setPrivate} roles={roles} setRoles={setRoles} />
           <p className="small muted">Removing access automatically rotates the channel’s encryption key.</p>
           <div className="modal-actions">
@@ -1029,6 +1025,8 @@ function PeoplePicker({ picked, setPicked, exclude = [] }: { picked: Profile[]; 
   );
 }
 
+export const GROUP_MAX = 20;
+
 export function NewGroupModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [picked, setPicked] = useState<Profile[]>([]);
@@ -1036,7 +1034,7 @@ export function NewGroupModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   return (
     <Modal title="New group chat" onClose={onClose}>
-      <p className="muted small">Up to 15 people. Everything in the group is end-to-end encrypted.</p>
+      <p className="muted small">Up to {GROUP_MAX} people. Everything in the group is end-to-end encrypted.</p>
       {error && <div className="form-error">{error}</div>}
       <Field label="Group name (optional)">
         <input maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder="Weekend plans" />
@@ -1074,7 +1072,7 @@ export function GroupSettingsModal({ dm, onClose }: { dm: DmChannel; onClose: ()
   const owner = dm.channel.owner_id ?? null;
   const isOwner = owner === me.id;
   const inGroup = new Set([me.id, ...dm.members.map((m) => m.id)]);
-  const full = inGroup.size >= 15;
+  const full = inGroup.size >= GROUP_MAX;
   const addable = Object.values(friends)
     .filter((f) => f.accepted && !inGroup.has(f.other))
     .map((f) => getProfile(f.other))
@@ -1103,20 +1101,14 @@ export function GroupSettingsModal({ dm, onClose }: { dm: DmChannel; onClose: ()
           </button>
         </div>
       </Field>
-      <div className="field-label">Members — {dm.members.length + 1} / 15</div>
+      <div className="field-label">Members — {dm.members.length + 1} / {GROUP_MAX}</div>
       <div className="group-members">
         {[me, ...dm.members].map((p) => (
           <div key={p.id} className="member">
             <Avatar profile={p} size={28} />
             <span className="member-name grow">
               {p.display_name}
-              {p.id === owner && (
-                <span className="owner-crown" title="Group owner">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="#ffd60a">
-                    <path d="M3 18h18l-2-11-5 4-2-6-2 6-5-4z" />
-                  </svg>
-                </span>
-              )}
+              {p.id === owner && <OwnerCrown size={13} label="Group owner" />}
             </span>
             {p.id === me.id && <span className="tag-soft accent">you</span>}
             {isOwner && p.id !== me.id && (

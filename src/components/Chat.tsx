@@ -24,7 +24,7 @@ import { containsSlur } from '../lib/automod';
 import { has, P } from '../lib/permissions';
 import { isSaved, loadSavedIds, setPinned, setSaved, useChannelExtras, type PollState, type ReactionGroup, type ThreadInfo } from '../lib/chatExtras';
 import { Avatar, Icon, StyledName } from './ui';
-import { Badges } from './Badges';
+import { Badges, OwnerCrown, RoleIcon } from './Badges';
 import { copyText, openMenu, type Entry } from './ContextMenu';
 import { askConfirm, askText } from './Dialogs';
 import { loadMyReports, myReports, reportMessage } from '../lib/reports';
@@ -664,6 +664,8 @@ export function ChatView({
                   name={nameOf(m.row.author_id)}
                   mine={mine}
                   color={colorOf(m.row.author_id)}
+                  serverOwner={!isDm && data?.server?.owner_id === m.row.author_id}
+                  groupOwner={Boolean(channel.is_group) && channel.owner_id === m.row.author_id}
                   reply={m.row.reply_to ? byId.get(m.row.reply_to) ?? null : null}
                   replyName={m.row.reply_to && byId.get(m.row.reply_to) ? nameOf(byId.get(m.row.reply_to)!.row.author_id) : ''}
                   editing={editing === m.row.id}
@@ -965,6 +967,8 @@ function MessageItem({
   name,
   mine,
   color,
+  serverOwner,
+  groupOwner,
   reply,
   replyName,
   editing,
@@ -998,6 +1002,8 @@ function MessageItem({
   name: string;
   mine: boolean;
   color?: string;
+  serverOwner: boolean;
+  groupOwner: boolean;
   reply: DecryptedMessage | null;
   replyName: string;
   editing: boolean;
@@ -1029,6 +1035,7 @@ function MessageItem({
   const time = new Date(m.row.created_at);
   const trust = trustState(m.row.author_id);
   const author = getProfile(m.row.author_id);
+  const iconRole = data?.rolesOf(m.row.author_id).find((r) => r.icon) ?? null;
   const translateMode = useSettings((s) => s.translateMode);
   const recent = useSettings((s) => s.recentReactions);
   const gifFavs = useSettings((s) => s.gifFavorites);
@@ -1226,10 +1233,13 @@ function MessageItem({
                 onClick={() => openProfile(m.row.author_id, data?.server?.id)}
                 onContextMenu={(e) => openMenu(e, userMenu(m.row.author_id, { data }))}
               >
+                {iconRole && <RoleIcon icon={iconRole.icon} size={15} />}
                 <StyledName style={author?.name_style} fallbackColor={color}>
                   {name}
                 </StyledName>
               </button>
+              {serverOwner && <OwnerCrown size={15} label="Server owner" />}
+              {groupOwner && <OwnerCrown size={15} label="Group owner" />}
               <Badges ids={author?.badges} max={4} size={15} />
               <ServerTag tag={author?.server_tag} serverId={author?.tag_server_id} />
               {trust === 'changed' && (

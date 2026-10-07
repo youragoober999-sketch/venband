@@ -11,7 +11,7 @@ import { openSettings, uiStore } from '../lib/ui';
 import type { Profile } from '../lib/types';
 import { openChannel, openServer, useDirectory, type ServerData } from '../hooks/data';
 import { Avatar, Icon, Modal, nameplateVars, StyledName } from './ui';
-import { Badges } from './Badges';
+import { Badges, OwnerCrown, RoleIcon } from './Badges';
 import { copyText, type Entry } from './ContextMenu';
 import { askConfirm, askText } from './Dialogs';
 import { openGlobalModal } from './GlobalModals';
@@ -336,6 +336,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
           <div className="profile-names">
             <h2>
               <StyledName style={shown?.name_style}>{name}</StyledName>
+              {!self && data?.server?.owner_id === userId && <OwnerCrown size={16} label="Server owner" />}
               <Badges ids={shown?.badges} size={18} />
             </h2>
             <div className="muted">
@@ -395,6 +396,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
                     {roles.map((r) => (
                       <span key={r.id} className="role-pill">
                         <span className="role-dot" style={{ background: r.color }} />
+                        {r.icon && <RoleIcon icon={r.icon} size={13} />}
                         {r.name}
                       </span>
                     ))}

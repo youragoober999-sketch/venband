@@ -79,6 +79,24 @@ export function BadgeIcon({ def, size = 16 }: { def: BadgeDef; size?: number }) 
 }
 
 /** Row of badges. `max` limits how many show inline (next to names). */
+/** Small gold crown shown next to a server or group owner. */
+export function OwnerCrown({ size = 14, label = 'Owner' }: { size?: number; label?: string }) {
+  return (
+    <span className="owner-crown" title={label} aria-label={label}>
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="#ffd60a">
+        <path d="M3 18h18l-2-11-5 4-2-6-2 6-5-4z" />
+      </svg>
+    </span>
+  );
+}
+
+/** Role icon: a line of emoji, or an image when the icon is a picture URL. */
+export function RoleIcon({ icon, size = 14 }: { icon?: string | null; size?: number }) {
+  if (!icon) return null;
+  return /^(https?:)?\/\//i.test(icon) ? <img className="role-icon" src={icon} alt="" width={size} height={size} draggable={false} /> : <span className="role-icon">{icon}</span>;
+}
+
+/** Row of badges. `max` limits how many show inline (next to names). */
 export function Badges({ ids, size = 15, max }: { ids?: string[] | null; size?: number; max?: number }) {
   const all = useAllBadges();
   if (!ids?.length) return null;
