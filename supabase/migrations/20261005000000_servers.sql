@@ -202,8 +202,13 @@ begin
     raise exception 'custom links are for verified servers or servers with 500+ members';
   end if;
   if v !~ '^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$' then raise exception 'use 3-32 letters, numbers or dashes'; end if;
-  if v ~ '(venband|voogle|admin|staff|support|official|moderator|security|system|help)' then
-    raise exception 'that link is reserved';
+  -- Impersonation words are reserved for everyone; the brand names (venband,
+  -- voogle) too, but Venband staff may claim them for their own servers.
+  -- Generic words match exactly, so e.g. "helpdesk" or "support-group" is fine.
+  if not public.is_staff() then
+    if v ~ '(venband|voogle)' or v in ('admin', 'staff', 'support', 'official', 'moderator', 'security', 'system', 'help') then
+      raise exception 'that link is reserved';
+    end if;
   end if;
   if exists (select 1 from public.servers where vanity = v and id <> p_server) then raise exception 'that link is taken'; end if;
   perform set_config('venband.vanity', 'on', true);
