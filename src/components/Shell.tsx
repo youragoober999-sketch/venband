@@ -1595,7 +1595,7 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
                     <ServerTag tag={p?.server_tag} serverId={p?.tag_server_id} />
                   </span>
                   {p?.status_text && (
-                    <span className="member-status" title={p.status_text}>
+                    <span className="status-bubble mini" title={p.status_text}>
                       {p.status_text}
                     </span>
                   )}

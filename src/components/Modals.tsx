@@ -991,7 +991,7 @@ function PeoplePicker({ picked, setPicked, exclude = [] }: { picked: Profile[]; 
               <Avatar profile={p} size={32} />
               <div className="member-text">
                 <span className="member-name">{displayName(p.id)}</span>
-                <span className="member-status">@{p.username}</span>
+                <span className="member-sub">@{p.username}</span>
               </div>
               <button
                 type="button"
