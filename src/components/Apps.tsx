@@ -106,7 +106,8 @@ function AppList() {
   const load = useCallback(async () => {
     const { data: team } = await supabase.from('application_team').select('app_id').eq('user_id', me.id);
     const ids = (team ?? []).map((t) => t.app_id as string);
-    const { data } = await supabase.from('applications').select(APP_COLUMNS).or(`owner_id.eq.${me.id}${ids.length ? `,id.in.(${ids.join(',')})` : ''}`).order('created_at');
+    const { data, error } = await supabase.from('applications').select(APP_COLUMNS).or(`owner_id.eq.${me.id}${ids.length ? `,id.in.(${ids.join(',')})` : ''}`).order('created_at');
+    setError(error ? errorMessage(error) : null);
     setApps((data ?? []) as Application[]);
   }, [me.id]);
   useEffect(() => {
@@ -156,8 +157,9 @@ function AppList() {
         </div>
       )}
       <h2>Your applications</h2>
-      {apps === null && <div className="spinner" />}
-      {apps?.length === 0 && <p className="muted">Nothing yet — pick a preset above.</p>}
+      {apps === null && !error && <div className="spinner" />}
+      {error && <div className="form-error">{error}</div>}
+      {!error && apps?.length === 0 && <p className="muted">Nothing yet — pick a preset above.</p>}
       <div className="app-list">
         {apps?.map((a) => (
           <a
@@ -197,15 +199,29 @@ function AppDashboard({ id }: { id: string }) {
   const [app, setApp] = useState<Application | null | undefined>(undefined);
   const [role, setRole] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('servers');
+  const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const [{ data }, { data: r }] = await Promise.all([supabase.from('applications').select(APP_COLUMNS).eq('id', id).maybeSingle(), supabase.rpc('app_role', { p_app: id, p_user: me.id })]);
-    setRole((r as string | null) ?? null);
-    setApp(r ? ((data as Application | null) ?? null) : null);
+    const [q, r] = await Promise.all([supabase.from('applications').select(APP_COLUMNS).eq('id', id).maybeSingle(), supabase.rpc('app_role', { p_app: id, p_user: me.id })]);
+    const role = (r.data as string | null) ?? null;
+    setRole(role);
+    if (q.error) return setError(errorMessage(q.error));
+    setApp(role ? ((q.data as Application | null) ?? null) : null);
   }, [id, me.id]);
   useEffect(() => {
     load();
   }, [load]);
-  if (app === undefined) return <div className="spinner" />;
+  if (app === undefined && !error) return <div className="spinner" />;
+  if (error)
+    return (
+      <div className="public-card center">
+        <Icon name="warning" size={28} />
+        <h2>Couldn’t load this application</h2>
+        <p className="muted">{error}</p>
+        <button className="btn primary" onClick={() => go('bots')}>
+          Your applications
+        </button>
+      </div>
+    );
   if (!app)
     return (
       <div className="public-card center">
