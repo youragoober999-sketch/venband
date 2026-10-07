@@ -973,7 +973,7 @@ input.toggle-switch:checked::after { transform: translateX(18px); }
 .device-icon { width: 44px; height: 44px; border-radius: 50%; background: var(--bg-3); display: flex; align-items: center; justify-content: center; color: var(--text-2); flex-shrink: 0; }
 .device-title { font-weight: 650; display: flex; align-items: center; gap: 8px; }
 .profile-editor { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; align-items: start; }
-.profile-editor-preview { position: sticky; top: 0; display: flex; flex-direction: column; gap: 10px; }
+.profile-editor-preview { display: flex; flex-direction: column; gap: 10px; }
 .profile-editor-preview .profile-card { background: var(--bg-1); border-radius: 12px; border: 1px solid var(--line); overflow: hidden; }
 .profile-editor-preview .profile-card .profile-avatar { border-color: var(--bg-1); background: var(--bg-1); }
 .profile-editor-preview h2 { font-size: 18px; display: flex; align-items: center; margin: 4px 0 0; }

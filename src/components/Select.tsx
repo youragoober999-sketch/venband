@@ -42,17 +42,34 @@ export function Select({
 
   useLayoutEffect(() => {
     if (!open || !btn.current) return;
-    const r = btn.current.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const h = Math.min(320, Math.max(120, shown.length * 38 + 56));
-    const below = vh - r.bottom;
-    const up = below < h && r.top > below;
-    const width = Math.min(Math.max(r.width, 200), vw - 16);
-    const maxLeft = Math.min(vw - 8, r.right - 8) - width;
-    const left = Math.max(8, Math.min(r.left, maxLeft));
-    const top = up ? Math.max(8, r.top - h - 6) : Math.min(vh - h - 8, Math.max(8, r.bottom + 6));
-    setPos({ left, top, width, up });
+    let raf = 0;
+    const measure = () => {
+      const el = btn.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const h = Math.min(320, Math.max(120, shown.length * 38 + 56));
+      const below = vh - r.bottom;
+      const up = below < h && r.top > below;
+      const width = Math.min(Math.max(r.width, 200), vw - 16);
+      const maxLeft = Math.min(vw - 8, r.right - 8) - width;
+      const left = Math.max(8, Math.min(r.left, maxLeft));
+      const top = up ? Math.max(8, r.top - h - 6) : Math.min(vh - h - 8, Math.max(8, r.bottom + 6));
+      setPos({ left, top, width, up });
+    };
+    measure();
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(measure);
+    };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
   }, [open, shown.length]);
 
   useEffect(() => {
@@ -61,14 +78,8 @@ export function Select({
     const close = (e: MouseEvent) => {
       if (!list.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setOpen(false);
     };
-    const onScroll = (e: Event) => !list.current?.contains(e.target as Node) && setOpen(false);
     window.addEventListener('mousedown', close);
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', () => setOpen(false), { once: true });
-    return () => {
-      window.removeEventListener('mousedown', close);
-      window.removeEventListener('scroll', onScroll, true);
-    };
+    return () => window.removeEventListener('mousedown', close);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
