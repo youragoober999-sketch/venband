@@ -460,18 +460,27 @@ export function useMessages(channel: Channel | null, threadRoot: string | null =
   }, [channelId, keyring, decryptAll, threadRoot]);
 
   // Messages we can't read yet: keep asking online members to share the keys
-  // (a few times a minute) until the missing-key messages decrypt.
+  // (a few times a minute) until the missing-key messages decrypt. Re-ask as
+  // soon as the tab regains focus / the user comes back, too.
   const asked = useRef(0);
   useEffect(() => {
     if (!channel || !messages.some((m) => m.error === 'missing-key')) return;
-    const tick = () => {
+    const ask = () => {
       if (Date.now() - asked.current < 5_000) return;
       asked.current = Date.now();
       requestKeys(channel.server_id ?? channel.id, channel.id);
     };
-    tick();
-    const t = setInterval(tick, 5_000);
-    return () => clearInterval(t);
+    const onVisible = () => document.visibilityState === 'visible' && ask();
+    const onFocus = () => ask();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    ask();
+    const t = setInterval(ask, 5_000);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [messages, channel]);
 
   const loadOlder = useCallback(() => {

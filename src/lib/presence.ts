@@ -319,17 +319,30 @@ export function onlineUserIds(scopeId: string): Set<string> {
 
 /** Ask online members of a server / conversation to share keys for a channel. */
 export function requestKeys(scopeId: string, channelId: string) {
-  const send = () => scopes.get(scopeId)?.channel?.send({ type: 'broadcast', event: 'need-keys', payload: { channel_id: channelId } });
   const s = scopes.get(scopeId);
   if (s?.channel && s.joined) {
-    send();
+    s.channel.send({ type: 'broadcast', event: 'need-keys', payload: { channel_id: channelId } });
     return;
   }
   const release = acquireScope(scopeId);
+  let sent = false;
+  const send = () => {
+    if (sent) return;
+    const cur = scopes.get(scopeId);
+    if (!cur?.channel || !cur.joined) return;
+    sent = true;
+    clearInterval(t);
+    cur.channel.send({ type: 'broadcast', event: 'need-keys', payload: { channel_id: channelId } });
+    setTimeout(release, 4_000);
+  };
+  // send as soon as the scope finishes joining, so the broadcast isn't lost
+  // because we fired before subscribing (the old fixed 2s delay did that).
+  const t = setInterval(send, 250);
   setTimeout(() => {
-    send();
-    setTimeout(release, 5_000);
-  }, 2_000);
+    clearInterval(t);
+    if (!sent) send();
+    setTimeout(release, 4_000);
+  }, 4_000);
 }
 
 // ------------------------------------------------------------------ rings --

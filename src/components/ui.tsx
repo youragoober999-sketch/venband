@@ -1,4 +1,4 @@
-import { isValidElement, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, useId, useRef, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import type { Profile } from '../lib/types';
 import { LOGO_PATH, LOGO_VIEWBOX } from './logoPath';
 
@@ -331,21 +331,30 @@ export function Field({
 }) {
   // A <label> names whatever is inside it, buttons included, so only wrap a
   // single input / textarea / select in one; groups of controls get a div.
+  // Form controls get a real id (+ name) so the label is explicitly associated
+  // and accessibility audits pass (axe: "form field should have an ID or name").
+  const id = useId();
   const single = isValidElement(children) && typeof children.type === 'string' && ['input', 'textarea', 'select'].includes(children.type);
+  const control = single
+    ? cloneElement(children as ReactElement<{ id?: string; name?: string }>, {
+        id,
+        ...((children as ReactElement<{ name?: string }>).props?.name == null ? { name: id } : {}),
+      })
+    : children;
   return (
     <div className="field">
       <div className="field-top">
-        <label className="field-label">{label}</label>
+        <label className="field-label" htmlFor={single ? id : undefined}>
+          {label}
+        </label>
         {aside}
       </div>
       {group || !single ? (
         <div className="field-control" role="group" aria-label={label}>
-          {children}
+          {control}
         </div>
       ) : (
-        <label className="field-control" aria-label={label}>
-          {children}
-        </label>
+        <div className="field-control">{control}</div>
       )}
       {error ? <span className="field-error">{error}</span> : hint ? <span className="field-hint">{hint}</span> : null}
     </div>

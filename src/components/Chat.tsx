@@ -8,6 +8,7 @@ import { AttachmentView } from './Attachments';
 import { linkTo } from '../lib/router';
 import { uiStore } from '../lib/ui';
 import { Modal } from './ui';
+import { requestKeys } from '../lib/presence';
 import { displayName, getProfile, loadProfiles, trustState } from '../lib/directory';
 import type { DecryptedMessage } from '../lib/keyring';
 import type { Channel, MessageRow, Profile } from '../lib/types';
@@ -683,6 +684,8 @@ export function ChatView({
                   thread={isThread ? undefined : extras.threads[m.row.id]}
                   canThread={!isThread && !isDm && can(P.CREATE_THREADS)}
                   poll={extras.polls[m.row.id]}
+                  channelId={channel.id}
+                  serverId={channel.server_id ?? null}
                   onOpenThread={() => setOpenThread(m.row.id)}
                   onCreateThread={() => createThread(m)}
                   onQuote={() => setQuote(m)}
@@ -986,6 +989,8 @@ function MessageItem({
   thread,
   canThread,
   poll,
+  channelId,
+  serverId,
   onOpenThread,
   onCreateThread,
   onQuote,
@@ -1021,6 +1026,8 @@ function MessageItem({
   thread?: ThreadInfo;
   canThread: boolean;
   poll?: PollState;
+  channelId: string;
+  serverId: string | null;
   onOpenThread: () => void;
   onCreateThread: () => void;
   onQuote: () => void;
@@ -1046,6 +1053,7 @@ function MessageItem({
   const [trError, setTrError] = useState<string | null>(null);
   const [history, setHistory] = useState(false);
   const [picker, setPicker] = useState<HTMLElement | null>(null);
+  const [keyAsked, setKeyAsked] = useState(false);
   const reportStatus = myReports.use((s) => s.byMessage[m.row.id]);
   const [forwarding, setForwarding] = useState(false);
   const [saved, setSavedState] = useState(isSaved(m.row.id));
@@ -1264,7 +1272,21 @@ function MessageItem({
           )}
           {m.error === 'missing-key' && (
             <div className="undecryptable">
-              <Icon name="lock" size={14} /> Sent before you had this conversation’s key. Venband has asked members who are online to share it — it unlocks automatically.
+              <Icon name="lock" size={14} /> Sent before you had this conversation’s key.
+              {keyAsked ? (
+                <span className="muted small"> Requested — it unlocks automatically the moment someone who has it is online.</span>
+              ) : (
+                <button
+                  className="btn link"
+                  onClick={() => {
+                    setKeyAsked(true);
+                    requestKeys(serverId ?? channelId, channelId);
+                    setTimeout(() => setKeyAsked(false), 6_000);
+                  }}
+                >
+                  Ask for the key
+                </button>
+              )}
             </div>
           )}
           {m.error === 'invalid' && (
