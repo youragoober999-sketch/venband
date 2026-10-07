@@ -239,6 +239,7 @@ export class Call {
   async join() {
     try {
       this.mic = await this.openMic();
+      if (getSettings().voice.joinMuted && !this.muted) this.muted = true;
     } catch {
       this.error = 'Microphone unavailable — joined listen-only.';
       this.mic = new MediaStream();

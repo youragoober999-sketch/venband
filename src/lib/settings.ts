@@ -36,6 +36,8 @@ export interface Settings {
     noiseSuppression: boolean;
     echoCancellation: boolean;
     autoGain: boolean;
+    /** start calls muted, handy when you live on a noisy floor */
+    joinMuted: boolean;
     inputVolume: number; // percent
     streamRes: 720 | 1080 | 1440;
     streamFps: 15 | 30 | 60;
@@ -54,6 +56,8 @@ export interface Settings {
     /** keep unsent text per conversation on this device */
     saveDrafts: boolean;
     clock24: boolean;
+    /** Enter sends the message; for "enterToSend" off, Enter makes a new line and Ctrl+Enter sends */
+    enterToSend: boolean;
     /** images / videos / GIFs / link embeds: load automatically or on click */
     mediaAutoload: 'always' | 'wifi' | 'click';
     /** attach previews (site name, title, description) to links you send */
@@ -97,6 +101,7 @@ export const DEFAULT_SETTINGS: Settings = {
     noiseSuppression: true,
     echoCancellation: true,
     autoGain: true,
+    joinMuted: false,
     inputVolume: 100,
     streamRes: 1080,
     streamFps: 30,
@@ -111,6 +116,7 @@ export const DEFAULT_SETTINGS: Settings = {
     longTextAsFile: true,
     saveDrafts: true,
     clock24: false,
+    enterToSend: true,
     mediaAutoload: 'always',
     linkPreviews: true,
     linkWarnings: 'always',

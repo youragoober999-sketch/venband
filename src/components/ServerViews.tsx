@@ -145,8 +145,8 @@ export function ForumView({ channel, data }: { channel: Channel; data: ServerDat
   const [q, setQ] = useState('');
   const [composing, setComposing] = useState(false);
   const tags = channel.settings?.tags ?? [];
-  const canPost = has(data.myPermissions, P.CREATE_THREADS) && has(data.myPermissions, P.SEND_MESSAGES);
-  const canManage = has(data.myPermissions, P.MANAGE_THREADS);
+  const canPost = has(data.permsFor(channel.id), P.CREATE_THREADS) && has(data.permsFor(channel.id), P.SEND_MESSAGES);
+  const canManage = has(data.permsFor(channel.id), P.MANAGE_THREADS);
 
   const load = useCallback(async () => {
     const { data: rows } = await supabase.from('threads').select('*').eq('channel_id', channel.id).limit(300);
@@ -189,8 +189,8 @@ export function ForumView({ channel, data }: { channel: Channel; data: ServerDat
         <ChatView
           channel={channel}
           title={openPost.name}
-          canSend={has(data.myPermissions, P.SEND_MESSAGES)}
-          canManage={has(data.myPermissions, P.MANAGE_MESSAGES)}
+          canSend={has(data.permsFor(channel.id), P.SEND_MESSAGES)}
+          canManage={has(data.permsFor(channel.id), P.MANAGE_MESSAGES)}
           data={data}
           threadRoot={openPost.root_id}
           thread={openPost}
@@ -367,7 +367,7 @@ export function StageView({ channel, data }: { channel: Channel; data: ServerDat
   const call = useActiveCall();
   const inThis = call?.channelId === channel.id;
   const [rows, setRows] = useState<StageRow[]>([]);
-  const isMod = has(data.myPermissions, P.MUTE_MEMBERS);
+  const isMod = has(data.permsFor(channel.id), P.MUTE_MEMBERS);
   const load = useCallback(async () => {
     const { data: r } = await supabase.from('stage_members').select('user_id, state').eq('channel_id', channel.id);
     setRows((r ?? []) as StageRow[]);
@@ -408,7 +408,7 @@ export function StageView({ channel, data }: { channel: Channel; data: ServerDat
         <p className="muted">
           {speakers.length} speaker{speakers.length === 1 ? '' : 's'} on stage
         </p>
-        <button className="btn primary" disabled={!has(data.myPermissions, P.CONNECT)} onClick={() => joinCall(identity, channel.id, data.server!.id, channel.name)}>
+        <button className="btn primary" disabled={!has(data.permsFor(channel.id), P.CONNECT)} onClick={() => joinCall(identity, channel.id, data.server!.id, channel.name)}>
           Join as {isMod ? 'moderator' : 'audience'}
         </button>
       </div>
@@ -420,7 +420,7 @@ export function StageView({ channel, data }: { channel: Channel; data: ServerDat
         <b>{channel.name}</b>
         {channel.topic && <span className="small muted">{channel.topic}</span>}
         <span className="grow" />
-        {!speaking && mine?.state !== 'requested' && has(data.myPermissions, P.REQUEST_TO_SPEAK) && (
+        {!speaking && mine?.state !== 'requested' && has(data.permsFor(channel.id), P.REQUEST_TO_SPEAK) && (
           <button className="btn small primary" onClick={() => set(me.id, 'requested')}>
             ✋ Raise hand
           </button>

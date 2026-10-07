@@ -132,6 +132,19 @@ export interface Role {
   mentionable?: boolean;
 }
 
+/** A per-channel or per-category permission overwrite (allow/deny bits). */
+export interface ChannelOverwrite {
+  id: string;
+  server_id: string;
+  channel_id: string | null;
+  category: string | null;
+  target_type: 'role' | 'member';
+  target_id: string;
+  allow: number;
+  deny: number;
+  created_at: string;
+}
+
 export interface Member {
   server_id: string;
   user_id: string;

@@ -45,7 +45,7 @@ import {
 import { Avatar, Icon, Logo, initials, nameplateVars, StyledName } from './ui';
 import { ChatView } from './Chat';
 import { CallAudio, VoiceView } from './Voice';
-import { ChannelSettingsModal, CreateChannelModal, CreateJoinModal, createCategory, GroupSettingsModal, InviteModal, NewDmModal, NewGroupModal, startDm } from './Modals';
+import { CategorySettingsModal, ChannelSettingsModal, CreateChannelModal, CreateJoinModal, createCategory, GroupSettingsModal, InviteModal, NewDmModal, NewGroupModal, startDm } from './Modals';
 import { ServerSettingsModal } from './ServerSettings';
 import { ContextMenuHost, copyText, openMenu, type Entry } from './ContextMenu';
 import { DialogHost, askConfirm, askText } from './Dialogs';
@@ -1136,8 +1136,8 @@ function ServerView({ serverId }: { serverId: string }) {
           <ChatView
             channel={channel}
             title={channel.name}
-            canSend={has(data.myPermissions, P.SEND_MESSAGES) && (channel.type !== 'announcement' || has(data.myPermissions, P.MANAGE_MESSAGES))}
-            canManage={has(data.myPermissions, P.MANAGE_MESSAGES)}
+            canSend={has(data.permsFor(channel.id), P.SEND_MESSAGES) && (channel.type !== 'announcement' || has(data.permsFor(channel.id), P.MANAGE_MESSAGES))}
+            canManage={has(data.permsFor(channel.id), P.MANAGE_MESSAGES)}
             data={data}
             headerExtra={
               <button
@@ -1161,8 +1161,8 @@ function ServerView({ serverId }: { serverId: string }) {
           <ChatView
             channel={channel}
             title={channel.name}
-            canSend={has(data.myPermissions, P.SEND_MESSAGES)}
-            canManage={has(data.myPermissions, P.MANAGE_MESSAGES)}
+            canSend={has(data.permsFor(channel.id), P.SEND_MESSAGES)}
+            canManage={has(data.permsFor(channel.id), P.MANAGE_MESSAGES)}
             data={data}
             headerExtra={
               <button className="icon-btn" onClick={() => setVcChat(false)} title="Close chat">
@@ -1260,6 +1260,7 @@ function ServerHeader({ data }: { data: ServerData }) {
 function ChannelList({ data, selected, presence }: { data: ServerData; selected: string | null; presence: ReturnType<typeof useScopePresence> }) {
   const [editing, setEditing] = useState<Channel | null>(null);
   const [creating, setCreating] = useState<null | { category?: string }>(null);
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const unread = unreadStore.use((s) => s);
   const identity = sessionStore.use((s) => s.identity)!;
@@ -1300,16 +1301,17 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
           data.reload();
         },
       },
-      custom &&
-        empty && {
-          label: 'Delete Category',
-          icon: 'trash',
-          danger: true,
-          onClick: async () => {
-            await supabase.from('servers').update({ categories: (data.server?.categories ?? []).filter((c) => c !== category) }).eq('id', data.server!.id);
-            data.reload();
+custom &&
+          empty && {
+            label: 'Delete Category',
+            icon: 'trash',
+            danger: true,
+            onClick: async () => {
+              await supabase.from('servers').update({ categories: (data.server?.categories ?? []).filter((c) => c !== category) }).eq('id', data.server!.id);
+              data.reload();
+            },
           },
-        },
+      { label: 'Category Settings', icon: 'settings', onClick: () => setEditingCategory(category ?? '') },
     ]);
   }
 
@@ -1504,6 +1506,7 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
       ))}
       {editing && <ChannelSettingsModal channel={editing} data={data} onClose={() => setEditing(null)} />}
       {creating && <CreateChannelModal data={data} initialCategory={creating.category} onClose={() => setCreating(null)} />}
+      {editingCategory !== null && <CategorySettingsModal category={editingCategory} data={data} onClose={() => setEditingCategory(null)} />}
     </div>
   );
 }
@@ -1527,7 +1530,7 @@ function VoiceChannelView({ channel, data, chatButton }: { channel: Channel; dat
       <Icon name="speaker" size={64} />
       <h2>{channel.name}</h2>
       <p className="muted">Talk, turn on your camera, or share your screen.</p>
-      <button className="btn primary" disabled={!has(data.myPermissions, P.CONNECT)} onClick={() => joinCall(identity, channel.id, data.server!.id, channel.name)}>
+      <button className="btn primary" disabled={!has(data.permsFor(channel.id), P.CONNECT)} onClick={() => joinCall(identity, channel.id, data.server!.id, channel.name)}>
         Join voice
       </button>
     </div>

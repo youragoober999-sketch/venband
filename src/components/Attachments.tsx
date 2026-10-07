@@ -8,6 +8,7 @@ import { errorMessage } from '../lib/supabase';
 import { copyText, openMenu } from './ContextMenu';
 import { Icon, Modal } from './ui';
 import { Select } from './Select';
+import { getSettings } from '../lib/settings';
 
 export function formatSize(n: number) {
   if (n < 1024) return `${n} B`;
@@ -126,13 +127,25 @@ export function AttachmentView({ a }: { a: Attachment }) {
 
 function AttachmentInner({ a }: { a: Attachment }) {
   const kind = fileKind(a);
-  const auto = a.size <= AUTO_LOAD[kind] * 1024 * 1024;
+  const auto = shouldAutoload(kind, a.size);
   if (kind === 'image') return <ImageAttachment a={a} auto={auto} />;
   if (kind === 'video') return <MediaAttachment a={a} auto={auto} video />;
   if (kind === 'audio') return <MediaAttachment a={a} auto={auto} />;
   if (kind === 'pdf') return <PdfAttachment a={a} />;
   if (kind === 'code') return <CodeAttachment a={a} />;
   return <FileCard a={a} />;
+}
+
+/**
+ * Should this attachment decrypt and render on its own, or wait for a click?
+ * Follows the "Load images & videos" setting: always / on Wi-Fi / on click.
+ */
+function shouldAutoload(kind: keyof typeof AUTO_LOAD, size: number): boolean {
+  const mode = getSettings().chat.mediaAutoload;
+  if (mode === 'click') return false;
+  const conn = (navigator as { connection?: { type?: string; saveData?: boolean } }).connection;
+  if (mode === 'wifi' && conn && (conn.type === 'cellular' || conn.saveData)) return false;
+  return size <= AUTO_LOAD[kind] * 1024 * 1024;
 }
 
 function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {

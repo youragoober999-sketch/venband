@@ -6,8 +6,9 @@ import { createStore } from '../lib/store';
 import { directoryVersion, loadProfiles, subscribeDirectory } from '../lib/directory';
 import { acquireScope, requestKeys, scopeState, subscribeScope, type PresenceMeta } from '../lib/presence';
 import { computePermissions } from '../lib/permissions';
+import { channelPermissions } from '../lib/channelPerms';
 import type { DecryptedMessage } from '../lib/keyring';
-import type { Channel, DmChannel, Member, MemberRole, MessageRow, Role, Server } from '../lib/types';
+import type { Channel, ChannelOverwrite, DmChannel, Member, MemberRole, MessageRow, Role, Server } from '../lib/types';
 import { getProfile } from '../lib/directory';
 
 // ------------------------------------------------------------- navigation --
@@ -213,9 +214,13 @@ export interface ServerData {
   members: Member[];
   memberRoles: MemberRole[];
   channelAccess: { channel_id: string; role_id: string }[];
+  channelOverwrites: ChannelOverwrite[];
   myPermissions: number;
   rolesOf: (userId: string) => Role[];
   topRole: (userId: string) => Role | null;
+  /** Effective permissions for the current user inside a specific channel (accounts for category + channel overwrites). */
+  permsFor: (channelId: string) => number;
+  overwritesFor: (scope: { channelId: string; category?: string }) => ChannelOverwrite[];
   reload: () => void;
 }
 
@@ -228,12 +233,13 @@ export function useServerData(serverId: string | null): ServerData {
     members: [] as Member[],
     memberRoles: [] as MemberRole[],
     channelAccess: [] as { channel_id: string; role_id: string }[],
+    channelOverwrites: [] as ChannelOverwrite[],
     serverPermissions: null as number | null,
   });
 
   const load = useCallback(async () => {
     if (!serverId) return;
-    const [s, c, r, m, mr, sp] = await Promise.all([
+    const [s, c, r, m, mr, sp, cow] = await Promise.all([
       supabase.from('servers').select('*').eq('id', serverId).maybeSingle(),
       supabase.from('channels').select('*').eq('server_id', serverId).order('position').order('created_at'),
       supabase.from('roles').select('*').eq('server_id', serverId).order('position', { ascending: false }),
@@ -241,6 +247,7 @@ export function useServerData(serverId: string | null): ServerData {
       supabase.from('member_roles').select('*').eq('server_id', serverId),
       // the server's own answer also covers read-only states (rules not accepted, Voogle not passed)
       supabase.rpc('server_permissions', { p_server: serverId }),
+      supabase.from('channel_overwrites').select('*').eq('server_id', serverId),
     ]);
     const channels = (c.data ?? []) as Channel[];
     const ca = channels.length
@@ -254,12 +261,13 @@ export function useServerData(serverId: string | null): ServerData {
       members: (m.data ?? []) as Member[],
       memberRoles: (mr.data ?? []) as MemberRole[],
       channelAccess: (ca.data ?? []) as { channel_id: string; role_id: string }[],
+      channelOverwrites: (cow.data ?? []) as ChannelOverwrite[],
       serverPermissions: typeof sp.data === 'number' ? sp.data : null,
     });
   }, [serverId]);
 
   useEffect(() => {
-    setState({ server: null, channels: [], roles: [], members: [], memberRoles: [], channelAccess: [], serverPermissions: null });
+    setState({ server: null, channels: [], roles: [], members: [], memberRoles: [], channelAccess: [], channelOverwrites: [], serverPermissions: null });
     load();
   }, [load]);
 
@@ -273,6 +281,7 @@ export function useServerData(serverId: string | null): ServerData {
           { table: 'server_members', filter: `server_id=eq.${serverId}` },
           { table: 'member_roles', filter: `server_id=eq.${serverId}` },
           { table: 'channel_role_access' },
+          { table: 'channel_overwrites', filter: `server_id=eq.${serverId}` },
         ]
       : [],
     load,
@@ -291,9 +300,32 @@ export function useServerData(serverId: string | null): ServerData {
         ? computePermissions(me.id, state.server.owner_id, state.roles, new Set(rolesOf(me.id).map((r) => r.id))) &
           (state.serverPermissions ?? 0x7fffffff)
         : 0;
+    const rolePosition = (roleId: string) => state.roles.find((r) => r.id === roleId)?.position ?? 0;
+    const permsFor = (channelId: string) => {
+      if (!me || !state.server) return 0;
+      const channel = state.channels.find((c) => c.id === channelId);
+      if (!channel) return myPermissions;
+      const overwrites = state.channelOverwrites.filter((o) => o.channel_id === channelId);
+      const categoryOverwrites = channel.category ? state.channelOverwrites.filter((o) => o.channel_id === null && o.category === channel.category) : [];
+      return channelPermissions({
+        me: me.id,
+        ownerId: state.server.owner_id,
+        base: myPermissions,
+        myRoleIds: new Set(rolesOf(me.id).map((r) => r.id)),
+        rolePosition,
+        categoryOverwrites,
+        channelOverwrites: overwrites,
+      });
+    };
+    const overwritesFor = ({ channelId, category }: { channelId: string; category?: string }) =>
+      state.channels.find((c) => c.id === channelId)
+        ? state.channelOverwrites.filter((o) => o.channel_id === channelId)
+        : state.channelOverwrites.filter((o) => o.channel_id === null && o.category === (category ?? ''));
     return {
       ...state,
       myPermissions,
+      permsFor,
+      overwritesFor,
       rolesOf,
       topRole: (u: string) => rolesOf(u)[0] ?? null,
       reload: load,

@@ -591,6 +591,31 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 22px 0; }
 .member-row-roles { flex: 1; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .add-role { width: auto; padding: 2px 6px; font-size: 12.5px; background: var(--bg-3); }
 
+/* ---- channel & category permission overwrites ---- */
+.over-editor { display: flex; flex-direction: column; gap: 12px; }
+.over-add { display: flex; gap: 8px; align-items: center; }
+.over-add .sel { flex: 1; }
+.over-add select, .over-member-add input { width: 100%; }
+.over-member-results { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 4px; max-height: 200px; overflow-y: auto; }
+.over-member-results button { display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 8px; border-radius: 6px; }
+.over-member-results button:hover { background: var(--bg-hover); }
+.over-targets { display: flex; flex-direction: column; gap: 14px; }
+.over-target { border: 1px solid var(--line); border-radius: 10px; background: var(--bg-1); }
+.over-target-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.over-list { padding: 4px 12px 12px; max-height: 420px; overflow-y: auto; }
+.over-group-title { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 12px 0 4px; }
+.over-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.over-row:last-child { border-bottom: 0; }
+.over-name { display: flex; flex-direction: column; }
+.over-tri { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.over-tri button { font-size: 12px; padding: 3px 8px; border-radius: 5px; background: var(--bg-2); color: var(--muted); border: 1px solid var(--line); }
+.over-tri button:hover { color: var(--text-2); border-color: var(--bg-4); }
+.over-tri button.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+@media (max-width: 640px) {
+  .over-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .over-add { align-items: stretch; }
+}
+
 /* ------------------------------------------------------------- mobile -- */
 @media (max-width: 1000px) {
   .hero h1 { font-size: 46px; }

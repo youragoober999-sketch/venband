@@ -629,7 +629,8 @@ export function Composer({
                   }
                 }
               }
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              const isSendKey = e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && (chat.enterToSend ? !mod : mod);
+              if (isSendKey) {
                 e.preventDefault();
                 setFmt(null);
                 submit();

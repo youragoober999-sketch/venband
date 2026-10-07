@@ -184,7 +184,8 @@ export function ChatView({
   const extras = useChannelExtras(channel.id, ids, threadRoot ? `:t${threadRoot.slice(0, 8)}` : '');
   const automod = Boolean(data?.server?.automod?.slurs);
   const myRoleIds = data?.rolesOf(me.id).map((r) => r.id) ?? [];
-  const can = (bit: number) => !data || has(data.myPermissions, bit);
+  const chanPerms = data ? data.permsFor(channel.id) : 0;
+  const can = (bit: number) => !data || has(chanPerms, bit);
   const isDm = channel.type === 'dm';
   const canPin = isDm || can(P.MANAGE_MESSAGES);
   const { openedAt, markUnread, manual } = useReadMarker(channel.id, messages[messages.length - 1], !isThread);

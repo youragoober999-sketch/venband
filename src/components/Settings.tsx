@@ -1084,6 +1084,9 @@ function VoiceTab() {
         <Toggle label="Echo cancellation" desc="Stops others hearing themselves through your speakers." checked={v.echoCancellation} onChange={(x) => updateVoice({ echoCancellation: x })} />
         <Toggle label="Automatic gain control" desc="Keeps your volume steady." checked={v.autoGain} onChange={(x) => updateVoice({ autoGain: x })} />
       </Section>
+      <Section title="When you join a call">
+        <Toggle label="Join muted" desc="Starts with your microphone off every time you join a call. You can unmute any time." checked={v.joinMuted} onChange={(x) => updateVoice({ joinMuted: x })} />
+      </Section>
       <Section title="Screen share quality" desc="Higher quality needs a faster connection, for you and for everyone watching.">
         <div className="row">
           <Field label="Resolution">
@@ -1135,6 +1138,17 @@ function ChatTab() {
           onChange={(v) => updateChat({ linkPreviews: v })}
         />
       </Section>
+      <Section title="Images & videos" desc="Attachments in messages. Very large files always wait for a click, whatever you choose here.">
+        <Select
+          value={c.mediaAutoload}
+          onChange={(v) => updateChat({ mediaAutoload: v as 'always' | 'wifi' | 'click' })}
+          options={[
+            { value: 'always', label: 'Load automatically (recommended)' },
+            { value: 'wifi', label: 'Only on Wi-Fi or broadband' },
+            { value: 'click', label: 'Only when I click them' },
+          ]}
+        />
+      </Section>
       <Section title="Link safety" desc="Venband checks links for look-alike letters, fake brand names, hidden destinations and short links before they open.">
         <Field label="Ask before opening links">
           <Select
@@ -1183,6 +1197,12 @@ function ChatTab() {
           onChange={(v) => updateChat({ longTextAsFile: v })}
         />
         <Toggle label="Keep unsent drafts" desc="If you leave a conversation (or close Venband) while typing, your text is still there when you come back. Stored on this device only." checked={c.saveDrafts} onChange={(v) => updateChat({ saveDrafts: v })} />
+        <Toggle
+          label="Press Enter to send"
+          desc="On: Enter sends the message and Shift+Enter adds a new line. Off: Enter adds a new line and you send with Ctrl+Enter (or Cmd+Enter on Mac)."
+          checked={c.enterToSend}
+          onChange={(v) => updateChat({ enterToSend: v })}
+        />
         <Toggle label="24-hour clock" checked={c.clock24} onChange={(v) => updateChat({ clock24: v })} />
       </Section>
       <Section title="Formatting cheat sheet">

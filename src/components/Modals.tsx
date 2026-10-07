@@ -11,6 +11,7 @@ import { ImageCropper } from './ImageCropper';
 import { askConfirm } from './Dialogs';
 import { InviteFriendsList } from './Invite';
 import { inviteCodeFrom, inviteUrl } from '../lib/dmSend';
+import { PERMISSION_GROUPS, PERMISSION_INFO } from '../lib/permissions';
 
 // ------------------------------------------------------ create/join server --
 
@@ -480,7 +481,223 @@ function PrivateToggle({
   );
 }
 
+type OverwriteTri = 0 | 1 | 2;
+
+/** Allow / Deny / Unset tri-state for one permission bit in a channel overwrite. */
+function OverTri({ value, onChange }: { value: OverwriteTri; onChange: (v: OverwriteTri) => void }) {
+  const opts: { v: OverwriteTri; label: string; title: string }[] = [
+    { v: 0, label: 'Unset', title: 'Unset (inherit from roles)' },
+    { v: 1, label: 'Allow', title: 'Allow this permission here' },
+    { v: 2, label: 'Deny', title: 'Deny this permission here' },
+  ];
+  return (
+    <span className="over-tri">
+      {opts.map((o) => (
+        <button key={o.v} type="button" title={o.title} className={value === o.v ? 'on' : ''} onClick={() => onChange(o.v)}>
+          {o.label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * Per-role / per-member allow & deny matrix for one scope (a channel or a whole
+ * category). Saves into `channel_overwrites` and reloads the server data.
+ */
+function ChannelPermissionsEditor({
+  data,
+  scope,
+  onDone,
+}: {
+  data: ServerData;
+  scope: { channelId?: string; category?: string };
+  onDone?: () => void;
+}) {
+  const serverId = data.server!.id;
+  const existing = useMemo(() => data.overwritesFor({ channelId: scope.channelId ?? '', category: scope.category }), [data, scope.channelId, scope.category]);
+  const [targets, setTargets] = useState<Record<string, { role: boolean; tri: Record<number, OverwriteTri> }>>(() => {
+    const init: Record<string, { role: boolean; tri: Record<number, OverwriteTri> }> = {};
+    for (const o of existing) {
+      const tri: Record<number, OverwriteTri> = {};
+      for (const p of PERMISSION_INFO) tri[p.bit] = (o.allow & p.bit) > 0 ? 1 : (o.deny & p.bit) > 0 ? 2 : 0;
+      init[`${o.target_type}:${o.target_id}`] = { role: o.target_type === 'role', tri };
+    }
+    return init;
+  });
+  const [addRole, setAddRole] = useState('');
+  const [memberQuery, setMemberQuery] = useState('');
+  const [memberResults, setMemberResults] = useState<Profile[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const roleById = useMemo(() => new Map(data.roles.map((r) => [r.id, r])), [data.roles]);
+
+  const setTri = (key: string, bit: number, v: OverwriteTri) =>
+    setTargets((t) => ({ ...t, [key]: { ...t[key], tri: { ...t[key].tri, [bit]: v } } }));
+
+  const removeTarget = (key: string) =>
+    setTargets((t) => {
+      const next = { ...t };
+      delete next[key];
+      return next;
+    });
+
+  async function searchMember(q: string) {
+    setMemberQuery(q);
+    if (!q.trim()) return setMemberResults([]);
+    const { data: found } = await supabase.rpc('find_user', { p_username: q.trim() });
+    const memberIds = new Set(data.members.map((m) => m.user_id));
+    setMemberResults(((found as Profile[] | null) ?? []).filter((p) => memberIds.has(p.id)).slice(0, 8));
+  }
+
+  function addMember(id: string) {
+    const key = `member:${id}`;
+    setTargets((t) => (t[key] ? t : { ...t, [key]: { role: false, tri: {} } }));
+    setMemberQuery('');
+    setMemberResults([]);
+  }
+
+  function addRoleTarget() {
+    if (!addRole) return;
+    const key = `role:${addRole}`;
+    setTargets((t) => (t[key] ? t : { ...t, [key]: { role: true, tri: {} } }));
+    setAddRole('');
+  }
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const toWrite: {
+        server_id: string;
+        channel_id: string | null;
+        category: string | null;
+        target_type: 'role' | 'member';
+        target_id: string;
+        allow: number;
+        deny: number;
+      }[] = [];
+      for (const [key, t] of Object.entries(targets)) {
+        const [type, id] = key.split(':');
+        let allow = 0;
+        let deny = 0;
+        for (const p of PERMISSION_INFO) {
+          const v = t.tri[p.bit];
+          if (v === 1) allow |= p.bit;
+          else if (v === 2) deny |= p.bit;
+        }
+        if (allow | deny) {
+          toWrite.push({
+            server_id: serverId,
+            channel_id: scope.channelId ?? null,
+            category: scope.channelId ? null : (scope.category ?? ''),
+            target_type: type === 'member' ? 'member' : 'role',
+            target_id: id,
+            allow,
+            deny,
+          });
+        }
+      }
+      const writeKeys = new Set(toWrite.map((w) => `${w.target_type}:${w.target_id}`));
+      const delIds = existing.filter((o) => !writeKeys.has(`${o.target_type}:${o.target_id}`)).map((o) => o.id);
+      if (delIds.length) await supabase.from('channel_overwrites').delete().in('id', delIds);
+      if (toWrite.length) {
+        const { error: e } = await supabase.from('channel_overwrites').insert(toWrite);
+        if (e) throw e;
+      }
+      data.reload();
+      onDone?.();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="over-editor">
+      {error && <div className="form-error">{error}</div>}
+      {Object.keys(targets).length === 0 && (
+        <p className="muted">No overrides here yet — everyone uses the server-wide permissions. Add a role or member to customize.</p>
+      )}
+      <div className="over-add">
+        <Select
+          value={addRole}
+          onChange={setAddRole}
+          options={data.roles
+            .filter((r) => !r.is_default && !targets[`role:${r.id}`])
+            .map((r) => ({ value: r.id, label: r.name }))}
+        />
+        <button type="button" className="btn" disabled={!addRole} onClick={addRoleTarget}>
+          Add role override
+        </button>
+      </div>
+      <div className="over-member-add">
+        <input value={memberQuery} onChange={(e) => searchMember(e.target.value)} placeholder="Add a member by username…" />
+      </div>
+      {memberResults.length > 0 && (
+        <div className="over-member-results">
+          {memberResults
+            .filter((p) => !targets[`member:${p.id}`])
+            .map((p) => (
+              <button type="button" key={p.id} onClick={() => addMember(p.id)}>
+                <Avatar profile={p} size={24} /> {displayName(p.id)}
+              </button>
+            ))}
+        </div>
+      )}
+      <div className="over-targets">
+        {Object.entries(targets).map(([key, t]) => {
+          const [type, id] = key.split(':');
+          const role = type === 'role' ? roleById.get(id) : null;
+          const profile = type === 'member' ? getProfile(id) : null;
+          return (
+            <section className="over-target" key={key}>
+              <div className="over-target-head">
+                {role ? <span className="role-dot" style={{ background: role.color }} /> : <Avatar profile={profile} size={22} />}
+                <b>{role ? role.name : (profile?.display_name ?? 'Member')}</b>
+                <span className="muted small">{type === 'role' ? 'role override' : 'member override'}</span>
+                <button type="button" className="icon-btn" title="Remove this override" onClick={() => removeTarget(key)} style={{ marginLeft: 'auto' }}>
+                  <Icon name="x" />
+                </button>
+              </div>
+              <div className="over-list">
+                {PERMISSION_GROUPS.map((g) => {
+                  const bits = PERMISSION_INFO.filter((p) => p.group === g);
+                  if (!bits.length) return null;
+                  return (
+                    <div key={g} className="over-group">
+                      <div className="over-group-title">{g}</div>
+                      {bits.map((p) => (
+                        <label key={p.bit} className="over-row">
+                          <div className="over-name">
+                            {p.name}
+                            <span className="muted small">{p.description}</span>
+                          </div>
+                          <OverTri value={t.tri[p.bit] ?? 0} onChange={(v) => setTri(key, p.bit, v)} />
+                        </label>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+      <div className="modal-actions">
+        <button type="button" className="btn primary" disabled={busy} onClick={save}>
+          {busy ? 'Saving…' : 'Save Permissions'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ChannelSettingsModal({ channel, data, onClose }: { channel: Channel; data: ServerData; onClose: () => void }) {
+  const isVoice = channel.type === 'voice' || channel.type === 'stage';
+  const [tab, setTab] = useState<'overview' | 'permissions'>('overview');
   const [name, setName] = useState(channel.name);
   const [topic, setTopic] = useState(channel.topic);
   const [category, setCategory] = useState(channel.category);
@@ -488,21 +705,23 @@ export function ChannelSettingsModal({ channel, data, onClose }: { channel: Chan
   const [isPrivate, setPrivate] = useState(channel.is_private);
   const initialRoles = data.channelAccess.filter((a) => a.channel_id === channel.id).map((a) => a.role_id);
   const [roles, setRoles] = useState<string[]>(initialRoles);
+  const [settings, setSettings] = useState(channel.settings ?? {});
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    const { error } = await supabase
-      .from('channels')
-      .update({ name: name.trim(), topic, category, position, is_private: isPrivate })
-      .eq('id', channel.id);
+    const update: Record<string, unknown> = { name: name.trim(), topic, category, position, is_private: isPrivate };
+    if (isVoice) update.settings = { ...(channel.settings ?? {}), user_limit: Math.max(0, settings.user_limit ?? 0) || null, bitrate: Math.min(384, Math.max(8, settings.bitrate ?? 64)) || null };
+    const { error } = await supabase.from('channels').update(update).eq('id', channel.id);
     if (error) return setError(errorMessage(error));
     const removed = initialRoles.filter((r) => !roles.includes(r));
     const added = roles.filter((r) => !initialRoles.includes(r));
     if (removed.length) await supabase.from('channel_role_access').delete().eq('channel_id', channel.id).in('role_id', removed);
     if (added.length) await supabase.from('channel_role_access').insert(added.map((role_id) => ({ channel_id: channel.id, role_id })));
     data.reload();
-    onClose();
+    setSaved(true);
+    setTimeout(onClose, 700);
   }
 
   async function remove() {
@@ -513,34 +732,132 @@ export function ChannelSettingsModal({ channel, data, onClose }: { channel: Chan
   }
 
   return (
-    <Modal title={`Edit ${channel.type === 'voice' ? '🔊' : '#'} ${channel.name}`} onClose={onClose}>
-      <form onSubmit={save}>
-        {error && <div className="form-error">{error}</div>}
-        <Field label="Name">
-          <input required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
-        </Field>
-        {channel.type === 'text' && (
-          <Field label="Topic">
-            <textarea maxLength={1024} value={topic} onChange={(e) => setTopic(e.target.value)} />
+    <Modal wide title={`Edit ${channel.type === 'voice' || channel.type === 'stage' ? 'channel' : '#'} ${channel.name}`} onClose={onClose}>
+      <div className="tabs">
+        <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>
+          Overview
+        </button>
+        <button className={tab === 'permissions' ? 'active' : ''} onClick={() => setTab('permissions')}>
+          Permissions
+        </button>
+      </div>
+      {saved ? (
+        <p className="muted center">Saved.</p>
+      ) : tab === 'overview' ? (
+        <form onSubmit={save}>
+          {error && <div className="form-error">{error}</div>}
+          <Field label="Name">
+            <input required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-        )}
-        <div className="row">
-          <Field label="Category">
-            <Select value={category} onChange={setCategory} options={[{ value: '', label: 'No category' }, ...serverCategories(data).map((c) => ({ value: c, label: c }))]} />
+          {channel.type === 'text' && (
+            <Field label="Topic">
+              <textarea maxLength={1024} value={topic} onChange={(e) => setTopic(e.target.value)} />
+            </Field>
+          )}
+          {isVoice && (
+            <div className="row">
+              <Field label="User limit (0 = no limit)">
+                <input
+                  type="number"
+                  min={0}
+                  max={250}
+                  value={settings.user_limit ?? 0}
+                  onChange={(e) => setSettings((s) => ({ ...s, user_limit: Number(e.target.value) }))}
+                />
+              </Field>
+              <Field label="Bitrate (kbps)">
+                <input
+                  type="number"
+                  min={8}
+                  max={384}
+                  value={settings.bitrate ?? 64}
+                  onChange={(e) => setSettings((s) => ({ ...s, bitrate: Number(e.target.value) }))}
+                />
+              </Field>
+            </div>
+          )}
+          <div className="row">
+            <Field label="Category">
+              <Select value={category} onChange={setCategory} options={[{ value: '', label: 'No category' }, ...serverCategories(data).map((c) => ({ value: c, label: c }))]} />
+            </Field>
+            <Field label="Position">
+              <input type="number" value={position} onChange={(e) => setPosition(Number(e.target.value))} />
+            </Field>
+          </div>
+          <PrivateToggle data={data} isPrivate={isPrivate} setPrivate={setPrivate} roles={roles} setRoles={setRoles} />
+          <p className="small muted">Removing access automatically rotates the channel’s encryption key.</p>
+          <div className="modal-actions">
+            <button type="button" className="btn danger" onClick={remove}>
+              Delete Channel
+            </button>
+            <button className="btn primary">Save Changes</button>
+          </div>
+        </form>
+      ) : (
+        <ChannelPermissionsEditor data={data} scope={{ channelId: channel.id }} />
+      )}
+    </Modal>
+  );
+}
+
+export function CategorySettingsModal({ category, data, onClose }: { category: string; data: ServerData; onClose: () => void }) {
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(category);
+  const [error, setError] = useState<string | null>(null);
+  const affected = data.channels.filter((c) => c.category === category).length;
+
+  async function rename(e: FormEvent) {
+    e.preventDefault();
+    const next = name.trim();
+    if (!next || next === category) return onClose();
+    const { error: e1 } = await supabase.from('channels').update({ category: next }).eq('server_id', data.server!.id).eq('category', category);
+    if (e1) return setError(errorMessage(e1));
+    const { error: e2 } = await supabase
+      .from('servers')
+      .update({ categories: (data.server?.categories ?? []).map((c) => (c === category ? next : c)) })
+      .eq('id', data.server!.id);
+    if (e2) return setError(errorMessage(e2));
+    data.reload();
+    onClose();
+  }
+
+  async function remove() {
+    if (!(await askConfirm({ title: `Delete category ${category}`, body: 'Channels stay but become uncategorized. Permissions for this category are removed.', confirm: 'Delete Category', danger: true }))) return;
+    const { error } = await supabase.from('servers').update({ categories: (data.server?.categories ?? []).filter((c) => c !== category) }).eq('id', data.server!.id);
+    if (error) return setError(errorMessage(error));
+    data.reload();
+    onClose();
+  }
+
+  return (
+    <Modal wide title={`Category — ${category}`} onClose={onClose}>
+      <div className="tabs">
+        <button className={renaming ? '' : 'active'} onClick={() => setRenaming(false)}>
+          Permissions
+        </button>
+        <button className={renaming ? 'active' : ''} onClick={() => setRenaming(true)}>
+          Rename
+        </button>
+      </div>
+      {error && <div className="form-error">{error}</div>}
+      {renaming ? (
+        <form className="row" onSubmit={rename}>
+          <Field label="Category name">
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
           </Field>
-          <Field label="Position">
-            <input type="number" value={position} onChange={(e) => setPosition(Number(e.target.value))} />
-          </Field>
-        </div>
-        <PrivateToggle data={data} isPrivate={isPrivate} setPrivate={setPrivate} roles={roles} setRoles={setRoles} />
-        <p className="small muted">Removing access automatically rotates the channel’s encryption key.</p>
-        <div className="modal-actions">
-          <button type="button" className="btn danger" onClick={remove}>
-            Delete Channel
-          </button>
-          <button className="btn primary">Save Changes</button>
-        </div>
-      </form>
+          <button className="btn primary">Save</button>
+        </form>
+      ) : (
+        <>
+          <p className="muted">Changes apply to the {affected} channel{affected === 1 ? '' : 's'} in this category, unless a channel has its own override.</p>
+          <ChannelPermissionsEditor data={data} scope={{ category }} onDone={() => setRenaming(false)} />
+          <div className="modal-actions">
+            <button type="button" className="btn danger" onClick={remove}>
+              Delete Category
+            </button>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }
