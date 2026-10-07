@@ -5,7 +5,7 @@ import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { safeFileName } from '../lib/files';
 import { openSettings } from '../lib/ui';
-import { askConfirm, askText } from './Dialogs';
+import { askConfirm } from './Dialogs';
 import { Field, Icon } from './ui';
 
 interface Factor {
@@ -23,15 +23,12 @@ export function SecurityTab() {
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [deletedServers, setDeletedServers] = useState<{ id: string; name: string; deleted_at: string }[]>([]);
-  const [deletion, setDeletion] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data } = await supabase.auth.mfa.listFactors();
     setFactors(((data?.totp ?? []) as Factor[]).filter((f) => f.status === 'verified'));
     const { data: ds } = await supabase.from('servers').select('id, name, deleted_at').eq('owner_id', me.id).eq('status', 'deleted');
     setDeletedServers((ds ?? []) as typeof deletedServers);
-    const { data: p } = await supabase.from('profiles').select('deletion_requested_at').eq('id', me.id).maybeSingle();
-    setDeletion((p?.deletion_requested_at as string | null) ?? null);
   }, [me.id]);
   useEffect(() => {
     load();
@@ -214,65 +211,13 @@ export function SecurityTab() {
 
       <section className="settings-section danger-zone">
         <h3>Delete account</h3>
-        {deletion ? (
-          <div className="row-between">
-            <span className="small">
-              Your account will be deleted on <b>{new Date(new Date(deletion).getTime() + 14 * 86400_000).toLocaleDateString()}</b>.
-            </span>
-            <button
-              className="btn primary small"
-              onClick={async () => {
-                await supabase.rpc('cancel_account_deletion');
-                setMsg({ ok: true, text: 'Your account won’t be deleted.' });
-                load();
-              }}
-            >
-              Keep my account
-            </button>
-          </div>
-        ) : (
-          <div className="row-between">
-            <span className="muted small">After 14 days your account, profile and keys are erased. You can change your mind until then.</span>
-            <button
-              className="btn danger small"
-              onClick={async () => {
-                const typed = await askText({ title: 'Delete your account', label: `Type your username (${me.username}) to confirm`, maxLength: 40 });
-                if (typed === null) return;
-                if (typed.trim().toLowerCase() !== me.username) return setMsg({ ok: false, text: 'That isn’t your username.' });
-                const { error } = await supabase.rpc('request_account_deletion');
-                setMsg(error ? { ok: false, text: errorMessage(error) } : { ok: true, text: 'Account deletion scheduled.' });
-                load();
-              }}
-            >
-              Delete account
-            </button>
-          </div>
-        )}
+        <div className="row-between">
+          <span className="muted small">Permanently wipes your account, DMs, files, messages, username and email. This can’t be undone.</span>
+          <button className="btn danger small" onClick={() => openSettings('account')}>
+            My Account
+          </button>
+        </div>
       </section>
     </>
-  );
-}
-
-/** Shown in the app while an account is scheduled for deletion. */
-export function DeletionBanner() {
-  const me = sessionStore.use((s) => s.me);
-  const [at, setAt] = useState<string | null>(null);
-  useEffect(() => {
-    if (!me) return;
-    supabase
-      .from('profiles')
-      .select('deletion_requested_at')
-      .eq('id', me.id)
-      .maybeSingle()
-      .then(({ data }) => setAt((data?.deletion_requested_at as string | null) ?? null));
-  }, [me]);
-  if (!at) return null;
-  return (
-    <div className="app-banner warn">
-      <Icon name="trash" size={16} /> Your account will be deleted on {new Date(new Date(at).getTime() + 14 * 86400_000).toLocaleDateString()}.
-      <button className="btn small secondary" onClick={() => supabase.rpc('cancel_account_deletion').then(() => setAt(null))}>
-        Keep my account
-      </button>
-    </div>
   );
 }

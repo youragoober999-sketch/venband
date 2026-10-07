@@ -656,7 +656,7 @@ export const CHANGELOG: { date: string; title: string; items: string[] }[] = [
     title: 'Safer by default',
     items: [
       'Two-factor sign-in with an authenticator app; your messages only unlock after the code',
-      'Security Center: log out other devices, download your data, delete your account (with a 14-day grace period)',
+      'Security Center: log out other devices, download your data, delete your account (permanently, from Settings → My Account)',
       'Deleted servers can be restored for 7 days',
       'Hidden photo data (like GPS location) is removed before pictures are sent',
       'Link safety: warnings for fake brand sites, look-alike letters, hidden destinations and short links',

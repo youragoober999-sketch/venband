@@ -426,8 +426,9 @@ export async function signOut(notice = 'You’re logged out. See you soon.') {
   resetExpressions();
   await forgetIdentities();
   // 'local': only this browser. The default ('global') also logs out every
-  // other device, which looks like a random logout there.
-  await supabase.auth.signOut({ scope: 'local' });
+  // other device, which looks like a random logout there. Ignore errors here
+  // (e.g. the account was just deleted) — the local session must still clear.
+  await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
   signingOut = false;
   sessionStore.set({
     status: 'signed-out',

@@ -3,7 +3,7 @@ import { Icon, LogoGlyph, Wordmark } from './ui';
 
 const REPO_URL = 'https://github.com/youragoober999-sketch/venband';
 
-export function TopNav({ onLogin, onSignup, onHome }: { onLogin: () => void; onSignup: () => void; onHome: () => void }) {
+export function TopNav({ onLogin, onSignup, onHome, onOpenApp }: { onLogin: () => void; onSignup: () => void; onHome: () => void; onOpenApp?: () => void }) {
   return (
     <header className="topnav">
       <div className="container topnav-inner">
@@ -22,22 +22,30 @@ export function TopNav({ onLogin, onSignup, onHome }: { onLogin: () => void; onS
           </a>
         </nav>
         <div className="topnav-actions">
-          <button className="btn ghost small" onClick={onLogin}>
-            Log in
-          </button>
-          <button className="btn primary small" onClick={onSignup}>
-            Sign up
-          </button>
+          {onOpenApp ? (
+            <button className="btn primary small" onClick={onOpenApp}>
+              Open Venband
+            </button>
+          ) : (
+            <>
+              <button className="btn ghost small" onClick={onLogin}>
+                Log in
+              </button>
+              <button className="btn primary small" onClick={onSignup}>
+                Sign up
+              </button>
+            </>
+          )}
         </div>
       </div>
     </header>
   );
 }
 
-export function Landing({ onLogin, onSignup }: { onLogin: () => void; onSignup: () => void }) {
+export function Landing({ onLogin, onSignup, onOpenApp }: { onLogin: () => void; onSignup: () => void; onOpenApp?: () => void }) {
   return (
     <div className="landing">
-      <TopNav onLogin={onLogin} onSignup={onSignup} onHome={() => {}} />
+      <TopNav onLogin={onLogin} onSignup={onSignup} onHome={() => {}} onOpenApp={onOpenApp} />
 
       <section className="hero container">
         <div className="hero-copy">
@@ -54,12 +62,20 @@ export function Landing({ onLogin, onSignup }: { onLogin: () => void; onSignup: 
             sent, so the server only ever stores scrambled text.
           </p>
           <div className="hero-actions">
-            <button className="btn primary big" onClick={onSignup}>
-              Create your account
-            </button>
-            <button className="btn text big" onClick={onLogin}>
-              I already have one →
-            </button>
+            {onOpenApp ? (
+              <button className="btn primary big" onClick={onOpenApp}>
+                Open Venband
+              </button>
+            ) : (
+              <>
+                <button className="btn primary big" onClick={onSignup}>
+                  Create your account
+                </button>
+                <button className="btn text big" onClick={onLogin}>
+                  I already have one →
+                </button>
+              </>
+            )}
           </div>
         </div>
         <div className="hero-shot">
@@ -110,8 +126,8 @@ export function Landing({ onLogin, onSignup }: { onLogin: () => void; onSignup: 
             <h2>Ready when your friends are.</h2>
             <p className="lead">Make a server, send one invite link, and you’re talking.</p>
           </div>
-          <button className="btn primary big" onClick={onSignup}>
-            Get started — it’s free
+          <button className="btn primary big" onClick={onOpenApp ?? onSignup}>
+            {onOpenApp ? 'Open Venband' : 'Get started — it’s free'}
           </button>
         </div>
       </section>

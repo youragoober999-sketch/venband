@@ -144,22 +144,24 @@ function Login({ email, setEmail, setMode }: FormProps) {
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [banned, setBanned] = useState<{ username: string } | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setBanned(null);
     sessionStore.set({ notice: null });
     try {
       const raw = email.trim();
-      let loginEmail = raw;
-      if (!raw.includes('@')) {
-        const { data, error } = await supabase.rpc('resolve_login', { p_identifier: raw });
-        if (error) throw error;
-        if (!data?.[0]?.email) throw new Error('No account with that username or email.');
-        loginEmail = data[0].email as string;
-      }
-      await signIn(loginEmail, password, remember);
+      // Resolves a username or an email to the account, and flags a ban so the
+      // form can say "You are banned on @username" before any password check.
+      const { data, error } = await supabase.rpc('resolve_login', { p_identifier: raw });
+      if (error) throw error;
+      const hit = data?.[0];
+      if (!hit?.email) throw new Error('No account with that username or email.');
+      if (hit.banned) return setBanned({ username: (hit.username as string) || raw.replace(/@.*$/, '') });
+      await signIn(hit.email as string, password, remember);
     } catch (err) {
       if (/not confirmed/i.test(String((err as Error)?.message))) {
         setMode('verify');
@@ -169,6 +171,19 @@ function Login({ email, setEmail, setMode }: FormProps) {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (banned) {
+    return (
+      <div>
+        <h1>You’re banned on @{banned.username}</h1>
+        <p className="sub">This account is no longer allowed to sign in to Venband. If you think that’s a mistake, contact support.</p>
+        <div className="warning-box">Your messages can’t be opened and your account stays dormant until a staff member reviews it.</div>
+        <button className="btn secondary" onClick={() => setBanned(null)}>
+          ← Back to log in
+        </button>
+      </div>
+    );
   }
 
   return (

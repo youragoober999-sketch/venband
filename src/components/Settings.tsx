@@ -137,10 +137,25 @@ function AccountTab() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [showEmail, setShowEmail] = useState(false);
+  const [delPhrase, setDelPhrase] = useState('');
   useEffect(() => {
     fingerprint(identity.encPublic, identity.signPublic).then(setFp);
   }, [identity]);
   const email = session?.user.email ?? '';
+  const deletePhrase = 'I want to delete my account';
+  async function deleteAccount() {
+    if (!(await askConfirm({ title: 'Delete your account?', body: 'Your DMs, files, messages, username and email are erased right now, and this device signs out. This cannot be undone.', confirm: 'Delete my account', danger: true }))) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { error } = await supabase.rpc('delete_my_account', { p_confirm: delPhrase });
+      if (error) throw error;
+      await signOut('Your account and everything on it was deleted. See you around.');
+    } catch (err) {
+      setMsg(errorMessage(err));
+      setBusy(false);
+    }
+  }
   return (
     <>
       <h2>My Account</h2>
@@ -230,6 +245,25 @@ function AccountTab() {
           <li>Calls: peer-to-peer WebRTC (DTLS-SRTP) with signed session descriptions.</li>
           <li>Translation runs on your device, so decrypted messages never leave it.</li>
         </ul>
+      </Section>
+      <Section title="Delete account" desc="Wipes your account off Venband for good.">
+        <div className="warning-box">
+          This permanently deletes your account and everything tied to it: your 1:1 DMs, files, pictures, messages,
+          username, email, profile and keys. It can’t be undone.
+          <div className="row" style={{ marginTop: 10 }}>
+            <input
+              className="grow"
+              type="text"
+              placeholder="Type “I want to delete my account”"
+              value={delPhrase}
+              onChange={(e) => setDelPhrase(e.target.value)}
+              aria-label="Confirmation phrase"
+            />
+            <button className="btn danger" disabled={busy || delPhrase.trim() !== deletePhrase} onClick={deleteAccount}>
+              {busy ? 'Deleting…' : 'Delete account'}
+            </button>
+          </div>
+        </div>
       </Section>
     </>
   );

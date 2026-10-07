@@ -3,7 +3,6 @@ import { watchProfiles } from '../lib/directory';
 import { MarketplaceView } from './Marketplace';
 import { applyCustomCss, safeMode, setSafeMode } from '../lib/customCss';
 import { startBackground } from '../lib/background';
-import { DeletionBanner } from './Security';
 import { useApps, useServerBots } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
 import { sessionStore, updateMyProfile } from '../lib/session';
@@ -348,7 +347,6 @@ export function Shell() {
     <div className={`shell${drawer ? ` drawer-${drawer}` : ''}`}>
       <AppBanner />
       <SafeModeBanner />
-      <DeletionBanner />
       <WarningsNotice />
       <TopBar servers={servers} dms={dms} />
       <div className="shell-body">
