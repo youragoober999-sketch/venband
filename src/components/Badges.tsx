@@ -114,6 +114,12 @@ export function Badges({ ids, size = 15, max }: { ids?: string[] | null; size?: 
   );
 }
 
+/** A server's tag/badge shown next to the server's own name. */
+export function ServerBadge({ tag }: { tag?: string | null }) {
+  if (!tag) return null;
+  return <span className="server-tag">{tag}</span>;
+}
+
 /** Small check mark for verified servers. */
 export function VerifiedMark({ size = 16 }: { size?: number }) {
   return (

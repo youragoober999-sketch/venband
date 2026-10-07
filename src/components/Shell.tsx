@@ -50,7 +50,7 @@ import { ServerSettingsModal } from './ServerSettings';
 import { ContextMenuHost, copyText, openMenu, type Entry } from './ContextMenu';
 import { DialogHost, askConfirm, askText } from './Dialogs';
 import { ProfileHost, ServerTag, openProfile, userMenu } from './People';
-import { Badges, OwnerCrown, RoleIcon, VerifiedMark } from './Badges';
+import { Badges, OwnerCrown, RoleIcon, ServerBadge, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
 import { DiscoveryView, DonateView, FriendsView, MessageRequestsView, RequestBanner } from './Friends';
 import { Resizer } from './Resizer';
@@ -1206,6 +1206,7 @@ function ServerHeader({ data }: { data: ServerData }) {
         <span className="server-name">
           {server.verified && <VerifiedMark size={16} />}
           {server.name}
+          <ServerBadge tag={server.tag} />
         </span>
         <Icon name={open ? 'x' : 'chevron'} size={18} />
       </header>
@@ -1712,6 +1713,7 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
       <div className="topbar-where">
         {server?.verified && <VerifiedMark size={14} />}
         <span>{where}</span>
+        {server?.tag && <ServerBadge tag={server.tag} />}
       </div>
       <button className="topbar-search" onClick={() => uiStore.set({ switcher: true })}>
         <Icon name="search" size={15} />

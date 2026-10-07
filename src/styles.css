@@ -1072,6 +1072,9 @@ code.id { font-size: 11px; color: var(--muted); }
 .friend-name { display: flex; align-items: center; gap: 6px; font-weight: 650; }
 .friend-actions { display: flex; gap: 8px; }
 .round-icon { width: 36px; height: 36px; border-radius: 50%; background: var(--bg-1); color: var(--text-2); display: flex; align-items: center; justify-content: center; }
+.round-icon.small { width: 26px; height: 26px; font-size: 14px; }
+.round-icon.on { background: var(--bg-4); outline: 2px solid var(--accent); }
+.badge-picks { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 .round-icon:hover { color: var(--text); background: var(--bg-0); }
 .round-icon.ok:hover { color: var(--success); }
 .round-icon.no:hover { color: var(--danger); }
@@ -2083,6 +2086,27 @@ button.edited:hover { text-decoration: underline; color: var(--text-2); }
 .app-dash-head { display: flex; align-items: center; gap: 16px; margin: 10px 0 16px; }
 .app-dash-head h1 { margin: 0; }
 .app-dash .tabs { margin-bottom: 16px; }
+.app-dash { display: grid; grid-template-columns: 232px 1fr; gap: 22px; align-items: start; }
+.dash-side { background: var(--bg-2); border: 1px solid var(--line); border-radius: 16px; padding: 12px; position: sticky; top: 76px; display: flex; flex-direction: column; gap: 8px; }
+.dash-side-bot { display: flex; align-items: center; gap: 10px; padding: 8px; margin-bottom: 4px; }
+.dash-side-bot .preset-logo { border-radius: 12px; flex: none; }
+.dash-nav { display: flex; flex-direction: column; gap: 2px; }
+.dash-nav button { text-align: left; background: none; border: none; color: var(--text-2); font-size: 14px; padding: 9px 12px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.dash-nav button:hover { background: var(--bg-3); color: var(--text); }
+.dash-nav button.active { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); font-weight: 700; }
+.dash-main { min-width: 0; min-height: 360px; }
+.bot-profile { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--bg-2); margin-bottom: 16px; }
+.bot-profile-banner { height: 96px; display: flex; justify-content: flex-end; align-items: flex-start; padding: 10px; }
+.bot-profile-body { padding: 0 20px 16px; display: flex; gap: 14px; align-items: flex-start; }
+.bot-pfp-wrap { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin-top: -20px; }
+.bot-pfp { width: 56px; height: 56px; border-radius: 14px; border: 4px solid var(--bg-2); background: var(--bg-3); overflow: hidden; flex: none; }
+.bot-pfp img, .bot-pfp svg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bot-pfp .preset-logo { width: 100%; height: 100%; }
+@media (max-width: 760px) {
+  .app-dash { grid-template-columns: 1fr; }
+  .dash-side { position: static; }
+  .dash-nav { flex-direction: row; overflow-x: auto; }
+}
 .secret-box { background: color-mix(in srgb, var(--warning) 10%, var(--bg-1)); border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); border-radius: 12px; padding: 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
 .secret-box input { font-family: var(--mono); font-size: 12.5px; }
 .bot-settings { margin-top: 10px; }

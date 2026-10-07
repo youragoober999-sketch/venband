@@ -459,12 +459,19 @@ export function useMessages(channel: Channel | null, threadRoot: string | null =
     };
   }, [channelId, keyring, decryptAll, threadRoot]);
 
-  // Messages we can't read yet: ask online members to share the keys (once a minute).
+  // Messages we can't read yet: keep asking online members to share the keys
+  // (a few times a minute) until the missing-key messages decrypt.
   const asked = useRef(0);
   useEffect(() => {
-    if (!channel || !messages.some((m) => m.error === 'missing-key') || Date.now() - asked.current < 60_000) return;
-    asked.current = Date.now();
-    requestKeys(channel.server_id ?? channel.id, channel.id);
+    if (!channel || !messages.some((m) => m.error === 'missing-key')) return;
+    const tick = () => {
+      if (Date.now() - asked.current < 5_000) return;
+      asked.current = Date.now();
+      requestKeys(channel.server_id ?? channel.id, channel.id);
+    };
+    tick();
+    const t = setInterval(tick, 5_000);
+    return () => clearInterval(t);
   }, [messages, channel]);
 
   const loadOlder = useCallback(() => {

@@ -6,7 +6,7 @@ import { openFriends, openServer, useDirectory } from '../hooks/data';
 import type { DmChannel } from '../lib/types';
 import { openGlobalModal } from './GlobalModals';
 import { Avatar, Icon } from './ui';
-import { Badges, VerifiedMark } from './Badges';
+import { Badges, ServerBadge, VerifiedMark } from './Badges';
 import { openMenu } from './ContextMenu';
 import { openProfile, userMenu } from './People';
 import { startDm } from './Modals';
@@ -254,7 +254,7 @@ export function DiscoveryView() {
                   </span>
                   <div className="discovery-info">
                     <div className="discovery-name">
-                      {s.verified && <VerifiedMark size={16} />} {s.name}
+                      {s.verified && <VerifiedMark size={16} />} {s.name} <ServerBadge tag={s.tag} />
                     </div>
                     <p className="small muted">{s.description || 'No description yet.'}</p>
                     <div className="small muted discovery-meta">

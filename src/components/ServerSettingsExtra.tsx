@@ -58,7 +58,7 @@ export function InvitesTab({ data }: { data: ServerData }) {
             className="btn primary"
             onClick={async () => {
               const { data: v, error } = await supabase.rpc('set_vanity', { p_server: server.id, p_vanity: vanity });
-              setMsg(error ? errorMessage(error) : v ? `Your link is ${inviteUrl(v as string)} (also venband.gg/${v} once that domain points here).` : 'Custom link removed.');
+              setMsg(error ? errorMessage(error) : v ? `Your link is https://venband.gg/${v} — https://venband.com/invite/${v} also works.` : 'Custom link removed.');
               data.reload();
             }}
           >

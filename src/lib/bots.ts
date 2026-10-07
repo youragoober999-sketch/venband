@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabase';
 
-export type Preset = 'custom' | 'verification' | 'management' | 'site';
+export type Preset = 'custom' | 'verification' | 'management' | 'site' | 'wordle';
 
 export interface Application {
   id: string;
@@ -13,6 +13,7 @@ export interface Application {
   description: string;
   preset: Preset;
   icon_url: string | null;
+  banner_url: string | null;
   color: string;
   token_hint: string | null;
   status: 'active' | 'disabled';
@@ -49,7 +50,7 @@ export interface BotMessage {
   created_at: string;
 }
 
-export const APP_COLUMNS = 'id, owner_id, name, description, preset, icon_url, color, token_hint, status, created_at';
+export const APP_COLUMNS = 'id, owner_id, name, description, preset, icon_url, banner_url, color, token_hint, status, created_at';
 
 export const PRESETS: { id: Preset; name: string; blurb: string; features: string[] }[] = [
   {
@@ -69,6 +70,12 @@ export const PRESETS: { id: Preset; name: string; blurb: string; features: strin
     name: 'Connect a site',
     blurb: 'Post updates from your website, store or service into a channel.',
     features: ['A secret webhook URL per server', 'Text and rich embeds', 'Works with anything that can send a web request'],
+  },
+  {
+    id: 'wordle',
+    name: 'Wordle',
+    blurb: 'Play a shared Wordle with the whole channel.',
+    features: ['/wordle starts a game', 'Guess with /guess WORD', 'Green, yellow and grey feedback every guess', 'New word each game'],
   },
   {
     id: 'custom',

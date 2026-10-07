@@ -97,8 +97,20 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
         <textarea maxLength={300} value={description} onChange={(e) => setDescription(e.target.value)} />
       </Field>
       <div className="row">
-        <Field label="Server tag" hint="2–4 letters or numbers members can wear next to their name.">
-          <input maxLength={4} value={tag} placeholder="VNB" onChange={(e) => setTag(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())} />
+        <Field label="Server tag or badge" hint="2–4 letters, or a single emoji badge like ⭐ — members can wear it next to their name.">
+          <input maxLength={8} value={tag} placeholder="VNB" onChange={(e) => {
+            const v = e.target.value;
+            if (!v) return setTag('');
+            if (/^\p{Extended_Pictographic}$/u.test(v)) return setTag(v);
+            return setTag(v.toUpperCase().replace(/[^A-Za-z0-9]/g, '').slice(0, 4));
+          }} />
+          <div className="badge-picks">
+            {['⭐', '🌟', '✨', '🔥', '🏆', '💎', '❤️', '📌', '☄️', '🎉'].map((b) => (
+              <button key={b} type="button" className={`round-icon small${tag === b ? ' on' : ''}`} title={`Badge ${b}`} onClick={() => setTag(b)}>
+                {b}
+              </button>
+            ))}
+          </div>
         </Field>
         <Field label="Welcome channel" hint="Join messages are posted here.">
           <Select
@@ -123,7 +135,7 @@ function Overview({ data, onClose }: { data: ServerData; onClose: () => void }) 
       <button
         className="btn primary"
         onClick={async () => {
-          if (tag && tag.length < 2) return setMsg('Tags need 2–4 letters or numbers.');
+          if (tag && !(/^[A-Za-z0-9]{2,4}$/.test(tag.toUpperCase()) || /^\p{Extended_Pictographic}$/u.test(tag))) return setMsg('Tags are 2–4 letters or numbers, or a single emoji badge.');
           const { error } = await supabase
             .from('servers')
             .update({

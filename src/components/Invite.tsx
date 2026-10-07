@@ -21,6 +21,7 @@ interface Preview {
   icon_color: string;
   banner_color: string | null;
   verified: boolean;
+  tag: string | null;
   members: number;
   channels: string[];
   rules: string[];
@@ -149,7 +150,7 @@ export function InvitePage({ code }: { code: string }) {
               <ServerBadge p={p} size={84} />
               <div className="small muted">You’ve been invited to join</div>
               <h1>
-                {p.name} {p.verified && <VerifiedMark size={20} />}
+                {p.name} {p.verified && <VerifiedMark size={20} />} {p.tag && <span className="server-tag">{p.tag}</span>}
               </h1>
               {p.description && <p className="muted">{p.description}</p>}
               <div className="invite-stats">

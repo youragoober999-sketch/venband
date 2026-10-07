@@ -151,7 +151,15 @@ function Login({ email, setEmail, setMode }: FormProps) {
     setError(null);
     sessionStore.set({ notice: null });
     try {
-      await signIn(email, password, remember);
+      const raw = email.trim();
+      let loginEmail = raw;
+      if (!raw.includes('@')) {
+        const { data, error } = await supabase.rpc('resolve_login', { p_identifier: raw });
+        if (error) throw error;
+        if (!data?.[0]?.email) throw new Error('No account with that username or email.');
+        loginEmail = data[0].email as string;
+      }
+      await signIn(loginEmail, password, remember);
     } catch (err) {
       if (/not confirmed/i.test(String((err as Error)?.message))) {
         setMode('verify');
@@ -167,8 +175,8 @@ function Login({ email, setEmail, setMode }: FormProps) {
     <form onSubmit={submit}>
       <h1>Welcome back</h1>
       <p className="sub">Log in to pick up where you left off.</p>
-      <Field label="Email">
-        <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+      <Field label="Email or username" hint="Either works — same password.">
+        <input type="text" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com or jules" />
       </Field>
       <Field
         label="Password"

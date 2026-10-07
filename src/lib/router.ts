@@ -81,6 +81,8 @@ export function parseRoute(path = currentPath()): Route {
   if (parts[0] === 'join-group' && parts[1]) return { kind: 'group-invite', code: parts[1] };
   const page = parts[0] ? PAGES[parts[0].toLowerCase()] : undefined;
   if (page) return { kind: 'page', page, id: parts[1] };
+  // A short slug like venband.gg/my-server is a vanity link.
+  if (parts.length === 1 && /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/i.test(parts[0])) return { kind: 'invite', code: parts[0].toLowerCase() };
   if (parts[0] === 'channels') {
     if (!parts[1] || parts[1] === '@me') return { kind: 'home', target: parts[2] ?? null, messageId: parts[3] };
     return { kind: 'server', serverId: parts[1], channelId: parts[2] ?? null, messageId: parts[3] };
