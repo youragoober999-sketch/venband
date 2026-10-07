@@ -202,10 +202,11 @@ begin
     raise exception 'custom links are for verified servers or servers with 500+ members';
   end if;
   if v !~ '^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$' then raise exception 'use 3-32 letters, numbers or dashes'; end if;
-  -- Impersonation words are reserved for everyone; the brand names (venband,
-  -- voogle) too, but Venband staff may claim them for their own servers.
-  -- Generic words match exactly, so e.g. "helpdesk" or "support-group" is fine.
-  if not public.is_staff() then
+  -- Impersonation guard. Generic words are reserved for everyone. Brand names
+  -- (venband, voogle) are reserved too, unless you're Venband staff or the
+  -- server you manage is that brand (name starts with the word), so the real
+  -- Venband server can claim venband.gg/venband.
+  if not (public.is_staff() or (select lower(name) from public.servers where id = p_server) like v || '%') then
     if v ~ '(venband|voogle)' or v in ('admin', 'staff', 'support', 'official', 'moderator', 'security', 'system', 'help') then
       raise exception 'that link is reserved';
     end if;

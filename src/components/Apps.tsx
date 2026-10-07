@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { go } from '../lib/router';
-import { APP_COLUMNS, apiBase, PRESETS, type Application, type Preset, type ServerBot } from '../lib/bots';
+import { appQuery, apiBase, PRESETS, type Application, type Preset, type ServerBot } from '../lib/bots';
 import { Field, Icon } from './ui';
 import { askConfirm, askText } from './Dialogs';
 import { Select } from './Select';
@@ -106,9 +106,9 @@ function AppList() {
   const load = useCallback(async () => {
     const { data: team } = await supabase.from('application_team').select('app_id').eq('user_id', me.id);
     const ids = (team ?? []).map((t) => t.app_id as string);
-    const { data, error } = await supabase.from('applications').select(APP_COLUMNS).or(`owner_id.eq.${me.id}${ids.length ? `,id.in.(${ids.join(',')})` : ''}`).order('created_at');
+    const { data, error } = await appQuery((cols) => supabase.from('applications').select(cols).or(`owner_id.eq.${me.id}${ids.length ? `,id.in.(${ids.join(',')})` : ''}`).order('created_at'));
     setError(error ? errorMessage(error) : null);
-    setApps((data ?? []) as Application[]);
+    setApps(((data ?? []) as unknown as Application[]));
   }, [me.id]);
   useEffect(() => {
     load();
@@ -201,7 +201,7 @@ function AppDashboard({ id }: { id: string }) {
   const [tab, setTab] = useState<Tab>('servers');
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const [q, r] = await Promise.all([supabase.from('applications').select(APP_COLUMNS).eq('id', id).maybeSingle(), supabase.rpc('app_role', { p_app: id, p_user: me.id })]);
+    const [q, r] = await Promise.all([appQuery((cols) => supabase.from('applications').select(cols).eq('id', id).maybeSingle()), supabase.rpc('app_role', { p_app: id, p_user: me.id })]);
     const role = (r.data as string | null) ?? null;
     setRole(role);
     if (q.error) return setError(errorMessage(q.error));

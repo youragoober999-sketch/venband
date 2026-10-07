@@ -51,6 +51,14 @@ export interface BotMessage {
 }
 
 export const APP_COLUMNS = 'id, owner_id, name, description, preset, icon_url, banner_url, color, token_hint, status, created_at';
+// Columns that exist even before the wordle migration (applications.banner_url)
+// is applied, so lists and dashboards keep working against an older schema.
+export const APP_COLUMNS_BASE = 'id, owner_id, name, description, preset, icon_url, color, token_hint, status, created_at';
+export async function appQuery<T>(q: (cols: string) => PromiseLike<{ data: T | null; error: { message: string } | null }>) {
+  const full = await q(APP_COLUMNS);
+  if (!full.error) return full;
+  return q(APP_COLUMNS_BASE);
+}
 
 export const PRESETS: { id: Preset; name: string; blurb: string; features: string[] }[] = [
   {
@@ -89,7 +97,7 @@ const appCache = new Map<string, Promise<Application | null>>();
 export function getApp(id: string): Promise<Application | null> {
   let p = appCache.get(id);
   if (!p) {
-    p = Promise.resolve(supabase.from('applications').select(APP_COLUMNS).eq('id', id).maybeSingle()).then(({ data }) => (data as Application | null) ?? null);
+    p = appQuery((cols) => supabase.from('applications').select(cols).eq('id', id).maybeSingle()).then(({ data }) => (data as Application | null) ?? null);
     appCache.set(id, p);
   }
   return p;
