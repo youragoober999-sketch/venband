@@ -1466,7 +1466,7 @@ option, optgroup { background: var(--bg-2); color: var(--text); }
   background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 6px;
   box-shadow: 0 16px 40px #000a; animation: pop-in .14s var(--ease);
 }
-.vselect-pop.up { transform: translateY(-100%); animation: none; }
+.vselect-pop.up { animation: none; }
 .vselect-search { margin-bottom: 6px; padding: 7px 10px; }
 .vselect-list { overflow-y: auto; overscroll-behavior: contain; }
 .vselect-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }

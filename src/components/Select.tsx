@@ -43,10 +43,17 @@ export function Select({
   useLayoutEffect(() => {
     if (!open || !btn.current) return;
     const r = btn.current.getBoundingClientRect();
-    const below = window.innerHeight - r.bottom;
-    const up = below < 260 && r.top > below;
-    setPos({ left: r.left, top: up ? r.top - 6 : r.bottom + 6, width: Math.max(r.width, 200), up });
-  }, [open]);
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const h = Math.min(320, Math.max(120, shown.length * 38 + 56));
+    const below = vh - r.bottom;
+    const up = below < h && r.top > below;
+    const width = Math.min(Math.max(r.width, 200), vw - 16);
+    const maxLeft = Math.min(vw - 8, r.right - 8) - width;
+    const left = Math.max(8, Math.min(r.left, maxLeft));
+    const top = up ? Math.max(8, r.top - h - 6) : Math.min(vh - h - 8, Math.max(8, r.bottom + 6));
+    setPos({ left, top, width, up });
+  }, [open, shown.length]);
 
   useEffect(() => {
     if (!open) return;
@@ -122,7 +129,7 @@ export function Select({
           <div
             ref={list}
             className={`vselect-pop${pos.up ? ' up' : ''}`}
-            style={{ left: Math.min(pos.left, window.innerWidth - pos.width - 8), top: pos.top, minWidth: pos.width }}
+            style={{ left: pos.left, top: pos.top, minWidth: pos.width }}
             onKeyDown={onKey}
           >
             {search && (
