@@ -1662,8 +1662,11 @@ button.edited:hover { text-decoration: underline; color: var(--text-2); }
 .char-count.over { color: var(--warning); }
 
 .composer-input { position: relative; flex: 1; min-width: 0; display: flex; }
-.composer-input textarea { position: relative; z-index: 1; width: 100%; }
-.spell-backdrop { position: absolute; inset: 0; padding: 9px 2px; white-space: pre-wrap; overflow-wrap: break-word; overflow: hidden; color: transparent; pointer-events: none; font: inherit; line-height: inherit; z-index: 0; }
+.composer-input textarea { position: relative; z-index: 2; width: 100%; color: transparent; caret-color: var(--text); }
+.composer-input.composing textarea { color: var(--text); }
+.composer-input.composing .md-backdrop { display: none; }
+.md-backdrop { position: absolute; inset: 0; padding: 9px 2px; white-space: pre-wrap; overflow-wrap: break-word; overflow: hidden; pointer-events: none; font: inherit; line-height: inherit; z-index: 0; }
+.spell-backdrop { position: absolute; inset: 0; padding: 9px 2px; white-space: pre-wrap; overflow-wrap: break-word; overflow: hidden; color: transparent; pointer-events: none; font: inherit; line-height: inherit; z-index: 1; }
 .spell-wrong { text-decoration: underline wavy var(--danger); text-decoration-skip-ink: none; text-underline-offset: 3px; }
 .send-btn { color: var(--muted); }
 .send-btn.ready { color: var(--accent); }

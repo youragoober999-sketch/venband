@@ -1,6 +1,6 @@
 // The message box: mentions, :emoji: autocomplete, formatting, files (with
 // spoilers and alt text), drafts, spell check, polls, scheduled sending.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { MAX_FILE } from '../lib/files';
@@ -112,12 +112,14 @@ export function Composer({
   const fileInput = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const backdrop = useRef<HTMLDivElement>(null);
+  const mdBackdrop = useRef<HTMLDivElement>(null);
   const emojiBtn = useRef<HTMLButtonElement>(null);
   const lastTyping = useRef(0);
   const tokens = useRef(new Map<string, string>());
   const pendingCaret = useRef<number | null>(null);
   const pendingSelection = useRef<[number, number] | null>(null);
   const [fmt, setFmt] = useState<{ x: number; y: number } | null>(null);
+  const [composing, setComposing] = useState(false);
   const sendTyping = useTypingSender(channelId);
 
   useEffect(() => {
@@ -545,7 +547,10 @@ export function Composer({
             e.target.value = '';
           }}
         />
-        <div className="composer-input">
+        <div className={`composer-input${composing ? ' composing' : ''}`}>
+          <div className="md-backdrop" ref={mdBackdrop} aria-hidden>
+            {renderPreview(text)}
+          </div>
           {showAutocorrectLine && (
             <div className="spell-backdrop" ref={backdrop} aria-hidden>
               {renderMistakes(text, mistakes)}
@@ -560,6 +565,8 @@ export function Composer({
             placeholder={placeholder}
             spellCheck={false}
             aria-label={placeholder}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
             onChange={(e) => {
               setText(e.target.value);
               setCaret(e.target.selectionStart ?? e.target.value.length);
@@ -571,6 +578,7 @@ export function Composer({
             onScroll={(e) => {
               setFmt(null);
               if (backdrop.current) backdrop.current.scrollTop = e.currentTarget.scrollTop;
+              if (mdBackdrop.current) mdBackdrop.current.scrollTop = e.currentTarget.scrollTop;
             }}
             onSelect={(e) => {
               setCaret(e.currentTarget.selectionStart ?? 0);
@@ -740,6 +748,42 @@ function renderMistakes(text: string, mistakes: { start: number; end: number }[]
     at = m.end;
   });
   out.push(text.slice(at) + '\n');
+  return out;
+}
+
+// Live formatting inside the message box (Discord-style): only text-styling
+// tokens are transformed so the overlay stays aligned with the textarea.
+const PREVIEW_TOKENS: { re: RegExp; wrap: (m: RegExpExecArray, inner: ReactNode) => ReactNode }[] = [
+  { re: /`([^`\n]+)`/, wrap: (_m, inner) => <code className="md-code">{inner}</code> },
+  { re: /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)/, wrap: (_m, inner) => inner },
+  { re: /\|\|([\s\S]+?)\|\|/, wrap: (_m, inner) => inner },
+  { re: /\*\*\*([\s\S]+?)\*\*\*/, wrap: (_m, inner) => <strong><em>{inner}</em></strong> },
+  { re: /\*\*([\s\S]+?)\*\*/, wrap: (_m, inner) => <strong>{inner}</strong> },
+  { re: /__([\s\S]+?)__/, wrap: (_m, inner) => <u>{inner}</u> },
+  { re: /\*([^*\s][\s\S]*?)\*|\b_([^_\s][\s\S]*?)_\b/, wrap: (_m, inner) => <em>{inner}</em> },
+  { re: /~~([\s\S]+?)~~/, wrap: (_m, inner) => <s>{inner}</s> },
+];
+
+function renderPreview(text: string, ns = ''): ReactNode[] {
+  const out: ReactNode[] = [];
+  let rest = text;
+  let n = 0;
+  while (rest) {
+    let best: { t: (typeof PREVIEW_TOKENS)[number]; m: RegExpExecArray } | null = null;
+    for (const t of PREVIEW_TOKENS) {
+      const m = t.re.exec(rest);
+      if (m && (!best || m.index < best.m.index)) best = { t, m };
+    }
+    if (!best) {
+      out.push(rest);
+      break;
+    }
+    const { t, m } = best;
+    if (m.index > 0) out.push(rest.slice(0, m.index));
+    const k = `${ns}${n++}`;
+    out.push(<Fragment key={k}>{t.wrap(m, renderPreview(m[1] ?? m[2], `${k}-`))}</Fragment>);
+    rest = rest.slice(m.index + m[0].length);
+  }
   return out;
 }
 
