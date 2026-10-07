@@ -1,4 +1,4 @@
-// Developer portal: /applications (your bots) and /applications/<id> (a bot's
+// Developer portal: /bots (your bots) and /bots/<id> (a bot's
 // dashboard, for its owner and the people they added).
 import { useCallback, useEffect, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
@@ -52,12 +52,12 @@ export function ApplicationsPage({ id }: { id?: string }) {
   const loading = sessionStore.use((s) => s.status === 'loading');
   if (id)
     return (
-      <PublicLayout page="applications" title="Application" wide>
+      <PublicLayout page="bots" title="Application" wide>
         {loading ? <div className="spinner" /> : signedIn ? <AppDashboard id={id} /> : <SignInCard what="manage this application" />}
       </PublicLayout>
     );
   return (
-    <PublicLayout page="applications" title="Developers" wide>
+    <PublicLayout page="bots" title="Developers" wide>
       <div className="dev-hero">
         <div>
           <h1>Build for Venband</h1>
@@ -121,7 +121,7 @@ function AppList() {
                 setError(null);
                 const { data, error } = await supabase.rpc('create_application', { p_name: name.trim(), p_preset: creating });
                 if (error) return setError(errorMessage(error));
-                go(`applications/${data as string}`);
+                go(`bots/${data as string}`);
               }}
             >
               Create bot
@@ -137,10 +137,10 @@ function AppList() {
           <a
             key={a.id}
             className="app-row"
-            href={`${import.meta.env.BASE_URL}applications/${a.id}`}
+            href={`${import.meta.env.BASE_URL}bots/${a.id}`}
             onClick={(e) => {
               e.preventDefault();
-              go(`applications/${a.id}`);
+              go(`bots/${a.id}`);
             }}
           >
             <PresetLogo preset={a.preset} color={a.color} />
@@ -186,7 +186,7 @@ function AppDashboard({ id }: { id: string }) {
         <Icon name="lock" size={28} />
         <h2>You can’t open this application</h2>
         <p className="muted">Only its owner and the people they added can see it.</p>
-        <button className="btn primary" onClick={() => go('applications')}>
+        <button className="btn primary" onClick={() => go('bots')}>
           Your applications
         </button>
       </div>
@@ -195,7 +195,7 @@ function AppDashboard({ id }: { id: string }) {
   const preset = PRESETS.find((p) => p.id === app.preset)!;
   return (
     <div className="app-dash">
-      <button className="btn link small" onClick={() => go('applications')}>
+      <button className="btn link small" onClick={() => go('bots')}>
         ← All applications
       </button>
       <div className="app-dash-head">
@@ -258,7 +258,7 @@ function GeneralTab({ app, canEdit, onSaved, isOwner }: { app: Application; canE
               onClick={async () => {
                 if (!(await askConfirm({ title: `Delete ${app.name}`, body: 'The bot leaves every server and its token stops working. This can’t be undone.', confirm: 'Delete', danger: true }))) return;
                 await supabase.from('applications').delete().eq('id', app.id);
-                go('applications');
+                go('bots');
               }}
             >
               Delete application

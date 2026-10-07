@@ -60,7 +60,29 @@ export function Avatar({
       style={{ width: size, height: size, background: profile?.avatar_url ? undefined : (profile?.avatar_color ?? '#555'), fontSize: size * 0.38 }}
       aria-hidden
     >
-      {profile?.avatar_url ? <img className="avatar-img" src={profile.avatar_url} alt="" loading="lazy" draggable={false} /> : initials(name)}
+      {profile?.avatar_url ? (
+        <img
+          className="avatar-img"
+          src={profile.avatar_url}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          onError={(e) => {
+            // broken/expired URL: fall back to the coloured initials disc instead of an empty box
+            const img = e.currentTarget;
+            img.style.display = 'none';
+            const host = img.parentElement;
+            if (host && !host.querySelector('.avatar-fallback')) {
+              const span = document.createElement('span');
+              span.className = 'avatar-fallback';
+              span.textContent = initials(name);
+              host.appendChild(span);
+            }
+          }}
+        />
+      ) : (
+        initials(name)
+      )}
       {fr && <span className="avatar-frame" />}
       {status && <span className={`status-dot ${status}`} />}
     </div>

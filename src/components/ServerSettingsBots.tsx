@@ -49,13 +49,13 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
       <p className="small muted">
         Bots can’t read end-to-end encrypted messages. What they post is plain text and marked with a BOT tag. Make your own at{' '}
         <a
-          href={`${import.meta.env.BASE_URL}applications`}
+          href={`${import.meta.env.BASE_URL}bots`}
           onClick={(e) => {
             e.preventDefault();
-            go('applications');
+            go('bots');
           }}
         >
-          venband.com/applications
+          www.venband.com/bots
         </a>
         .
       </p>

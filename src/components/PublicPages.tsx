@@ -1,6 +1,6 @@
 // Public pages that work signed in or out: /status, /tos, /privacy,
 // /guidelines, /changelog and /discovery. The layout is shared with
-// /applications and /voogle.
+// /bots and /voogle.
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase, supabaseKey, supabaseUrl, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
@@ -14,7 +14,7 @@ const REPO_URL = 'https://github.com/youragoober999-sketch/venband';
 
 const NAV: { page: PublicPage; label: string }[] = [
   { page: 'discovery', label: 'Discover' },
-  { page: 'applications', label: 'Developers' },
+  { page: 'bots', label: 'Developers' },
   { page: 'voogle', label: 'Voogle' },
   { page: 'status', label: 'Status' },
   { page: 'tos', label: 'Terms' },
@@ -668,7 +668,7 @@ export const CHANGELOG: { date: string; title: string; items: string[] }[] = [
     date: '2026-10-06',
     title: 'Developers, bots, Voogle and a status page',
     items: [
-      'Make bots at /applications with presets: Verification, Server management and Connect a site',
+      'Make bots at /bots with presets: Verification, Server management and Connect a site',
       'Paste an invite in your bot’s dashboard to add it to a server',
       'Voogle verification keeps alt accounts and ban evaders out without exposing anyone’s IP',
       'Live status page at /status, plus Terms, Privacy and Guidelines pages',

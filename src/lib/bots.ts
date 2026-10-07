@@ -1,4 +1,4 @@
-// Bots: applications people make at /applications and add to servers.
+// Bots: applications people make at /bots and add to servers.
 // Bots never get message keys, so they can't read encrypted messages; what
 // they post is plain text and is labelled as not end-to-end encrypted.
 import { useEffect, useState } from 'react';

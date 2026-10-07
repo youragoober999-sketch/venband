@@ -902,17 +902,17 @@ log('✅ dragging a server onto another makes a folder');
   await anon.goto(APP + 'discovery');
   await anon.locator(`.public-server[data-server-id="${hqId}"]`).waitFor({ timeout: 15000 });
   if (SHOTS) await anon.screenshot({ path: `${SHOTS}/21-discovery.png` });
-  await anon.goto(APP + 'applications');
+  await anon.goto(APP + 'bots');
   await anon.getByText('Log in to make applications').waitFor({ timeout: 10000 });
   await anon.goto(APP + 'Voogle');
   await anon.getByRole('heading', { name: 'Voogle', exact: true }).waitFor({ timeout: 10000 });
   await anonCtx.close();
-  log('✅ /status, /tos, /discovery, /applications and /voogle work signed out');
+  log('✅ /status, /tos, /discovery, /bots and /voogle work signed out');
 }
 
 // ---- bots: a management bot joins by invite, posts through the API, answers /serverinfo
 const hqChat = execSync(`psql ${DB} -Atc "select id from public.channels where server_id = '${hqId}' and name = 'chat'"`).toString().trim();
-await alice.page.goto(APP + 'applications');
+await alice.page.goto(APP + 'bots');
 await alice.page.locator('.preset-card', { hasText: 'Server management' }).click();
 await alice.page.locator('.create-app input').fill('HQ Helper');
 await alice.page.getByRole('button', { name: 'Create bot' }).click();
@@ -949,7 +949,7 @@ if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/23-bot-command.png` });
 log('✅ slash commands autocomplete and preset bots answer them');
 
 // ---- connect a site: webhook URL posts into a channel
-await alice.page.goto(APP + 'applications');
+await alice.page.goto(APP + 'bots');
 await alice.page.locator('.preset-card', { hasText: 'Connect a site' }).click();
 await alice.page.locator('.create-app input').fill('Shop Feed');
 await alice.page.getByRole('button', { name: 'Create bot' }).click();

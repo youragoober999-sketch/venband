@@ -60,7 +60,7 @@ export function VooglePage() {
           <Icon name="settings" size={22} />
           <h3>Add it to your server</h3>
           <p className="small muted">Server Settings → Voogle: require verification, give a role, block more than N accounts per device or network, and stop ban evasion.</p>
-          <button className="btn secondary small" onClick={() => go('applications')}>
+          <button className="btn secondary small" onClick={() => go('bots')}>
             Make a verification bot
           </button>
         </div>

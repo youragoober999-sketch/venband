@@ -11,7 +11,6 @@ export interface Profile {
   created_at?: string;
   pronouns?: string;
   status_text?: string;
-  status_emoji?: string;
   presence?: PresenceStatus;
   banner_color?: string | null;
   banner_color2?: string | null;
@@ -47,7 +46,7 @@ export interface NameplateStyle {
 
 /** Columns other people may read (keep in sync with directory.loadProfiles). */
 export const PROFILE_COLUMNS =
-  'id, username, display_name, avatar_color, about, created_at, pronouns, status_text, status_emoji, presence, banner_color, banner_color2, accent_color, nameplate, tag_server_id, server_tag, badges, platform_role, account_status, avatar_url, banner_url, avatar_frame, name_style, nameplate_style';
+  'id, username, display_name, avatar_color, about, created_at, pronouns, status_text, presence, banner_color, banner_color2, accent_color, nameplate, tag_server_id, server_tag, badges, platform_role, account_status, avatar_url, banner_url, avatar_frame, name_style, nameplate_style';
 
 export type ServerStatus = 'active' | 'review' | 'closed' | 'banned' | 'deleted';
 

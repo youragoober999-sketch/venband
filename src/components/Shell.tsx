@@ -818,9 +818,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           {d.channel.is_group ? (
             <small className="convo-sub">{d.members.length + 1} members</small>
           ) : p?.status_text ? (
-            <small className="convo-sub">
-              {p.status_emoji} {p.status_text}
-            </small>
+            <small className="convo-sub">{p.status_text}</small>
           ) : null}
         </span>
         {muted && <Icon name="bellOff" size={12} />}
@@ -1592,7 +1590,7 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
                   </span>
                   {p?.status_text && (
                     <span className="member-status" title={p.status_text}>
-                      {p.status_emoji} {p.status_text}
+                      {p.status_text}
                     </span>
                   )}
                 </span>
@@ -1735,7 +1733,7 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
           <Avatar profile={me} size={28} online />
           <span className="user-chip-names">
             <span className="name">{me.display_name}</span>
-            <span className="tag">{me.status_text ? `${me.status_emoji ?? ''} ${me.status_text}` : PRESENCE_LABEL[me.presence ?? 'online']}</span>
+            <span className="tag">{me.status_text || PRESENCE_LABEL[me.presence ?? 'online']}</span>
           </span>
         </button>
       </div>

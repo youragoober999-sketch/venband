@@ -364,14 +364,9 @@ function ProfileTab() {
           <Field label="Pronouns">
             <input maxLength={40} value={preview.pronouns ?? ''} placeholder="they/them" onChange={(e) => set({ pronouns: e.target.value })} />
           </Field>
-          <div className="row">
-            <Field label="Status emoji">
-              <input maxLength={8} value={preview.status_emoji ?? ''} placeholder="🎧" onChange={(e) => set({ status_emoji: e.target.value })} />
-            </Field>
-            <Field label="Custom status" hint={`${(preview.status_text ?? '').length}/300 · shown as a bubble on your profile`}>
-              <textarea rows={2} maxLength={300} value={preview.status_text ?? ''} placeholder="Listening to the new album" onChange={(e) => set({ status_text: e.target.value })} />
-            </Field>
-          </div>
+          <Field label="Custom status" hint={`${(preview.status_text ?? '').length}/300 · shown as a bubble on your profile`}>
+            <textarea rows={2} maxLength={300} value={preview.status_text ?? ''} placeholder="Listening to the new album" onChange={(e) => set({ status_text: e.target.value })} />
+          </Field>
           <Field label="Online status">
             <Select value={preview.presence ?? 'online'} onChange={(v) => set({ presence: v as PresenceStatus })} options={PRESENCE.map((p) => ({ value: p.id, label: p.label, icon: <span className={`status-dot inline ${p.id}`} /> }))} />
           </Field>
@@ -516,11 +511,7 @@ function ProfileTab() {
                 @{me.username}
                 {preview.pronouns ? ` · ${preview.pronouns}` : ''} <ServerTag tag={me.server_tag} />
               </div>
-              {(preview.status_text || preview.status_emoji) && (
-                <div className="status-bubble">
-                  {preview.status_emoji && <span className="status-bubble-emoji">{preview.status_emoji}</span>} {preview.status_text}
-                </div>
-              )}
+              {!!preview.status_text && <div className="status-bubble">{preview.status_text}</div>}
               {preview.about && (
                 <div className="profile-bio">
                   <Markdown text={preview.about} />

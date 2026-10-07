@@ -442,7 +442,7 @@ export async function signOut(notice = 'You’re logged out. See you soon.') {
 export type ProfilePatch = Partial<
   Pick<
     Profile,
-    | 'display_name' | 'avatar_color' | 'about' | 'pronouns' | 'status_text' | 'status_emoji' | 'presence'
+    | 'display_name' | 'avatar_color' | 'about' | 'pronouns' | 'status_text' | 'presence'
     | 'banner_color' | 'banner_color2' | 'accent_color' | 'nameplate' | 'language' | 'onboarded'
     | 'avatar_url' | 'banner_url' | 'avatar_frame' | 'name_style' | 'nameplate_style'
   >

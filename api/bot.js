@@ -1,7 +1,7 @@
 // Vercel Function: the Venband bot API.
 //   POST /api/bot   Authorization: Bot vb_<app>_<secret>
 //   body: {"action": "send", "channel": "...", "content": "..."}
-// See venband.com/applications#api for every action.
+// See www.venband.com/bots#api for every action.
 import { json, preflight, readJson, rpc } from './_lib/rpc.js';
 
 export function OPTIONS() {
@@ -9,7 +9,7 @@ export function OPTIONS() {
 }
 
 export function GET() {
-  return json(405, { error: 'Use POST with {"action": "..."}. Docs: https://www.venband.com/applications#api' });
+  return json(405, { error: 'Use POST with {"action": "..."}. Docs: https://www.venband.com/bots#api' });
 }
 
 export async function POST(request) {

@@ -78,7 +78,7 @@ function PublicRoute({ route }: { route: Extract<Route, { kind: 'page' }> }) {
       return <ChangelogPage />;
     case 'discovery':
       return <PublicDiscovery />;
-    case 'applications':
+    case 'bots':
       return <ApplicationsPage id={route.id} />;
     case 'voogle':
       return <VooglePage />;

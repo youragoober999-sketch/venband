@@ -41,7 +41,7 @@ export function inviteCodeFrom(text: string): string | null {
   if (!m) return null;
   const code = m[1];
   // venband.com/<page> words aren't invites
-  if (/^(channels|sign-in|register|status|tos|applications|voogle|discovery|discover|privacy|changelog|login|signup|support|developers|api|assets)$/i.test(code)) return null;
+  if (/^(channels|sign-in|register|status|tos|applications|voogle|discovery|discover|privacy|changelog|login|signup|support|developers|bots|api|assets)$/i.test(code)) return null;
   return code;
 }
 

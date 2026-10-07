@@ -343,9 +343,9 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
               {shown?.pronouns ? ` · ${shown.pronouns}` : ''}
               <ServerTag tag={shown?.server_tag} serverId={shown?.tag_server_id} />
             </div>
-            {(shown?.status_text || shown?.status_emoji) && (
+            {!!shown?.status_text && (
               <div className="status-bubble" role="note" aria-label="Status">
-                {shown.status_emoji && <span className="status-bubble-emoji">{shown.status_emoji}</span>} {shown.status_text}
+                {shown.status_text}
               </div>
             )}
             {rel?.blocked && <div className="notice small">You blocked this person.</div>}
