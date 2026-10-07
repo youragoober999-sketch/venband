@@ -179,8 +179,8 @@ begin
             case when v_cmd = 'ban' then '**/ban @user reason** — bans a member and stops them rejoining.'
                  else '**/kick @user reason** — removes a member from the server.' end), null, v_id);
         else
-          if v_u = auth.uid() then raise exception 'you can''t ' || v_cmd || ' yourself'; end if;
-          if v_u = s.owner_id then raise exception 'you can''t ' || v_cmd || ' the server owner'; end if;
+          if v_u = auth.uid() then raise exception using message = 'you can''t ' || v_cmd || ' yourself'; end if;
+          if v_u = s.owner_id then raise exception using message = 'you can''t ' || v_cmd || ' the server owner'; end if;
           if v_cmd = 'ban' and not public.has_permission(v_server, 32) then
             raise exception 'you need the Ban Members permission to use /ban';
           end if;

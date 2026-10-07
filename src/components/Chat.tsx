@@ -168,7 +168,7 @@ export function ChatView({
   const isThread = Boolean(threadRoot);
   const isWelcome = !isThread && Boolean(data?.server?.welcome_channel_id && data.server.welcome_channel_id === channel.id);
   const joins = useJoinEvents(isWelcome && showJoins ? (data?.server?.id ?? null) : null);
-  const botMessages = useBotMessages(data && !isThread ? channel.id : null);
+  const botMessages = useBotMessages(!isThread ? channel.id : null);
   const botApps = useApps(botMessages.map((b) => b.app_id));
   const botCommands = useServerCommands(!isThread ? (data?.server?.id ?? null) : null);
   const [replyTo, setReplyTo] = useState<DecryptedMessage | null>(null);

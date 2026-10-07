@@ -41,7 +41,7 @@ export interface BotEmbed {
 
 export interface BotMessage {
   id: string;
-  server_id: string;
+  server_id: string | null;
   channel_id: string;
   app_id: string;
   username: string | null;
