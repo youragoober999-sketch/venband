@@ -21,6 +21,27 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
   const [requests, setRequests] = useState<{ id: string; app_id: string; requested_by: string; created_at: string; app?: Application }[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [directory, setDirectory] = useState<DirectoryRow[] | null>(null);
+  const [adding, setAdding] = useState<string | null>(null);
+
+  const loadDirectory = useCallback(async () => {
+    const { data, error } = await supabase.rpc('bot_directory', { p_server: server.id });
+    if (error) return setError(errorMessage(error));
+    setDirectory((data ?? []) as DirectoryRow[]);
+  }, [server.id]);
+  useEffect(() => {
+    loadDirectory();
+  }, [loadDirectory, version]);
+
+  async function addBot(a: DirectoryRow) {
+    setAdding(a.id);
+    setError(null);
+    const { error } = await supabase.rpc('bot_add_to_server', { p_app: a.id, p_server: server.id });
+    setAdding(null);
+    if (error) return setError(errorMessage(error));
+    setVersion((v) => v + 1);
+    loadDirectory();
+  }
 
   const loadRequests = useCallback(async () => {
     const { data: rows } = await supabase.from('bot_join_requests').select('id, app_id, requested_by, created_at').eq('server_id', server.id);
@@ -60,6 +81,39 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
         .
       </p>
       {error && <div className="form-error">{error}</div>}
+      <h3>Bot Directory</h3>
+      <p className="small muted">
+        Every bot you can add to {server.name}, most-used first. The official Venband bot is pinned on top.
+      </p>
+      {directory === null ? (
+        <div className="spinner" />
+      ) : directory.length === 0 ? (
+        <p className="muted small">No bots to add right now.</p>
+      ) : (
+        directory.map((a) => (
+          <div key={a.id} className="integration-row">
+            {a.preset ? <PresetLogo preset={a.preset} color={a.color} size={36} /> : <Icon name="bot" />}
+            <div className="grow">
+              <b>
+                {a.name} {a.preset === 'venband' && <span className="tag-soft accent">Official</span>}
+              </b>
+              <div className="small muted">
+                {PRESETS.find((p) => p.id === a.preset)?.name} · in {a.installs} server{a.installs === 1 ? '' : 's'}
+                {a.description ? ` · ${a.description}` : ''}
+              </div>
+            </div>
+            {a.installed ? (
+              <span className="pill">Added</span>
+            ) : a.requested ? (
+              <span className="pill">Requested</span>
+            ) : (
+              <button className="btn primary small" disabled={!can || adding === a.id} onClick={() => addBot(a)}>
+                {adding === a.id ? 'Adding…' : 'Add'}
+              </button>
+            )}
+          </div>
+        ))
+      )}
       {requests.length > 0 && (
         <>
           <h3>Requests</h3>
@@ -120,6 +174,12 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
       })}
     </div>
   );
+}
+
+interface DirectoryRow extends Application {
+  installs: number;
+  installed: boolean;
+  requested: boolean;
 }
 
 interface Pending {
