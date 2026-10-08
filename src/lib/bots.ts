@@ -236,3 +236,127 @@ export function useServerBots(serverId: string | null, version = 0): ServerBot[]
 export function apiBase() {
   return `${window.location.origin}${import.meta.env.BASE_URL}api`;
 }
+
+// ------------------------------------------------------------ bot DMs ------
+
+/** A DM whose channel is bound to an app (slash commands live in the DM). */
+export interface DmBotLink {
+  app_id: string;
+  app_name: string;
+  app_color: string;
+  preset: Preset;
+}
+
+const DM_BOTS_COLUMNS = `app_id, applications(${APP_COLUMNS_BASE})`;
+
+async function dmBotRow(channelId: string): Promise<Application | null> {
+  const { data } = await supabase.from('dm_bots').select(DM_BOTS_COLUMNS).eq('channel_id', channelId).maybeSingle();
+  const row = data as unknown as { applications?: unknown } | null;
+  return (row?.applications as unknown as Application | undefined) ?? null;
+}
+
+/** Which DMs are bound to a bot, batched (for the DM list / settings). */
+export async function dmBotLinksFor(channelIds: string[]): Promise<Map<string, DmBotLink>> {
+  const out = new Map<string, DmBotLink>();
+  if (!channelIds.length) return out;
+  const { data } = await supabase.from('dm_bots').select(DM_BOTS_COLUMNS).in('channel_id', channelIds);
+  const rows = (data ?? []) as unknown as { channel_id: string; applications?: unknown }[];
+  for (const row of rows) {
+    const a = row.applications as unknown as Application | undefined;
+    if (!a) continue;
+    out.set(row.channel_id, { app_id: a.id, app_name: a.name, app_color: a.color, preset: a.preset });
+  }
+  return out;
+}
+
+/** The app a DM is bound to (null when it's a normal person DM). */
+export function useDmBot(channelId: string | null): Application | null {
+  const [app, setApp] = useState<Application | null>(null);
+  useEffect(() => {
+    setApp(null);
+    if (!channelId) return;
+    let cancelled = false;
+    const load = () => dmBotRow(channelId).then((a) => !cancelled && setApp(a));
+    load();
+    const ch = supabase
+      .channel(`dmb:${channelId}:${Math.random().toString(36).slice(2, 8)}`, { config: { private: true } })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_bots', filter: `channel_id=eq.${channelId}` }, load)
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(ch);
+    };
+  }, [channelId]);
+  return app;
+}
+
+/** The slash commands a bot answers inside its DM (mobile-friendly mirror kept live). */
+export function useDmCommands(channelId: string | null): BotCommand[] {
+  const [rows, setRows] = useState<BotCommand[]>([]);
+  useEffect(() => {
+    if (!channelId) return setRows([]);
+    let cancelled = false;
+    const load = () =>
+      supabase.rpc('dm_commands', { p_channel: channelId }).then(({ data }) => {
+        if (!cancelled) setRows((data ?? []) as BotCommand[]);
+      });
+    load();
+    const ch = supabase
+      .channel(`dmc:${channelId}:${Math.random().toString(36).slice(2, 8)}`, { config: { private: true } })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_bots', filter: `channel_id=eq.${channelId}` }, load)
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(ch);
+    };
+  }, [channelId]);
+  return rows;
+}
+
+/** One row of list_my_bots() — an app you connected or own. */
+export interface MyBotRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  description: string | null;
+  preset: Preset;
+  color: string;
+  icon_url: string | null;
+  channel_id: string | null;
+  created_at: string | null;
+}
+
+/** Connect a bot to your account for DM slash commands; returns the DM channel id. */
+export async function connectBot(appId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('connect_bot', { p_app: appId });
+  if (error) throw error;
+  if (!data) throw new Error('That bot couldn’t be connected right now.');
+  return data as string;
+}
+
+export async function disconnectBot(appId: string): Promise<void> {
+  const { error } = await supabase.rpc('disconnect_bot', { p_app: appId });
+  if (error) throw error;
+}
+
+export interface ListMyBotsResult {
+  rows: MyBotRow[];
+  /** the RPC doesn't exist yet on this server */
+  missing?: boolean;
+}
+export async function listMyBots(): Promise<ListMyBotsResult> {
+  const { data, error } = await supabase.rpc('list_my_bots');
+  if (error && /PGRST202/.test(error.message)) return { rows: [], missing: true };
+  if (error) throw error;
+  return { rows: (data ?? []) as MyBotRow[] };
+}
+
+/** True when an RPC or column doesn't exist yet on this server (pending SQL not pasted). */
+export function isRpcMissing(e: unknown): boolean {
+  return /PGRST202|PGRST204/.test((e as { message?: string })?.message ?? String(e ?? ''));
+}
+
+export async function deleteApp(appId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_app', { p_app: appId });
+  if (error) throw error;
+}

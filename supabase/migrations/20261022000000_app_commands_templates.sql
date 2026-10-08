@@ -65,7 +65,10 @@ begin
 end;
 $$;
 
--- Directory now advertises each app's tags too.
+-- Directory now advertises each app's tags too. 20261018000000 defined the
+-- return shape without tags, so drop-first (a create or replace cannot widen
+-- the OUT row type).
+drop function if exists public.bot_directory(uuid);
 create or replace function public.bot_directory(p_server uuid)
 returns table (id uuid, owner_id uuid, name text, description text, preset text,
                icon_url text, banner_url text, color text, token_hint text,

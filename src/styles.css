@@ -2393,3 +2393,40 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .cmd-name-input span { color: var(--muted); font-weight: 700; }
 .event-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .activity-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* ------------------------------------------------------------ bot DMs ---- */
+.bot-avatar { color: #fff; border-radius: 30%; }
+.dash-dm { margin: 2px 4px 8px; }
+.dash-dm .svg-icon { margin-right: 6px; }
+.update-card { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 10%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); margin: 10px 0; }
+.update-card b { display: block; margin-bottom: 2px; }
+.my-apps-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.my-app-avatar { width: 36px; height: 36px; flex: none; border-radius: 30%; display: grid; place-items: center; color: #fff; }
+.my-apps-list .app-row { animation: rise .28s var(--ease) both; }
+.my-apps-list .app-row:nth-child(2) { animation-delay: .03s; }
+.my-apps-list .app-row:nth-child(3) { animation-delay: .06s; }
+.my-apps-list .app-row:nth-child(4) { animation-delay: .09s; }
+.my-apps-list .app-row:nth-child(5) { animation-delay: .12s; }
+.script-editor { width: 100%; min-height: 340px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; tab-size: 2; background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 12px; resize: vertical; color: var(--text); margin: 10px 0; }
+.script-editor:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.script-template-row { align-items: center; gap: 10px; flex-wrap: wrap; }
+.hide-sm { display: inline-block; }
+
+/* ------------------------------------------------- micro-polish / motion -- */
+.event-list .app-row { animation: rise .3s var(--ease) both; }
+.event-list .app-row:nth-child(2) { animation-delay: .02s; }
+.event-list .app-row:nth-child(3) { animation-delay: .04s; }
+.event-list .app-row:nth-child(4) { animation-delay: .06s; }
+.event-list .app-row:nth-child(5) { animation-delay: .08s; }
+.dash-nav button { position: relative; transition: transform .12s var(--ease), background-color .15s var(--ease), color .15s var(--ease); }
+.dash-nav button:active { transform: scale(.97); }
+.dash-nav button::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 4px; height: 2px; border-radius: 2px; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform .18s var(--ease); }
+.dash-nav button.active::after { transform: scaleX(1); }
+.dash-nav button.active { background: transparent; }
+.bot-avatar { transition: transform .2s var(--ease); }
+.channel.dm:hover .bot-avatar, .rail-item:hover .bot-avatar { transform: scale(1.07) rotate(-4deg); }
+@keyframes wiggle { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+.verify-result.passed { animation: pop-in .35s var(--spring) both, wiggle .5s var(--spring) 0.28s; }
+.template-grid .preset-card, .preset-grid .preset-card { transition: transform .16s var(--ease), border-color .16s var(--ease), box-shadow .2s var(--ease); }
+.template-grid .preset-card:hover, .preset-grid .preset-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 8px 22px -10px color-mix(in srgb, var(--accent) 35%, transparent); }
+.template-grid .preset-card:active, .preset-grid .preset-card:active { transform: translateY(0) scale(.99); }

@@ -6,6 +6,8 @@
 -- account unless the typed identifier matches one.
 -- =============================================================================
 
+-- it a compatible re-run when earlier blocks defined the old return shape.
+drop function if exists public.resolve_login(text);
 create or replace function public.resolve_login(p_identifier text)
 returns table (email text, username text, banned boolean)
 language sql

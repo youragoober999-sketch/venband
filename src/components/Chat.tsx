@@ -36,7 +36,7 @@ import { Composer, useTyping, type Mentionables, type PendingFile, type SendOpti
 import { EditHistoryModal, PollView, QuickReactBar, quickReactionSet, Reactions, ThreadSummary } from './MessageParts';
 import { EmojiPicker } from './EmojiPicker';
 import { toggleReaction } from '../lib/chatExtras';
-import { useApps, useBotMessages, useServerCommands, type Application, type BotMessage } from '../lib/bots';
+import { useApps, useBotMessages, useDmBot, useDmCommands, useServerCommands, type Application, type BotMessage } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
 
 interface JoinEvent {
@@ -171,6 +171,8 @@ export function ChatView({
   const botMessages = useBotMessages(!isThread ? channel.id : null);
   const botApps = useApps(botMessages.map((b) => b.app_id));
   const botCommands = useServerCommands(!isThread ? (data?.server?.id ?? null) : null);
+  const dmCommands = useDmCommands(!isThread && channel.type === 'dm' ? channel.id : null);
+  const dmBot = useDmBot(!isThread && channel.type === 'dm' ? channel.id : null);
   const [replyTo, setReplyTo] = useState<DecryptedMessage | null>(null);
   const [quote, setQuote] = useState<DecryptedMessage | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -314,6 +316,15 @@ export function ChatView({
       if (error) throw error;
       return;
     }
+    if (slash && isDm) {
+      const dmCommand = dmCommands.find((c) => c.name === slash[1].toLowerCase());
+      if (dmCommand) {
+        const { error } = await supabase.rpc('use_bot_command_dm', { p_channel: channel.id, p_command: dmCommand.name, p_args: slash[2] ?? '' });
+        if (error) throw error;
+        return;
+      }
+      if (dmBot) throw new Error(`This bot doesn't know /${slash[1].toLowerCase()}. Try /help to see what it can do.`);
+    }
     if (automod && containsSlur(text)) throw new Error('AutoMod blocked this message: it contains a slur this server doesn’t allow.');
     if (files.length && !can(P.ATTACH_FILES)) throw new Error('You can’t upload files here: your roles don’t have the “Attach Files” permission.');
     if (opts.poll && !can(P.CREATE_POLLS)) throw new Error('You can’t post polls here: your roles don’t have the “Create Polls” permission.');
@@ -442,10 +453,10 @@ export function ChatView({
       channels: (data?.channels ?? []).filter((c) => c.type === 'text').map((c) => ({ id: c.id, label: c.name })),
       everyone: Boolean(data) && can(P.MENTION_EVERYONE),
       emoji: customEmoji(expressions),
-      commands: botCommands,
+      commands: isDm ? dmCommands : botCommands,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, dmMembers, me, expressions, botCommands]);
+  }, [data, dmMembers, me, expressions, botCommands, dmCommands, isDm]);
 
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File[]>([]);

@@ -10,6 +10,7 @@ import { channelPermissions } from '../lib/channelPerms';
 import type { DecryptedMessage } from '../lib/keyring';
 import type { Channel, ChannelOverwrite, DmChannel, Member, MemberRole, MessageRow, Role, Server } from '../lib/types';
 import { getProfile } from '../lib/directory';
+import { dmBotLinksFor } from '../lib/bots';
 
 // ------------------------------------------------------------- navigation --
 
@@ -137,6 +138,7 @@ export function useMyServers(onMessage?: (row: MessageRow) => void) {
     for (const p of parts ?? []) byChannel.set(p.channel_id, [...(byChannel.get(p.channel_id) ?? []), p.user_id]);
     const chIds = [...byChannel.keys()];
     const { data: chs } = chIds.length ? await supabase.from('channels').select('*').in('id', chIds) : { data: [] };
+    const botLinks = await dmBotLinksFor(chIds);
     const others = [...byChannel.values()].flat().filter((u) => u !== me.id);
     await loadProfiles(others);
     setDms(
@@ -145,10 +147,9 @@ export function useMyServers(onMessage?: (row: MessageRow) => void) {
           const ids = (byChannel.get(c.id) ?? []).filter((u) => u !== me.id);
           const members = ids.map((u) => getProfile(u)).filter((p): p is NonNullable<typeof p> => Boolean(p));
           const other = c.is_group ? null : (members[0] ?? null);
-          const title = c.is_group
-            ? c.name
-            : (other?.display_name ?? 'Unknown user');
-          return { channel: c, other, members, title };
+          const bot = botLinks.get(c.id) ?? null;
+          const title = bot ? bot.app_name : c.is_group ? c.name : (other?.display_name ?? 'Unknown user');
+          return { channel: c, other, members, title, bot };
         })
         .sort((a, b) => (a.channel.created_at < b.channel.created_at ? 1 : -1)),
     );
@@ -178,6 +179,7 @@ export function useMyServers(onMessage?: (row: MessageRow) => void) {
       ? [
           { table: 'server_members', filter: `user_id=eq.${me.id}` },
           { table: 'dm_participants' }, // RLS: only conversations I'm in
+          { table: 'dm_bots' }, // RLS: only bot DMs I can view
           { table: 'channels', filter: 'type=eq.dm' },
           { table: 'servers' },
           // every message the user is allowed to read (RLS applies) — for unread badges / notifications

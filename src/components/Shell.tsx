@@ -225,7 +225,8 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
     else {
       const id = s.channelByServer['@me'];
       const dm = id ? dms.find((d) => d.channel.id === id) : null;
-      path = dm ? `channels/@me/${dm.channel.is_group ? dm.channel.id : (dm.other?.id ?? dm.channel.id)}` : id ? `channels/@me/${id}` : 'channels/@me';
+      // bot DMs are keyed by their channel (own-bot DMs have no "other" user)
+      path = dm ? `channels/@me/${dm.bot || dm.channel.is_group ? dm.channel.id : (dm.other?.id ?? dm.channel.id)}` : id ? `channels/@me/${id}` : 'channels/@me';
     }
     const r = parseRoute();
     if (r.kind === 'root' || r.kind === 'sign-in' || r.kind === 'register') go(path, { replace: true, keepQuery: true });
@@ -2040,14 +2041,24 @@ function AppBanner() {
   );
 }
 
-/** Avatar for a conversation: the person for DMs, a stacked pair for groups. */
+/** Avatar for a conversation: the person for DMs, a stacked pair for groups, a bot mark for bot DMs. */
 function ConvoAvatar({ dm, size }: { dm: DmChannel; size: number }) {
+  if (dm.bot) return <BotAvatar dm={dm} size={size} />;
   if (!dm.channel.is_group) return <Avatar profile={dm.other ? (getProfile(dm.other.id) ?? dm.other) : null} size={size} />;
   const [a, b] = dm.members;
   return (
     <span className="group-avatar" style={{ width: size, height: size }}>
       <Avatar profile={a} size={size * 0.68} />
       {b && <Avatar profile={b} size={size * 0.68} />}
+    </span>
+  );
+}
+
+/** A rounded square in the app's color with a "wren"/robot mark for bots. */
+function BotAvatar({ dm, size }: { dm: DmChannel; size: number }) {
+  return (
+    <span className="bot-avatar" style={{ width: size, height: size, background: dm.bot!.app_color || '#5865f2', color: '#fff' }} title="Bot">
+      <Icon name="bot" size={Math.round(size * 0.55)} />
     </span>
   );
 }

@@ -209,4 +209,6 @@ export interface DmChannel {
   members: Profile[];
   /** what to show as the conversation's name */
   title: string;
+  /** when this DM is bound to a bot (slash commands live here) */
+  bot?: { app_id: string; app_name: string; app_color: string; preset: string } | null;
 }

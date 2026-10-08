@@ -4,9 +4,12 @@
 -- pinned first — and add one to their server without pasting invite codes.
 -- =============================================================================
 
+-- 20261022000000_redefines this with an added tags column; a drop-first
+-- make the pending blocks re-runnable regardless of the shape already live.
 -- bot_directory(p_server): all active applications the caller could add to
 -- this server, with an install count and whether they're already here (or
 -- have a pending join request).
+drop function if exists public.bot_directory(uuid);
 create or replace function public.bot_directory(p_server uuid)
 returns table (id uuid, owner_id uuid, name text, description text, preset text,
                icon_url text, banner_url text, color text, token_hint text,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { LooksPanel } from './LooksSettings';
 import { supabase, errorMessage } from '../lib/supabase';
 import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
@@ -17,6 +17,9 @@ import { Avatar, ColorPicker, Field, Icon, nameplateVars, StyledName } from './u
 import { ImageCropper } from './ImageCropper';
 import { askText } from './Dialogs';
 import { Select } from './Select';
+import { go } from '../lib/router';
+import { connectBot, deleteApp as deleteAppRpc, disconnectBot, listMyBots, type MyBotRow } from '../lib/bots';
+import { ServerUpdateCard } from './Apps';
 import { Badges } from './Badges';
 import { accountAge, bannerStyle, NAMEPLATES, ServerTag } from './People';
 import { askConfirm } from './Dialogs';
@@ -34,6 +37,7 @@ const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff
   { id: 'voice', label: 'Voice & Video', icon: 'mic', group: 'App Settings' },
   { id: 'chat', label: 'Chat', icon: 'message', group: 'App Settings' },
   { id: 'language', label: 'Language', icon: 'globe', group: 'App Settings' },
+  { id: 'my-apps', label: 'My Apps', icon: 'bot', group: 'App Settings' },
   { id: 'moderation', label: 'Moderation', icon: 'gavel', group: 'Venband Staff', staff: true },
   { id: 'discovery-queue', label: 'Discovery Applications', icon: 'compass', group: 'Venband Staff', staff: true },
   { id: 'reports', label: 'Report Centre', icon: 'flag', group: 'Venband Staff', staff: true, admin: true },
@@ -89,6 +93,7 @@ export function SettingsPage() {
           {tab === 'voice' && <VoiceTab />}
           {tab === 'chat' && <ChatTab />}
           {tab === 'language' && <LanguageTab />}
+          {tab === 'my-apps' && <MyAppsTab />}
           {tab === 'moderation' && staff && <ModerationCenter />}
           {tab === 'reports' && admin && <ReportCentre />}
           {tab === 'discovery-queue' && staff && <DiscoveryQueue />}
@@ -110,6 +115,114 @@ function Section({ title, children, desc }: { title: string; desc?: ReactNode; c
       {desc && <p className="muted small">{desc}</p>}
       {children}
     </section>
+  );
+}
+
+/** Settings → My Apps — every bot connected to your account, plus the ones you own. */
+function MyAppsTab() {
+  const me = sessionStore.use((s) => s.me)!;
+  const [rows, setRows] = useState<MyBotRow[] | null>(null);
+  const [missing, setMissing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setRows(null);
+    try {
+      const { rows, missing } = await listMyBots();
+      setMissing(Boolean(missing));
+      setRows(rows);
+      setError(null);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  async function openBot(row: MyBotRow) {
+    if (!row.channel_id) return;
+    closeSettings();
+    go(`channels/@me/${row.channel_id}`);
+  }
+  async function disconnect(row: MyBotRow) {
+    setBusy(row.id);
+    setError(null);
+    try {
+      await disconnectBot(row.id);
+      await load();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function remove(row: MyBotRow) {
+    if (!(await askConfirm({ title: `Delete “${row.name}”?`, body: `This deletes the bot for good — every server loses it and its commands are gone. The official Venband bot is protected.`, confirm: 'Delete forever', danger: true }))) return;
+    setBusy(row.id);
+    setError(null);
+    try {
+      await deleteAppRpc(row.id);
+      await load();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <Section title="My Apps" desc="Bots you connected to your account answer your slash commands in a DM. Everything you own is listed too, so you can drop it anywhere.">
+      {error && <div className="form-error">{error}</div>}
+      {missing && <ServerUpdateCard what="my apps" />}
+      {rows === null && !missing && <div className="spinner" />}
+      {rows?.length === 0 && !missing && <p className="muted small">No connected apps yet. Open a bot’s dashboard and hit “Message this bot” — or make one on the <button className="btn link small" onClick={() => (closeSettings(), go('bots'))}>Developers</button> page.</p>}
+      <div className="my-apps-list">
+        {rows?.map((row) => (
+          <div key={row.id} className="app-row static">
+            <span className="my-app-avatar" style={{ background: row.color || '#5865f2' }}>
+              <Icon name="bot" size={18} />
+            </span>
+            <span className="grow">
+              <b>{row.name}</b>
+              <div className="small muted">{row.description || 'No description'}</div>
+            </span>
+            {row.channel_id ? (
+              <button className="btn secondary small" onClick={() => openBot(row)}>
+                <Icon name="message" size={14} /> Open DM
+              </button>
+            ) : (
+              <button
+                className="btn secondary small"
+                disabled={busy === row.id}
+                onClick={async () => {
+                  setBusy(row.id);
+                  setError(null);
+                  try {
+                    const channel = await connectBot(row.id);
+                    setBusy(null);
+                    closeSettings();
+                    go(`channels/@me/${channel}`);
+                  } catch (e) {
+                    setError(errorMessage(e));
+                    setBusy(null);
+                  }
+                }}
+              >
+                Connect to chat
+              </button>
+            )}
+            <button className="btn link small danger-text" disabled={busy === row.id} onClick={() => disconnect(row)}>
+              Disconnect
+            </button>
+            {row.owner_id === me.id && (
+              <button className="btn link small danger-text" disabled={busy === row.id} onClick={() => remove(row)}>
+                Delete
+              </button>
+            )}
+            {row.id && <span title={`App id: ${row.id}`} className="small muted mono hide-sm">{row.id.slice(0, 8)}</span>}
+          </div>
+        ))}
+      </div>
+    </Section>
   );
 }
 

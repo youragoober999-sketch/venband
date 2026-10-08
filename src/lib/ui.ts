@@ -15,7 +15,8 @@ export type SettingsTab =
   | 'moderation'
   | 'discovery-queue'
   | 'reports'
-  | 'badges';
+  | 'badges'
+  | 'my-apps';
 
 export const uiStore = createStore<{
   settings: SettingsTab | null;

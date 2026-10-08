@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { go } from '../lib/router';
-import { appQuery, apiBase, normalizeTags, PRESETS, type Application, type BotCommandResponse, type BotCommandRow, type BotTemplate, type Preset, type ServerBot } from '../lib/bots';
+import { appQuery, apiBase, connectBot, isRpcMissing, normalizeTags, PRESETS, type Application, type BotCommandResponse, type BotCommandRow, type BotTemplate, type Preset, type ServerBot } from '../lib/bots';
 import { Field, Icon } from './ui';
 import { askConfirm, askText } from './Dialogs';
 import { Select } from './Select';
 import { PublicLayout, SignInCard } from './PublicPages';
+import { downloadZip } from '../lib/zip';
 
 // --------------------------------------------------------------- logos ----
 
@@ -72,6 +73,22 @@ export function BotTag() {
   );
 }
 
+/** Some RPCs come from the newest server update — gentler than a bare error. */
+export function ServerUpdateCard({ what }: { what: string }) {
+  return (
+    <div className="update-card">
+      <Icon name="sparkles" size={16} />
+      <div>
+        <b>That needs the newest server update</b>
+        <div className="small muted">
+          {what} aren’t here yet. Paste the pending SQL in the Supabase dashboard (the same file you’ve been using) and refresh — it’s one command
+          away.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------ app list ----
 
 export function ApplicationsPage({ id }: { id?: string }) {
@@ -105,6 +122,7 @@ function AppList() {
   const [creating, setCreating] = useState<Preset | null>(null);
   const [name, setName] = useState('');
   const [templates, setTemplates] = useState<BotTemplate[] | null>(null);
+  const [tplMissing, setTplMissing] = useState(false);
   const [templateBusy, setTemplateBusy] = useState<string | null>(null);
   const [tplError, setTplError] = useState<string | null>(null);
 
@@ -119,7 +137,10 @@ function AppList() {
     load();
   }, [load]);
   useEffect(() => {
-    supabase.rpc('list_bot_templates').then(({ data }) => setTemplates((data ?? []) as BotTemplate[]));
+    supabase.rpc('list_bot_templates').then(({ data, error }) => {
+      if (error && isRpcMissing(error)) return setTplMissing(true);
+      setTemplates((data ?? []) as BotTemplate[]);
+    });
   }, []);
 
   return (
@@ -167,9 +188,9 @@ function AppList() {
       <h2>Start from a template</h2>
       <p className="muted small">Ready-made projects you can grow — each comes with its commands and discoverable tags preloaded.</p>
       {tplError && <div className="form-error">{tplError}</div>}
-      {templates === null ? (
-        <div className="spinner" />
-      ) : (
+      {tplMissing && <ServerUpdateCard what="templates" />}
+      {templates === null && !tplMissing && <div className="spinner" />}
+      {templates !== null && (
         <div className="template-grid">
           {templates.map((t) => (
             <div key={t.slug} className="preset-card template-card">
@@ -248,7 +269,7 @@ function defaultName(p: Preset) {
 
 // ----------------------------------------------------------- dashboard ----
 
-type Tab = 'general' | 'commands' | 'activity' | 'servers' | 'bot' | 'templates' | 'team';
+type Tab = 'general' | 'commands' | 'activity' | 'servers' | 'bot' | 'templates' | 'scripts' | 'team';
 
 function AppDashboard({ id }: { id: string }) {
   const me = sessionStore.use((s) => s.me)!;
@@ -256,6 +277,18 @@ function AppDashboard({ id }: { id: string }) {
   const [role, setRole] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('general');
   const [error, setError] = useState<string | null>(null);
+  const [dmBusy, setDmBusy] = useState(false);
+  async function dmBot(appId: string) {
+    setDmBusy(true);
+    try {
+      const channel = await connectBot(appId);
+      go(`channels/@me/${channel}`);
+    } catch (e) {
+      alert(errorMessage(e));
+    } finally {
+      setDmBusy(false);
+    }
+  }
   const load = useCallback(async () => {
     const [q, r] = await Promise.all([appQuery((cols) => supabase.from('applications').select(cols).eq('id', id).maybeSingle()), supabase.rpc('app_role', { p_app: id, p_user: me.id })]);
     const role = (r.data as string | null) ?? null;
@@ -298,6 +331,7 @@ function AppDashboard({ id }: { id: string }) {
     ['servers', 'Manage Servers'],
     ['bot', 'Token & API'],
     ['templates', 'Templates'],
+    ['scripts', 'Script'],
     ['team', 'Team'],
   ];
   return (
@@ -313,6 +347,9 @@ function AppDashboard({ id }: { id: string }) {
             <div className="small muted">{preset.name}</div>
           </div>
         </div>
+        <button className="btn secondary small dash-dm" disabled={dmBusy} onClick={() => dmBot(app.id)}>
+          <Icon name="message" size={14} /> {dmBusy ? 'Opening…' : 'Message this bot'}
+        </button>
         <nav className="dash-nav">
           {dashTabs.map(([t, l]) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
@@ -329,6 +366,7 @@ function AppDashboard({ id }: { id: string }) {
         {tab === 'servers' && <ServersTab app={app} canEdit={canEdit} />}
         {tab === 'bot' && <TokenTab app={app} canEdit={canEdit} onChanged={load} />}
         {tab === 'templates' && <TemplatesTab app={app} canEdit={canEdit} onChanged={load} />}
+        {tab === 'scripts' && <ScriptsTab app={app} canEdit={canEdit} onChanged={load} />}
         {tab === 'team' && <TeamTab app={app} canEdit={canEdit} />}
       </div>
     </div>
@@ -1015,9 +1053,14 @@ type EventRaw = { kind: string; created_at: string; user_id: string | null; serv
 function ActivityTab({ app }: { app: Application }) {
   const [rows, setRows] = useState<EventRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
   const refresh = useCallback(async () => {
     const { data, error } = await supabase.rpc('app_events', { p_app: app.id, p_limit: 50 });
-    if (error) return setError(errorMessage(error));
+    if (error) {
+      if (isRpcMissing(error)) return setMissing(true);
+      return setError(errorMessage(error));
+    }
+    setMissing(false);
     const events = (data ?? []) as EventRaw[];
     const serverIds = [...new Set(events.map((e) => e.server_id).filter(Boolean))];
     const userIds = [...new Set(events.map((e) => e.user_id).filter(Boolean))];
@@ -1061,9 +1104,9 @@ function ActivityTab({ app }: { app: Application }) {
       </div>
       <p className="small muted">A rolling list of when your bot was used and when new people joined your servers. Updates every 15 seconds.</p>
       {error && <div className="form-error">{error}</div>}
-      {rows === null ? (
-        <div className="spinner" />
-      ) : (
+      {missing && <ServerUpdateCard what="activity logs" />}
+      {rows === null && !missing && <div className="spinner" />}
+      {rows !== null && (
         <div className="event-list">
           {rows.length === 0 && <p className="muted small">No activity yet — once the bot is in a server, commands people run show up here.</p>}
           {rows.map((r, i) => (
@@ -1090,10 +1133,14 @@ function timeAgo(iso: string) {
 // -------------------------------------------------------- templates tab ----*/
 function TemplatesTab({ app, canEdit, onChanged }: { app: Application; canEdit: boolean; onChanged: () => void }) {
   const [templates, setTemplates] = useState<BotTemplate[] | null>(null);
+  const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => {
-    supabase.rpc('list_bot_templates').then(({ data }) => setTemplates((data ?? []) as BotTemplate[]));
+    supabase.rpc('list_bot_templates').then(({ data, error }) => {
+      if (error && isRpcMissing(error)) return setMissing(true);
+      setTemplates((data ?? []) as BotTemplate[]);
+    });
   }, []);
   return (
     <div className="public-card">
@@ -1103,9 +1150,9 @@ function TemplatesTab({ app, canEdit, onChanged }: { app: Application; canEdit: 
         Your preset’s own commands are never touched.
       </p>
       {msg && <div className={msg.ok ? 'form-notice' : 'form-error'}>{msg.text}</div>}
-      {templates === null ? (
-        <div className="spinner" />
-      ) : (
+      {missing && <ServerUpdateCard what="templates" />}
+      {templates === null && !missing && <div className="spinner" />}
+      {templates !== null && (
         <div className="template-grid">
           {templates.map((t) => (
             <div key={t.slug} className="preset-card template-card">
@@ -1148,6 +1195,224 @@ function TemplatesTab({ app, canEdit, onChanged }: { app: Application; canEdit: 
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------- scripts tab ----*/
+
+const POLL_LOOP_SCRIPT = `// Venband bot — a polling loop that answers slash commands.
+// Runs anywhere with Node 18+ (Render, Fly.io, a Raspberry Pi, your laptop).
+// Get a token at /bots → your bot → Token & API, then:
+//   npm i
+//   copy .env.example .env   # add your token
+//   npm start
+const API = process.env.VENBAND_API || 'https://venband.app/api/bot';
+const TOKEN = process.env.VENBAND_TOKEN;
+const POLL_MS = 1000;
+
+async function call(action, args = {}) {
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: { authorization: 'Bot ' + TOKEN, 'content-type': 'application/json' },
+    body: JSON.stringify({ action, ...args }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'HTTP ' + res.status);
+  return body;
+}
+
+let after = new Date().toISOString();
+
+async function onEvent(e) {
+  if (e.type === 'command') {
+    // e: { command: "hello", args: "friend", user, channel, server }
+    const name = e.args ? ' ' + String(e.args) : '';
+    await call('reply', { interaction: e.id, content: 'Hello' + name + ' — from the script!' });
+  } else if (e.type === 'member_join') {
+    console.log('member', e.user, 'joined', e.server);
+  }
+  after = e.at;
+}
+
+async function tick() {
+  const { events } = await call('events', { after });
+  for (const e of events || []) {
+    try { await onEvent(e); } catch (err) { console.error('event failed:', err); }
+  }
+}
+
+async function main() {
+  if (!TOKEN) { console.error('VENBAND_TOKEN is missing — see .env.example'); process.exit(1); }
+  console.log('Connected as', await call('me'));
+  setInterval(() => tick().catch(console.error), POLL_MS);
+}
+
+main();
+`;
+
+const COMMANDS_UV_SCRIPT = `// Register slash commands with commands.set, then answer them.
+// Run this once with your token, it stays connected and replies forever.
+const API = process.env.VENBAND_API || 'https://venband.app/api/bot';
+const TOKEN = process.env.VENBAND_TOKEN;
+
+async function call(action, args = {}) {
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: { authorization: 'Bot ' + TOKEN, 'content-type': 'application/json' },
+    body: JSON.stringify({ action, ...args }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'HTTP ' + res.status);
+  return body;
+}
+
+// Registers two commands people can run with a / (one-time is fine).
+await call('commands.set', {
+  commands: [
+    { name: 'about', description: 'A little introduction to this bot.' },
+    { name: 'time', description: 'The current time, rounded to the minute.' },
+  ],
+});
+
+let after = new Date().toISOString();
+setInterval(async () => {
+  try {
+    const { events } = await call('events', { after });
+    for (const e of events || []) {
+      if (e.type === 'command') {
+        const content = e.command === 'about'
+          ? 'I am a bot script — edit me at /bots → Script.'
+          : 'It is ' + new Date().toLocaleTimeString() + ' right now.';
+        await call('reply', { interaction: e.id, content });
+      }
+      after = e.at;
+    }
+  } catch (err) { console.error(err); }
+}, 1500);
+`;
+
+function ScriptsTab({ app, canEdit, onChanged }: { app: Application; canEdit: boolean; onChanged: () => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    supabase
+      .from('applications')
+      .select('script')
+      .eq('id', app.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error && isRpcMissing(error)) return setMissing(true);
+        setDraft(((data?.script as string | null) || POLL_LOOP_SCRIPT).trim() || POLL_LOOP_SCRIPT);
+      });
+  }, [app.id]);
+  async function save() {
+    setBusy(true);
+    setMsg(null);
+    const { error } = await supabase.from('applications').update({ script: draft ?? '' }).eq('id', app.id);
+    setBusy(false);
+    if (error) {
+      if (isRpcMissing(error)) return setMissing(true);
+      return setMsg({ ok: false, text: errorMessage(error) });
+    }
+    setMsg({ ok: true, text: 'Saved. It runs wherever you host it — the download below matches what you just stored.' });
+    onChanged();
+  }
+  function download() {
+    const slug = (app.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'bot');
+    downloadZip(
+      [
+        { name: 'bot.js', content: draft ?? '' },
+        { name: 'package.json', content: '{\n  "name": "' + slug + '-bot",\n  "version": "1.0.0",\n  "private": true,\n  "type": "module",\n  "scripts": { "start": "node bot.js" }\n}\n' },
+        { name: '.env.example', content: 'VENBAND_TOKEN=vb_00000000000000000000000000000000_XXXXXXXXXXXXXXXXXXXX\n# VENBAND_API=https://venband.app/api/bot  (override for self-hosting)\n' },
+        {
+          name: 'README.md',
+          content: `# ${app.name} bot
+
+A Venband bot backend, edited at the **Script** tab of ${app.name}'s dashboard.
+
+## Run it
+
+\`\`\`
+npm i          # only needed for extra packages you add
+npx dotenv -e .env node bot.js
+\`\`\`
+
+1. Copy \`.env.example\` to \`.env\` and paste your token (dashboard → Token & API).
+2. Start the script — it polls for slash commands and joins, and replies.
+3. Anything you \`console.log\` shows in the terminal you ran it in.
+
+## The API
+
+Every call is \`POST ${apiBase()}/bot\` with \`Authorization: Bot <token>\` and a JSON body like \`{"action":"send","channel":CHANNEL_ID,"content":"hi"}\`.
+
+Useful actions: \`me\`, \`channels\` (server), \`members\` (server), \`send\`, \`commands.set\`, \`events\`, \`reply\`, \`voogle.check\`.
+
+Bots post at most 10 messages / 10 seconds, and what they post is not end-to-end encrypted (Venband shows a BOT tag).
+`,
+        },
+      ],
+      `${slug}-bot.zip`,
+    );
+  }
+  return (
+    <div className="public-card">
+      <h3>Script</h3>
+      <p className="small muted">
+        Write your own backend as a single JavaScript file below, save it here, then download the project and run it anywhere with Node 18+. It uses the same
+        token as the <b>Token &amp; API</b> tab.
+      </p>
+      {msg && <div className={msg.ok ? 'form-notice' : 'form-error'}>{msg.text}</div>}
+      {missing && <ServerUpdateCard what="script authoring" />}
+      {draft === null && !missing ? (
+        <div className="spinner" />
+      ) : (
+        !missing && (
+          <>
+            <div className="row script-template-row">
+              <Select
+                value="poll"
+                onChange={(v) => {
+                  if (draft && draft !== POLL_LOOP_SCRIPT && draft !== COMMANDS_UV_SCRIPT) {
+                    askConfirm({ title: 'Replace the script?', body: 'This swaps what’s in the editor with the template. You can press Ctrl+Z to undo in the box.', confirm: 'Replace' }).then(() => {
+                      setDraft(v === 'commands' ? COMMANDS_UV_SCRIPT : POLL_LOOP_SCRIPT);
+                    });
+                  } else {
+                    setDraft(v === 'commands' ? COMMANDS_UV_SCRIPT : POLL_LOOP_SCRIPT);
+                  }
+                }}
+                options={[
+                  { value: 'poll', label: 'Poll loop (hello bot)' },
+                  { value: 'commands', label: 'Commands via commands.set' },
+                ]}
+              />
+              <span className="small muted">start from a starter, then edit</span>
+            </div>
+            <textarea
+              className="script-editor"
+              value={draft ?? ''}
+              onChange={(e) => setDraft(e.target.value)}
+              spellCheck={false}
+              placeholder={'// your bot code\n// POST ' + apiBase() + '/bot with Authorization: Bot <token>'}
+            />
+            <div className="modal-actions">
+              <span className="small muted">
+                Saved scripts stay with your bot’s settings — they don’t run here, so skip the “hello” reply part while testing locally.
+              </span>
+              <button className="btn secondary" onClick={download}>
+                <Icon name="download" size={14} /> Download project (.zip)
+              </button>
+              {canEdit && (
+                <button className="btn primary" disabled={busy || !(draft ?? '').trim()} onClick={save}>
+                  {busy ? 'Saving…' : 'Save script'}
+                </button>
+              )}
+            </div>
+          </>
+        )
       )}
     </div>
   );
