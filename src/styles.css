@@ -1725,6 +1725,9 @@ button.edited:hover { text-decoration: underline; color: var(--text-2); }
 .filter-chip { padding: 6px 10px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); font-size: 12.5px; text-align: left; }
 .filter-chip:hover { border-color: var(--line-2); }
 .filter-chip.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.tags-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.mini-tag { font-size: 11px; color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent-soft); border-radius: 999px; padding: 1px 8px; cursor: pointer; user-select: none; }
+.mini-tag:hover { border-color: var(--accent); }
 .search-emoji { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .search-emoji button { font-size: 22px; width: 38px; height: 38px; border-radius: 8px; }
 .search-emoji button:hover { background: var(--bg-3); }
@@ -2377,3 +2380,16 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 @media (horizontal-viewport-segments: 2) {
   .sidebar { width: env(viewport-segment-width 0 0, 320px); }
 }
+/* ----------------------------------------------------------------- robots ---- */
+.template-card { justify-content: space-between; }
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin-top: 14px; }
+.guide-card { background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.guide-card p { margin: 6px 0 0; }
+.cmd-builder { background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 10px 0; }
+.cmd-builder h4 { margin: 0 0 12px; }
+.cmd-builder .row { margin-bottom: 12px; }
+.cmd-builder .row .field { flex: 1; min-width: 0; }
+.cmd-name-input { display: flex; align-items: center; gap: 4px; }
+.cmd-name-input span { color: var(--muted); font-weight: 700; }
+.event-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.activity-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

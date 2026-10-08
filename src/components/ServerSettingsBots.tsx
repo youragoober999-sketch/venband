@@ -11,6 +11,7 @@ import type { VoogleSettings } from '../lib/voogle';
 import { BotInstallSettings, PresetLogo } from './Apps';
 import { VoogleLogo } from './Voogle';
 import { Select } from './Select';
+import { askConfirm } from './Dialogs';
 import { Field, Icon } from './ui';
 
 export function IntegrationsTab({ data }: { data: ServerData }) {
@@ -19,6 +20,7 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
   const [version, setVersion] = useState(0);
   const [q, setQ] = useState('');
   const [kind, setKind] = useState<'all' | Preset>('all');
+  const [tag, setTag] = useState<string | null>(null);
   const bots = useServerBots(server.id, version);
   const [apps, setApps] = useState<Record<string, Application>>({});
   const [requests, setRequests] = useState<{ id: string; app_id: string; requested_by: string; created_at: string; app?: Application }[]>([]);
@@ -26,6 +28,7 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
   const [error, setError] = useState<string | null>(null);
   const [directory, setDirectory] = useState<DirectoryRow[] | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const loadDirectory = useCallback(async () => {
     const { data, error } = await supabase.rpc('bot_directory', { p_server: server.id });
@@ -84,9 +87,9 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
         .
       </p>
       {error && <div className="form-error">{error}</div>}
-      <h3>Bot Directory</h3>
+      <h3>App Discovery</h3>
       <p className="small muted">
-        Every bot you can add to {server.name}, most-used first. The official Venband bot is pinned on top.
+        Every bot and app you can add to {server.name}, most-used first. Search, or filter by preset and tag. The official Venband bot is pinned on top.
       </p>
       {directory === null ? (
         <div className="spinner" />
@@ -94,21 +97,34 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
         <>
           <input
             className="search-input"
-            placeholder={`Search ${directory.length} bots…`}
+            placeholder={`Search ${directory.length} apps…`}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            aria-label="Search bots"
+            aria-label="Search apps"
           />
           <div className="filter-chips">
-            <button className={kind === 'all' ? 'filter-chip on' : 'filter-chip'} onClick={() => setKind('all')}>
+            <button className={kind === 'all' && !tag ? 'filter-chip on' : 'filter-chip'} onClick={() => (setKind('all'), setTag(null))}>
               All
             </button>
             {PRESETS.map((p) => (
-              <button key={p.id} className={kind === p.id ? 'filter-chip on' : 'filter-chip'} onClick={() => setKind(p.id)}>
+              <button key={p.id} className={kind === p.id && !tag ? 'filter-chip on' : 'filter-chip'} onClick={() => (setKind(p.id), setTag(null))}>
                 {p.name}
               </button>
             ))}
           </div>
+          {(() => {
+            const tags = [...new Set((directory ?? []).flatMap((a) => a.tags ?? []))].sort();
+            if (!tags.length) return null;
+            return (
+              <div className="filter-chips">
+                {tags.map((t) => (
+                  <button key={t} className={tag === t ? 'filter-chip on' : 'filter-chip'} onClick={() => setTag(tag === t ? null : t)}>
+                    #{t}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
           {directory.length === 0 ? (
             <p className="muted small">No bots to add right now.</p>
           ) : (
@@ -117,13 +133,15 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
               const filtered = directory.filter(
                 (a) =>
                   (kind === 'all' || a.preset === kind) &&
+                  (!tag || (a.tags ?? []).includes(tag)) &&
                   (!query ||
                     a.name.toLowerCase().includes(query) ||
                     a.description?.toLowerCase().includes(query) ||
-                    PRESETS.find((p) => p.id === a.preset)?.name.toLowerCase().includes(query))
+                    PRESETS.find((p) => p.id === a.preset)?.name.toLowerCase().includes(query) ||
+                    (a.tags ?? []).some((t) => t.includes(query)))
               );
               if (!filtered.length)
-                return <p className="muted small">No bots match “{q}”. Try another search or filter.</p>;
+                return <p className="muted small">No apps match “{q}”. Try another search or filter.</p>;
               return filtered.map((a) => (
                 <div key={a.id} className="integration-row">
                   {a.preset ? <PresetLogo preset={a.preset} color={a.color} size={36} /> : <Icon name="bot" />}
@@ -135,6 +153,15 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
                       {PRESETS.find((p) => p.id === a.preset)?.name} · in {a.installs} server{a.installs === 1 ? '' : 's'}
                       {a.description ? ` · ${a.description}` : ''}
                     </div>
+                    {!!(a.tags ?? []).length && (
+                      <div className="tags-row">
+                        {(a.tags ?? []).slice(0, 5).map((t) => (
+                          <span key={t} className="mini-tag" title="Filter by this tag" onClick={(e) => (e.stopPropagation(), setTag(tag === t ? null : t))}>
+                            #{t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {a.installed ? (
                     <span className="pill">Added</span>
@@ -200,9 +227,26 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
                 </div>
               </div>
               {can && app && (
-                <button className="btn secondary small" onClick={() => setOpen(open === b.id ? null : b.id)}>
-                  {open === b.id ? 'Close' : 'Settings'}
-                </button>
+                <>
+                  <button className="btn secondary small" onClick={() => setOpen(open === b.id ? null : b.id)}>
+                    {open === b.id ? 'Close' : 'Settings'}
+                  </button>
+                  <button
+                    className="btn danger small"
+                    disabled={removing === b.id}
+                    onClick={async () => {
+                      if (!(await askConfirm({ title: `Remove ${app.name}`, body: `${app.name} leaves ${server.name}. You can add it again anytime.`, confirm: 'Remove', danger: true }))) return;
+                      setRemoving(b.id);
+                      const { error } = await supabase.rpc('remove_bot', { p_install: b.id });
+                      setRemoving(null);
+                      if (error) return setError(errorMessage(error));
+                      setOpen(open === b.id ? null : b.id);
+                      setVersion((v) => v + 1);
+                    }}
+                  >
+                    {removing === b.id ? 'Removing…' : 'Remove'}
+                  </button>
+                </>
               )}
             </div>
             {open === b.id && app && <BotInstallSettings install={b} app={app} onChanged={() => setVersion((v) => v + 1)} />}

@@ -18,6 +18,29 @@ export interface Application {
   token_hint: string | null;
   status: 'active' | 'disabled';
   created_at: string;
+  tags?: string[];
+}
+
+/** A command one of your bots answers itself (no-code responder). */
+export interface BotCommandResponse {
+  content?: string;
+  embed?: { title?: string; description?: string; color?: string };
+  actions?: ('kick' | 'ban' | 'purge')[];
+}
+
+export interface BotCommandRow {
+  name: string;
+  description: string;
+  response: BotCommandResponse | null;
+}
+
+export interface BotTemplate {
+  slug: string;
+  name: string;
+  blurb: string;
+  preset: Preset;
+  tags: string[];
+  commands: { name: string; description: string; response?: BotCommandResponse }[];
 }
 
 export interface ServerBot {
@@ -50,10 +73,25 @@ export interface BotMessage {
   created_at: string;
 }
 
-export const APP_COLUMNS = 'id, owner_id, name, description, preset, icon_url, banner_url, color, token_hint, status, created_at';
+export const APP_COLUMNS = 'id, owner_id, name, description, preset, icon_url, banner_url, color, token_hint, status, created_at, tags';
 // Columns that exist even before the wordle migration (applications.banner_url)
 // is applied, so lists and dashboards keep working against an older schema.
 export const APP_COLUMNS_BASE = 'id, owner_id, name, description, preset, icon_url, color, token_hint, status, created_at';
+
+/** Normalize free-form tag input into clean, deduped, lowercase tags. */
+export function normalizeTags(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/[\s,]+/)) {
+    const t = part.trim().replace(/^#/, '').toLowerCase().replace(/\s+/g, '-');
+    if (t && /^[a-z0-9_-]{1,32}$/.test(t) && !seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+      if (out.length === 12) break;
+    }
+  }
+  return out;
+}
 export async function appQuery<T>(q: (cols: string) => PromiseLike<{ data: T | null; error: { message: string } | null }>) {
   const full = await q(APP_COLUMNS);
   if (!full.error) return full;

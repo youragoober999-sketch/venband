@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { go } from '../lib/router';
-import { appQuery, apiBase, PRESETS, type Application, type Preset, type ServerBot } from '../lib/bots';
+import { appQuery, apiBase, normalizeTags, PRESETS, type Application, type BotCommandResponse, type BotCommandRow, type BotTemplate, type Preset, type ServerBot } from '../lib/bots';
 import { Field, Icon } from './ui';
 import { askConfirm, askText } from './Dialogs';
 import { Select } from './Select';
@@ -92,6 +92,7 @@ export function ApplicationsPage({ id }: { id?: string }) {
         </div>
       </div>
       {loading ? <div className="spinner" /> : signedIn ? <AppList /> : <SignInCard what="make applications" />}
+      <BotGuide />
       <ApiDocs />
     </PublicLayout>
   );
@@ -103,6 +104,9 @@ function AppList() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<Preset | null>(null);
   const [name, setName] = useState('');
+  const [templates, setTemplates] = useState<BotTemplate[] | null>(null);
+  const [templateBusy, setTemplateBusy] = useState<string | null>(null);
+  const [tplError, setTplError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data: team } = await supabase.from('application_team').select('app_id').eq('user_id', me.id);
@@ -114,6 +118,9 @@ function AppList() {
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(() => {
+    supabase.rpc('list_bot_templates').then(({ data }) => setTemplates((data ?? []) as BotTemplate[]));
+  }, []);
 
   return (
     <>
@@ -157,6 +164,54 @@ function AppList() {
           </div>
         </div>
       )}
+      <h2>Start from a template</h2>
+      <p className="muted small">Ready-made projects you can grow — each comes with its commands and discoverable tags preloaded.</p>
+      {tplError && <div className="form-error">{tplError}</div>}
+      {templates === null ? (
+        <div className="spinner" />
+      ) : (
+        <div className="template-grid">
+          {templates.map((t) => (
+            <div key={t.slug} className="preset-card template-card">
+              <div className="row-between">
+                <PresetLogo preset={t.preset} size={40} />
+                <span className="pill">{PRESETS.find((p) => p.id === t.preset)?.name}</span>
+              </div>
+              <b>{t.name}</b>
+              <span className="small muted">{t.blurb}</span>
+              <div className="tags-row">
+                {(t.tags ?? []).slice(0, 4).map((x) => (
+                  <span key={x} className="mini-tag">
+                    #{x}
+                  </span>
+                ))}
+              </div>
+              <div className="modal-actions">
+                <span className="small muted">
+                  {t.commands.length} command{t.commands.length === 1 ? '' : 's'}
+                </span>
+                <button
+                  className="btn primary small"
+                  disabled={templateBusy === t.slug}
+                  onClick={async () => {
+                    const n = await askText({ title: `Name your ${t.name.toLowerCase()} bot`, label: 'Bot name', initial: t.name, maxLength: 32 });
+                    if (!n?.trim()) return;
+                    setTemplateBusy(t.slug);
+                    setTplError(null);
+                    const { data: id, error } = await supabase.rpc('create_application', { p_name: n.trim(), p_preset: t.preset });
+                    if (!error && id) await supabase.rpc('apply_bot_template', { p_app: id, p_slug: t.slug });
+                    setTemplateBusy(null);
+                    if (error) return setTplError(errorMessage(error));
+                    go(`bots/${id as string}`);
+                  }}
+                >
+                  {templateBusy === t.slug ? 'Creating…' : 'Use template'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <h2>Your applications</h2>
       {apps === null && !error && <div className="spinner" />}
       {error && <div className="form-error">{error}</div>}
@@ -193,13 +248,13 @@ function defaultName(p: Preset) {
 
 // ----------------------------------------------------------- dashboard ----
 
-type Tab = 'general' | 'servers' | 'bot' | 'team';
+type Tab = 'general' | 'commands' | 'activity' | 'servers' | 'bot' | 'templates' | 'team';
 
 function AppDashboard({ id }: { id: string }) {
   const me = sessionStore.use((s) => s.me)!;
   const [app, setApp] = useState<Application | null | undefined>(undefined);
   const [role, setRole] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>('servers');
+  const [tab, setTab] = useState<Tab>('general');
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     const [q, r] = await Promise.all([appQuery((cols) => supabase.from('applications').select(cols).eq('id', id).maybeSingle()), supabase.rpc('app_role', { p_app: id, p_user: me.id })]);
@@ -238,8 +293,11 @@ function AppDashboard({ id }: { id: string }) {
   const preset = PRESETS.find((p) => p.id === app.preset)!;
   const dashTabs: [Tab, string][] = [
     ['general', 'Basic'],
+    ['commands', 'Commands'],
+    ['activity', 'Activity'],
     ['servers', 'Manage Servers'],
-    ['bot', app.preset === 'custom' ? 'Token & API' : 'Token'],
+    ['bot', 'Token & API'],
+    ['templates', 'Templates'],
     ['team', 'Team'],
   ];
   return (
@@ -266,8 +324,11 @@ function AppDashboard({ id }: { id: string }) {
       <div className="dash-main">
         {app.status === 'disabled' && <div className="warning-box">This bot is disabled by Venband staff. It can’t post until that’s lifted.</div>}
         {tab === 'general' && <GeneralTab app={app} canEdit={canEdit} onSaved={load} isOwner={role === 'owner'} />}
+        {tab === 'commands' && <CommandsTab app={app} canEdit={canEdit} />}
+        {tab === 'activity' && <ActivityTab app={app} />}
         {tab === 'servers' && <ServersTab app={app} canEdit={canEdit} />}
         {tab === 'bot' && <TokenTab app={app} canEdit={canEdit} onChanged={load} />}
+        {tab === 'templates' && <TemplatesTab app={app} canEdit={canEdit} onChanged={load} />}
         {tab === 'team' && <TeamTab app={app} canEdit={canEdit} />}
       </div>
     </div>
@@ -279,6 +340,7 @@ function GeneralTab({ app, canEdit, onSaved, isOwner }: { app: Application; canE
   const [description, setDescription] = useState(app.description);
   const [color, setColor] = useState(app.color);
   const [banner, setBanner] = useState(app.banner_url ?? '');
+  const [tags, setTags] = useState((app.tags ?? []).join(' '));
   const [srvCount, setSrvCount] = useState<number | null>(null);
   const [busyImg, setBusyImg] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -361,9 +423,19 @@ function GeneralTab({ app, canEdit, onSaved, isOwner }: { app: Application; canE
       <Field label="Name">
         <input disabled={!canEdit} maxLength={32} value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <Field label="About" hint="Shown on the bot’s profile in servers and on the Bot Directory.">
+      <Field label="About" hint="Shown on the bot’s profile in servers and on the App Discovery.">
         <textarea disabled={!canEdit} rows={3} maxLength={400} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What your bot does…" />
       </Field>
+      <Field label="Tags" hint="Separate with commas or spaces. People discover your bot by these on the App Discovery, like #servermanagement (up to 12).">
+        <input disabled={!canEdit} maxLength={160} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="servermanagement welcome roles" aria-label="Discoverable tags" />
+      </Field>
+      <div className="tags-row">
+        {normalizeTags(tags).slice(0, 12).map((t) => (
+          <span key={t} className="mini-tag">
+            #{t}
+          </span>
+        ))}
+      </div>
       {app.preset === 'custom' && (
         <Field label="Logo color">
           <input type="color" disabled={!canEdit} value={color} onChange={(e) => setColor(e.target.value)} />
@@ -387,7 +459,7 @@ function GeneralTab({ app, canEdit, onSaved, isOwner }: { app: Application; canE
           <button
             className="btn primary"
             onClick={async () => {
-              const { error } = await supabase.from('applications').update({ name: name.trim(), description: description.trim(), color }).eq('id', app.id);
+              const { error } = await supabase.from('applications').update({ name: name.trim(), description: description.trim(), color, tags: normalizeTags(tags) }).eq('id', app.id);
               setMsg(error ? errorMessage(error) : 'Saved');
               onSaved();
             }}
@@ -726,6 +798,399 @@ function TeamTab({ app, canEdit }: { app: Application; canEdit: boolean }) {
         </div>
       )}
     </div>
+  );
+}
+
+// --------------------------------------------------------- commands tab ----
+type ActionKind = NonNullable<BotCommandResponse['actions']>[number];
+
+interface EditableCommand {
+  name: string;
+  description: string;
+  content: string;
+  embedTitle: string;
+  embedColor: string;
+  embedDescription: string;
+  actions: ActionKind[];
+}
+
+function emptyCommand(): EditableCommand {
+  return { name: '', description: '', content: '', embedTitle: '', embedColor: '#5865f2', embedDescription: '', actions: [] };
+}
+
+function CommandsTab({ app, canEdit }: { app: Application; canEdit: boolean }) {
+  const [cmds, setCmds] = useState<EditableCommand[] | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<number | 'new' | null>(null);
+  const [draft, setDraft] = useState<EditableCommand>(emptyCommand);
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('bot_commands').select('name, description, response').eq('app_id', app.id).order('name');
+    setCmds(
+      ((data ?? []) as BotCommandRow[]).map((c) => ({
+        name: c.name,
+        description: c.description,
+        content: c.response?.content ?? '',
+        embedTitle: c.response?.embed?.title ?? '',
+        embedColor: c.response?.embed?.color ?? '',
+        embedDescription: c.response?.embed?.description ?? '',
+        actions: c.response?.actions ?? [],
+      })),
+    );
+  }, [app.id]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function save() {
+    if (!cmds) return;
+    setBusy(true);
+    setMsg(null);
+    const payload = cmds.map((c) => {
+      const hasResp = !!c.content.trim() || !!c.embedTitle.trim() || !!c.embedDescription.trim() || c.actions.length > 0;
+      return {
+        name: c.name,
+        description: c.description,
+        response: hasResp
+          ? {
+              ...(c.content.trim() ? { content: c.content.trim() } : {}),
+              embed: c.embedTitle.trim() || c.embedDescription.trim() ? { title: c.embedTitle.trim() || undefined, color: c.embedColor || undefined, description: c.embedDescription.trim() || undefined } : undefined,
+              actions: c.actions.length ? c.actions : undefined,
+            }
+          : null,
+      };
+    });
+    const { error } = await supabase.rpc('bot_set_commands', { p_app: app.id, p_commands: payload });
+    setBusy(false);
+    if (error) return setMsg({ ok: false, text: errorMessage(error) });
+    setMsg({ ok: true, text: `Saved ${cmds.length} command${cmds.length === 1 ? '' : 's'} live.` });
+    setEditing(null);
+  }
+
+  return (
+    <div className="public-card">
+      <h3>Commands</h3>
+      <p className="small muted">
+        These slash commands work in every server the bot is in. Your preset already answers its own commands — everything here is yours on top. People
+        type <code>/{'name'}</code> to use one. Replies can be text or an embed, and the optional actions below always use the <b>caller’s</b> server
+        permissions, never the bot’s.
+      </p>
+      <p className="small muted">
+        Placeholders in replies: <code>{'{user}'}</code> mentions the caller, <code>{'{username}'}</code> is their username, <code>{'{server}'}</code>{' '}
+        is the server name, <code>{'{channel}'}</code> is this channel, and <code>{'{args}'}</code> is whatever follows the command.
+      </p>
+      {msg && <div className={msg.ok ? 'form-notice' : 'form-error'}>{msg.text}</div>}
+      {cmds === null ? (
+        <div className="spinner" />
+      ) : (
+        <>
+          {cmds.length === 0 && <p className="muted small">No custom commands yet — add one below, or load a template for a head start.</p>}
+          {cmds.map((c, i) => (
+            <div key={c.name + i} className="app-row static">
+              <div className="grow">
+                <code>/{c.name}</code> <span className="muted small">{c.description}</span>
+                <div className="small muted">
+                  {c.content.trim() ? `“${c.content.trim().slice(0, 70)}”` : ''}
+                  {c.embedTitle.trim() ? `${c.content.trim() ? ' · ' : ''}embed “${c.embedTitle}”` : ''}
+                  {c.actions.length ? `${c.content.trim() || c.embedTitle.trim() ? ' · ' : ''}${c.actions.join(', ')}` : ''}
+                </div>
+              </div>
+              {canEdit && (
+                <>
+                  <button className="btn secondary small" onClick={() => (setEditing(i), setDraft({ ...c }))}>
+                    Edit
+                  </button>
+                  <button
+                    className="btn danger small"
+                    onClick={() => {
+                      const next = [...cmds];
+                      next.splice(i, 1);
+                      setCmds(next);
+                    }}
+                  >
+                    Remove
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+          {canEdit &&
+            (editing === null ? (
+              <button className="btn secondary" onClick={() => (setDraft(emptyCommand()), setEditing('new'))}>
+                <Icon name="plus" size={14} /> New command
+              </button>
+            ) : (
+              <div className="cmd-builder">
+                <h4>{editing === 'new' ? 'New command' : `Edit /${draft.name}`}</h4>
+                <div className="row">
+                  <Field label="Name">
+                    <input value={draft.name} maxLength={32} onChange={(e) => setDraft({ ...draft, name: e.target.value.toLowerCase() })} placeholder="ping" />
+                  </Field>
+                  <Field label="Short description">
+                    <input value={draft.description} maxLength={100} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Is the bot alive?" />
+                  </Field>
+                </div>
+                <Field label="Reply text" hint="Optional. Use the placeholders above.">
+                  <textarea rows={2} maxLength={2000} value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} />
+                </Field>
+                <div className="row">
+                  <Field label="Embed title">
+                    <input value={draft.embedTitle} maxLength={256} onChange={(e) => setDraft({ ...draft, embedTitle: e.target.value })} />
+                  </Field>
+                  <Field label="Embed color">
+                    <input type="color" value={draft.embedColor} onChange={(e) => setDraft({ ...draft, embedColor: e.target.value })} />
+                  </Field>
+                </div>
+                <Field label="Embed description">
+                  <input value={draft.embedDescription} maxLength={2000} onChange={(e) => setDraft({ ...draft, embedDescription: e.target.value })} />
+                </Field>
+                <Field label="Run an action too" hint="Only fires if the person using the command has the matching permission. Type @username after the command as the target — they kick, ban or purge as a member, never as the bot.">
+                  <div className="chip-row">
+                    {(
+                      [
+                        ['kick', 'Kick the mentioned member'],
+                        ['ban', 'Ban the mentioned member'],
+                        ['purge', 'Delete the last N messages'],
+                      ] as [ActionKind, string][]
+                    ).map(([id, label]) => {
+                      const on = draft.actions.includes(id);
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          className={`chip${on ? ' on' : ''}`}
+                          onClick={() => setDraft({ ...draft, actions: on ? draft.actions.filter((x) => x !== id) : [...draft.actions, id] })}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <div className="modal-actions">
+                  <button className="btn secondary" onClick={() => setEditing(null)}>
+                    Cancel
+                  </button>
+                  <span className="grow" />
+                  <button
+                    className="btn primary"
+                    onClick={() => {
+                      if (!cmds) return;
+                      const name = draft.name.trim().toLowerCase();
+                      if (!/^[a-z0-9_-]{1,32}$/.test(name)) return setMsg({ ok: false, text: 'Command names use a–z, 0–9, _ and - (1–32 characters).' });
+                      if (editing === 'new' && cmds.some((c) => c.name === name))
+                        return setMsg({ ok: false, text: `A command called /${name} already exists.` });
+                      const next = [...cmds];
+                      if (editing === 'new') next.push({ ...draft, name });
+                      else next[editing] = { ...draft, name };
+                      setCmds(next.sort((a, b) => a.name.localeCompare(b.name)));
+                      setEditing(null);
+                      setMsg(null);
+                    }}
+                  >
+                    {editing === 'new' ? 'Add command' : 'Save draft'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          {canEdit && cmds !== null && (
+            <div className="modal-actions">
+              <span className="small muted">Save pushes these commands live to every server the bot is in.</span>
+              <button className="btn primary" disabled={busy} onClick={save}>
+                {busy ? 'Saving…' : 'Save commands'}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------- activity tab ----*/
+type EventRow = { at: string; kind: string; name: string; description: string };
+type EventRaw = { kind: string; created_at: string; user_id: string | null; server_id: string | null; command: string | null; args: string | null; handled: boolean };
+
+function ActivityTab({ app }: { app: Application }) {
+  const [rows, setRows] = useState<EventRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    const { data, error } = await supabase.rpc('app_events', { p_app: app.id, p_limit: 50 });
+    if (error) return setError(errorMessage(error));
+    const events = (data ?? []) as EventRaw[];
+    const serverIds = [...new Set(events.map((e) => e.server_id).filter(Boolean))];
+    const userIds = [...new Set(events.map((e) => e.user_id).filter(Boolean))];
+    const [{ data: srv }, { data: profs }] = await Promise.all([
+      serverIds.length ? supabase.from('servers').select('id, name').in('id', serverIds) : Promise.resolve({ data: [] }),
+      userIds.length ? supabase.from('profiles').select('id, username, display_name').in('id', userIds) : Promise.resolve({ data: [] }),
+    ]);
+    const serverName = new Map((srv ?? []).map((s) => [s.id as string, s.name as string]));
+    const profName = new Map((profs ?? []).map((p) => [p.id as string, (p.display_name as string) ?? (p.username as string)]));
+    setError(null);
+    setRows(
+      events.map((e) =>
+        e.kind === 'command'
+          ? {
+              at: e.created_at,
+              kind: 'command',
+              name: e.command ?? '',
+              description: e.args ? `${profName.get(e.user_id ?? '') ?? 'someone'} ran /${e.command} with “${String(e.args).slice(0, 40)}”` : `${profName.get(e.user_id ?? '') ?? 'someone'} ran /${e.command}`,
+            }
+          : {
+              at: e.created_at,
+              kind: 'join',
+              name: '',
+              description: `${profName.get(e.user_id ?? '') ?? 'someone'} joined ${serverName.get(e.server_id ?? '') ?? 'a server this bot is in'}`,
+            },
+      ),
+    );
+  }, [app.id]);
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 15000);
+    return () => clearInterval(t);
+  }, [refresh]);
+  return (
+    <div className="public-card">
+      <div className="activity-head">
+        <h3>Activity</h3>
+        <button className="btn secondary small" onClick={refresh}>
+          <Icon name="refresh" size={14} /> Refresh
+        </button>
+      </div>
+      <p className="small muted">A rolling list of when your bot was used and when new people joined your servers. Updates every 15 seconds.</p>
+      {error && <div className="form-error">{error}</div>}
+      {rows === null ? (
+        <div className="spinner" />
+      ) : (
+        <div className="event-list">
+          {rows.length === 0 && <p className="muted small">No activity yet — once the bot is in a server, commands people run show up here.</p>}
+          {rows.map((r, i) => (
+            <div key={i} className="app-row static">
+              <span className="pill">{r.kind === 'command' ? `/${r.name}` : r.kind === 'join' ? 'join' : r.kind}</span>
+              <span className="grow small">{r.description || <span className="muted">—</span>}</span>
+              <span className="small muted">{timeAgo(r.at)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function timeAgo(iso: string) {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+// -------------------------------------------------------- templates tab ----*/
+function TemplatesTab({ app, canEdit, onChanged }: { app: Application; canEdit: boolean; onChanged: () => void }) {
+  const [templates, setTemplates] = useState<BotTemplate[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    supabase.rpc('list_bot_templates').then(({ data }) => setTemplates((data ?? []) as BotTemplate[]));
+  }, []);
+  return (
+    <div className="public-card">
+      <h3>Templates</h3>
+      <p className="small muted">
+        Templates are pre-built projects you can load into this bot. Applying one replaces your custom commands and merges in its discoverable tags.
+        Your preset’s own commands are never touched.
+      </p>
+      {msg && <div className={msg.ok ? 'form-notice' : 'form-error'}>{msg.text}</div>}
+      {templates === null ? (
+        <div className="spinner" />
+      ) : (
+        <div className="template-grid">
+          {templates.map((t) => (
+            <div key={t.slug} className="preset-card template-card">
+              <div className="row-between">
+                <PresetLogo preset={t.preset} size={40} />
+                <span className="pill">{PRESETS.find((p) => p.id === t.preset)?.name}</span>
+              </div>
+              <b>{t.name}</b>
+              <span className="small muted">{t.blurb}</span>
+              <div className="tags-row">
+                {(t.tags ?? []).slice(0, 4).map((x) => (
+                  <span key={x} className="mini-tag">
+                    #{x}
+                  </span>
+                ))}
+              </div>
+              <div className="modal-actions">
+                <span className="small muted">
+                  {t.commands.length} command{t.commands.length === 1 ? '' : 's'}
+                </span>
+                {canEdit && (
+                  <button
+                    className="btn primary small"
+                    disabled={busy === t.slug}
+                    onClick={async () => {
+                      if (!(await askConfirm({ title: `Apply “${t.name}”?`, body: `This replaces your custom commands and merges its tags into “${app.name}”.`, confirm: 'Apply' }))) return;
+                      setBusy(t.slug);
+                      setMsg(null);
+                      const { error } = await supabase.rpc('apply_bot_template', { p_app: app.id, p_slug: t.slug });
+                      setBusy(null);
+                      if (error) return setMsg({ ok: false, text: errorMessage(error) });
+                      setMsg({ ok: true, text: `Applied “${t.name}”. Tags and commands are live.` });
+                      onChanged();
+                    }}
+                  >
+                    {busy === t.slug ? 'Applying…' : 'Apply template'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --------------------------------------------------------------- guide ----
+
+const GUIDE: { title: string; body: string }[] = [
+  {
+    title: '1 · Create a bot',
+    body: 'Pick a preset for a ready-made scaffold, or choose Custom to start from a plain bot. Custom is the same listener on every preset — the difference is what your preset already answers.',
+  },
+  {
+    title: '2 · Invite it to a server',
+    body: 'Open a bot from your list and go to Manage Servers. Add it with manage integrations, pick which channels it can post to and where it can read joined servers from, then save.',
+  },
+  {
+    title: '3 · Teach it commands',
+    body: 'The Commands tab is a no-code editor: type /hello, set a reply, and anyone in the server can run it. Add an optional action — kick, ban or purge — that only fires when the person calling it has that permission, never the bot’s.',
+  },
+  {
+    title: '4 · Attach real code',
+    body: 'For logic your bot can’t handle with commands alone, create a token and connect your own code: a background worker or a small server that listens for incoming webhooks and calls the reply API to send messages as the bot.',
+  },
+  {
+    title: '5 · Get people using it',
+    body: 'Add tags in Basic (like #servermanagement or #welcome) and your bot will appear on the App Discovery — the searchable directory anyone can browse when adding apps to their own server.',
+  },
+];
+
+function BotGuide() {
+  return (
+    <section className="public-doc bot-guide" id="guide">
+      <h2>Build a bot in five steps</h2>
+      <div className="guide-grid">
+        {GUIDE.map((g) => (
+          <div key={g.title} className="guide-card">
+            <b>{g.title}</b>
+            <p className="small muted">{g.body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
