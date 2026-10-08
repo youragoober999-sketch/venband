@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { IntegrationsTab, VoogleTab } from './ServerSettingsBots';
 import { AuditLogTab, ServerReportsTab } from './ReportViews';
 import { supabase, errorMessage } from '../lib/supabase';
-import { sessionStore } from '../lib/session';
+import { isTopStaff, sessionStore } from '../lib/session';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
 import { has, P, PERMISSION_GROUPS, PERMISSION_INFO } from '../lib/permissions';
 import type { Ban, Role } from '../lib/types';
@@ -27,7 +27,7 @@ export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClo
     ['members', 'Members', true],
     ['invites', 'Invites', has(p, P.MANAGE_SERVER)],
     ['discovery', 'Discovery', has(p, P.MANAGE_SERVER)],
-    ['integrations', 'Integrations & Bots', has(p, P.MANAGE_INTEGRATIONS) || has(p, P.MANAGE_SERVER)],
+    ['integrations', 'Integrations & Bots', has(p, P.MANAGE_INTEGRATIONS) || has(p, P.MANAGE_SERVER) || isTopStaff(sessionStore.get().me)],
     ['voogle', 'Voogle', has(p, P.MANAGE_SERVER)],
     ['bans', 'Bans', has(p, P.BAN_MEMBERS)],
     ['reports', 'Reports', has(p, P.MODERATE_MEMBERS) || has(p, P.MANAGE_MESSAGES) || has(p, P.KICK_MEMBERS)],

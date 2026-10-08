@@ -60,6 +60,9 @@ input, textarea, select {
 input:hover, textarea:hover, select:hover { border-color: #ffffff2e; }
 input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 input::placeholder, textarea::placeholder { color: #666a74; }
+.username-input { position: relative; display: flex; align-items: center; }
+.username-input input { padding-left: 26px; }
+.username-at { position: absolute; left: 12px; color: var(--muted); pointer-events: none; user-select: none; }
 textarea { resize: vertical; min-height: 64px; }
 code, pre { font-family: var(--mono); }
 a { color: var(--link); }
@@ -1721,6 +1724,7 @@ button.edited:hover { text-decoration: underline; color: var(--text-2); }
 .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .filter-chip { padding: 6px 10px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); font-size: 12.5px; text-align: left; }
 .filter-chip:hover { border-color: var(--line-2); }
+.filter-chip.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .search-emoji { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .search-emoji button { font-size: 22px; width: 38px; height: 38px; border-radius: 8px; }
 .search-emoji button:hover { background: var(--bg-3); }

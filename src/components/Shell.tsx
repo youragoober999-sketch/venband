@@ -5,7 +5,7 @@ import { applyCustomCss, safeMode, setSafeMode } from '../lib/customCss';
 import { startBackground } from '../lib/background';
 import { useApps, useServerBots } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
-import { sessionStore, updateMyProfile } from '../lib/session';
+import { isTopStaff, sessionStore, updateMyProfile } from '../lib/session';
 import { supabase, errorMessage } from '../lib/supabase';
 import { activeCallVersion, getActiveCall, joinCall, leaveCall, leftRecently, subscribeActiveCall } from '../lib/call';
 import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
@@ -429,7 +429,7 @@ function ServerRail({
         },
       },
       { type: 'sep' },
-      me.platform_role !== 'user' && { label: 'Open in Moderation', icon: 'shield', onClick: () => openSettings('moderation', s.id) },
+      (me.platform_role !== 'user' || isTopStaff(me)) && { label: 'Open in Moderation', icon: 'shield', onClick: () => openSettings('moderation', s.id) },
       { label: 'Copy Server ID', icon: 'copy', hint: 'ID', onClick: () => copyText(s.id) },
     ];
     openMenu(e, items);

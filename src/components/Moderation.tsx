@@ -4,7 +4,7 @@ import { EvidenceList, ReportFilters, reportMatches, type ReportFilter } from '.
 import { jumpTo } from './Search';
 import { useCallback, useEffect, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
-import { sessionStore } from '../lib/session';
+import { isTopStaff, sessionStore } from '../lib/session';
 import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
 import { uiStore } from '../lib/ui';
 import type { AccountStatus, PlatformRole, Profile, ServerStatus } from '../lib/types';
@@ -78,6 +78,7 @@ export function ModerationCenter() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [badgesFor, setBadgesFor] = useState<ModUser | null>(null);
   const myRank = RANK[me.platform_role ?? 'user'];
+  const top = isTopStaff(me);
 
   async function search(query = q) {
     setBusy(true);
@@ -173,7 +174,7 @@ export function ModerationCenter() {
       {view === 'users' && (
         <div className="mod-list">
           {users.map((u) => {
-            const canAct = myRank > RANK[u.platform_role] || (u.id === me.id && myRank === 3);
+            const canAct = top ? u.id !== me.id && !isTopStaff(u) : myRank > RANK[u.platform_role] || (u.id === me.id && myRank === 3);
             return (
               <div key={u.id} className={`mod-card status-${u.account_status}`}>
                 <div className="mod-card-head">
@@ -229,7 +230,26 @@ export function ModerationCenter() {
                       )}
                     </>
                   )}
-                  {myRank === 3 && u.id !== me.id && (
+                  {top && u.id !== me.id && !isTopStaff(u) && (
+                    <button
+                      className="btn danger small"
+                      onClick={async () => {
+                        if (
+                          !(await askConfirm({
+                            title: `Erase @${u.username} permanently?`,
+                            body: 'Deletes their servers, DMs, files, messages and the account itself. There is no undo. A record stays in the staff audit log.',
+                            confirm: 'Erase account permanently',
+                            danger: true,
+                          }))
+                        )
+                          return;
+                        run(`@${u.username} erased permanently.`, () => supabase.rpc('delete_account', { p_user: u.id }));
+                      }}
+                    >
+                      <Icon name="trash" size={14} /> Erase Account
+                    </button>
+                  )}
+                  {top && u.id !== me.id && (
                     <Select
                       className="mod-role"
                       value={u.platform_role}
@@ -306,6 +326,30 @@ export function ModerationCenter() {
                     Reopen
                   </button>
                 )}
+                {top && s.status === 'active' && (
+                  <button
+                    className="btn danger small"
+                    onClick={async () => {
+                      if (
+                        !(await askConfirm({
+                          title: `Delete ${s.name}?`,
+                          body: `Soft-deletes it now — all ${s.members} members lose access immediately. The owner (or staff) can restore it within 7 days.`,
+                          confirm: 'Delete server',
+                          danger: true,
+                        }))
+                      )
+                        return;
+                      run(`${s.name} deleted.`, () => supabase.rpc('delete_server', { p_server: s.id }));
+                    }}
+                  >
+                    <Icon name="trash" size={14} /> Delete
+                  </button>
+                )}
+                {top && s.status === 'deleted' && (
+                  <button className="btn success small" onClick={() => run(`${s.name} restored.`, () => supabase.rpc('restore_server', { p_server: s.id }))}>
+                    Restore
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -334,6 +378,7 @@ export function ModerationCenter() {
         <BadgeEditor
           user={badgesFor}
           myRank={myRank}
+          top={top}
           onClose={() => setBadgesFor(null)}
           onSave={(ids) =>
             run(`Badges updated for @${badgesFor.username}.`, () => supabase.rpc('mod_set_badges', { p_user: badgesFor.id, p_badges: ids })).then(async () => {
@@ -350,10 +395,10 @@ export function ModerationCenter() {
   );
 }
 
-function BadgeEditor({ user, myRank, onClose, onSave }: { user: ModUser; myRank: number; onClose: () => void; onSave: (ids: string[]) => void }) {
+function BadgeEditor({ user, myRank, top, onClose, onSave }: { user: ModUser; myRank: number; top: boolean; onClose: () => void; onSave: (ids: string[]) => void }) {
   const [ids, setIds] = useState<string[]>(user.badges);
   const BADGES = useAllBadges();
-  const locked = (id: string) => (id === 'owner' || id === 'founder' ? myRank < 3 : ['admin', 'moderator', 'staff'].includes(id) ? myRank < 2 : false);
+  const locked = (id: string) => (top ? false : id === 'owner' || id === 'founder' ? myRank < 3 : ['admin', 'moderator', 'staff'].includes(id) ? myRank < 2 : false);
   return (
     <Modal title={`Badges for @${user.username}`} onClose={onClose}>
       <div className="badge-editor">

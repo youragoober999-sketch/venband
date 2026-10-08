@@ -449,6 +449,10 @@ export type ProfilePatch = Partial<
   >
 >;
 
+export function isTopStaff(p: Pick<Profile, 'platform_role' | 'badges'> | null | undefined) {
+  return Boolean(p && (p.platform_role === 'owner' || (p.badges ?? []).some((b) => b === 'owner' || b === 'founder')));
+}
+
 export async function updateMyProfile(patch: ProfilePatch) {
   const me = sessionStore.get().me;
   if (!me) return;

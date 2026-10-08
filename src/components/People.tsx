@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { moderate, TIMEOUTS } from './ReportViews';
 import { supabase, errorMessage } from '../lib/supabase';
-import { sessionStore } from '../lib/session';
+import { isTopStaff, sessionStore } from '../lib/session';
 import { fingerprint } from '../lib/crypto';
 import { acceptKeyChange, displayName, getCurrentKey, getProfile, loadProfiles, markVerified, trustState } from '../lib/directory';
 import { joinCall } from '../lib/call';
@@ -97,6 +97,7 @@ export function userMenu(userId: string, opts: { data?: ServerData; onProfile?: 
   const myTop = data?.server?.owner_id === me.id ? Infinity : (data?.topRole(me.id)?.position ?? 0);
   const outranks = data && userId !== data.server?.owner_id && (data.topRole(userId)?.position ?? 0) < myTop;
   const staff = (me.platform_role ?? 'user') !== 'user';
+  const force = me.platform_role === 'admin' || me.platform_role === 'owner' || isTopStaff(me);
   const name = displayName(userId, member?.nickname);
 
   return [
@@ -152,6 +153,21 @@ export function userMenu(userId: string, opts: { data?: ServerData; onProfile?: 
           })
         )
           setRelation(userId, { blocked: true }).catch(report);
+      },
+    },
+    !self && force && {
+      label: 'Force message',
+      icon: 'message',
+      hint: 'Even if they blocked you',
+      onClick: () => startDm(userId).catch(report),
+    },
+    !self && force && {
+      label: 'Unblock you from them',
+      icon: 'block',
+      hint: 'Admins, owners and founders overrule blocks',
+      onClick: async () => {
+        const { error } = await supabase.rpc('force_unblock', { p_user: userId });
+        if (error) report(error);
       },
     },
     data && { type: 'sep' },

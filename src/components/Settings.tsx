@@ -288,11 +288,12 @@ const PRESENCE: { id: PresenceStatus; label: string }[] = [
 function ProfileTab() {
   const me = sessionStore.use((s) => s.me)!;
   const [draft, setDraft] = useState<ProfilePatch>({});
+  const [usernameDraft, setUsernameDraft] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tagServers, setTagServers] = useState<Server[]>([]);
   const [cropping, setCropping] = useState<{ file: File; kind: 'avatar' | 'banner' } | null>(null);
-  const preview: Profile = { ...me, ...draft } as Profile;
+  const preview: Profile = { ...me, ...draft, username: usernameDraft ?? me.username } as Profile;
   const pickPicture = (kind: 'avatar' | 'banner') => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -308,7 +309,7 @@ function ProfileTab() {
     setMsg(error ? errorMessage(error) : 'Published! Find it in the Marketplace.');
   }
   const set = (p: ProfilePatch) => setDraft((d) => ({ ...d, ...p }));
-  const dirty = Object.keys(draft).length > 0;
+  const dirty = Object.keys(draft).length > 0 || usernameDraft !== null;
 
   useEffect(() => {
     (async () => {
@@ -324,8 +325,24 @@ function ProfileTab() {
     setBusy(true);
     setMsg(null);
     try {
-      await updateMyProfile({ ...draft, ...(draft.display_name !== undefined ? { display_name: draft.display_name.trim() || me.username } : {}) });
+      const newName = usernameDraft?.trim().toLowerCase();
+      if (newName && newName !== me.username) {
+        const { error } = await supabase.rpc('set_username', { p_username: newName });
+        if (error) throw error;
+      }
+      if (Object.keys(draft).length > 0) {
+        await updateMyProfile({
+          ...draft,
+          ...(draft.display_name !== undefined ? { display_name: draft.display_name.trim() || newName || me.username } : {}),
+        });
+      }
+      const { data } = await supabase.rpc('my_profile');
+      if (data) {
+        putProfile(data as Profile);
+        sessionStore.set({ me: data as Profile });
+      }
       setDraft({});
+      setUsernameDraft(null);
       setMsg('Profile saved.');
     } catch (e) {
       setMsg(errorMessage(e));
@@ -394,6 +411,12 @@ function ProfileTab() {
           </div>
           <Field label="Display name">
             <input maxLength={32} value={preview.display_name} onChange={(e) => set({ display_name: e.target.value })} />
+          </Field>
+          <Field label="Username" hint="2-32 lowercase letters, numbers, dots and underscores. You can change it anytime — old links to @you keep working.">
+            <div className="username-input">
+              <span className="username-at">@</span>
+              <input maxLength={32} value={preview.username} autoComplete="off" spellCheck={false} onChange={(e) => setUsernameDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ''))} />
+            </div>
           </Field>
           <Field label="Pronouns">
             <input maxLength={40} value={preview.pronouns ?? ''} placeholder="they/them" onChange={(e) => set({ pronouns: e.target.value })} />
@@ -520,7 +543,7 @@ function ProfileTab() {
           </Field>
           <div className={`save-bar${dirty ? ' show' : ''}`}>
             <span>You have unsaved changes</span>
-            <button className="btn link" onClick={() => setDraft({})}>
+            <button className="btn link" onClick={() => { setDraft({}); setUsernameDraft(null); }}>
               Reset
             </button>
             <button className="btn primary small" disabled={busy} onClick={save}>

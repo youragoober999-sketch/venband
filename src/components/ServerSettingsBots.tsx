@@ -5,7 +5,8 @@ import { displayName, loadProfiles } from '../lib/directory';
 import { has, P } from '../lib/permissions';
 import { go } from '../lib/router';
 import type { ServerData } from '../hooks/data';
-import { APP_COLUMNS, PRESETS, useServerBots, type Application } from '../lib/bots';
+import { APP_COLUMNS, PRESETS, useServerBots, type Application, type Preset } from '../lib/bots';
+import { isTopStaff, sessionStore } from '../lib/session';
 import type { VoogleSettings } from '../lib/voogle';
 import { BotInstallSettings, PresetLogo } from './Apps';
 import { VoogleLogo } from './Voogle';
@@ -14,8 +15,10 @@ import { Field, Icon } from './ui';
 
 export function IntegrationsTab({ data }: { data: ServerData }) {
   const server = data.server!;
-  const can = has(data.myPermissions, P.MANAGE_INTEGRATIONS);
+  const can = has(data.myPermissions, P.MANAGE_INTEGRATIONS) || isTopStaff(sessionStore.use((s) => s.me));
   const [version, setVersion] = useState(0);
+  const [q, setQ] = useState('');
+  const [kind, setKind] = useState<'all' | Preset>('all');
   const bots = useServerBots(server.id, version);
   const [apps, setApps] = useState<Record<string, Application>>({});
   const [requests, setRequests] = useState<{ id: string; app_id: string; requested_by: string; created_at: string; app?: Application }[]>([]);
@@ -87,32 +90,66 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
       </p>
       {directory === null ? (
         <div className="spinner" />
-      ) : directory.length === 0 ? (
-        <p className="muted small">No bots to add right now.</p>
       ) : (
-        directory.map((a) => (
-          <div key={a.id} className="integration-row">
-            {a.preset ? <PresetLogo preset={a.preset} color={a.color} size={36} /> : <Icon name="bot" />}
-            <div className="grow">
-              <b>
-                {a.name} {a.preset === 'venband' && <span className="tag-soft accent">Official</span>}
-              </b>
-              <div className="small muted">
-                {PRESETS.find((p) => p.id === a.preset)?.name} · in {a.installs} server{a.installs === 1 ? '' : 's'}
-                {a.description ? ` · ${a.description}` : ''}
-              </div>
-            </div>
-            {a.installed ? (
-              <span className="pill">Added</span>
-            ) : a.requested ? (
-              <span className="pill">Requested</span>
-            ) : (
-              <button className="btn primary small" disabled={!can || adding === a.id} onClick={() => addBot(a)}>
-                {adding === a.id ? 'Adding…' : 'Add'}
+        <>
+          <input
+            className="search-input"
+            placeholder={`Search ${directory.length} bots…`}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label="Search bots"
+          />
+          <div className="filter-chips">
+            <button className={kind === 'all' ? 'filter-chip on' : 'filter-chip'} onClick={() => setKind('all')}>
+              All
+            </button>
+            {PRESETS.map((p) => (
+              <button key={p.id} className={kind === p.id ? 'filter-chip on' : 'filter-chip'} onClick={() => setKind(p.id)}>
+                {p.name}
               </button>
-            )}
+            ))}
           </div>
-        ))
+          {directory.length === 0 ? (
+            <p className="muted small">No bots to add right now.</p>
+          ) : (
+            (() => {
+              const query = q.trim().toLowerCase();
+              const filtered = directory.filter(
+                (a) =>
+                  (kind === 'all' || a.preset === kind) &&
+                  (!query ||
+                    a.name.toLowerCase().includes(query) ||
+                    a.description?.toLowerCase().includes(query) ||
+                    PRESETS.find((p) => p.id === a.preset)?.name.toLowerCase().includes(query))
+              );
+              if (!filtered.length)
+                return <p className="muted small">No bots match “{q}”. Try another search or filter.</p>;
+              return filtered.map((a) => (
+                <div key={a.id} className="integration-row">
+                  {a.preset ? <PresetLogo preset={a.preset} color={a.color} size={36} /> : <Icon name="bot" />}
+                  <div className="grow">
+                    <b>
+                      {a.name} {a.preset === 'venband' && <span className="tag-soft accent">Official</span>}
+                    </b>
+                    <div className="small muted">
+                      {PRESETS.find((p) => p.id === a.preset)?.name} · in {a.installs} server{a.installs === 1 ? '' : 's'}
+                      {a.description ? ` · ${a.description}` : ''}
+                    </div>
+                  </div>
+                  {a.installed ? (
+                    <span className="pill">Added</span>
+                  ) : a.requested ? (
+                    <span className="pill">Requested</span>
+                  ) : (
+                    <button className="btn primary small" disabled={!can || adding === a.id} onClick={() => addBot(a)}>
+                      {adding === a.id ? 'Adding…' : 'Add'}
+                    </button>
+                  )}
+                </div>
+              ));
+            })()
+          )}
+        </>
       )}
       {requests.length > 0 && (
         <>
