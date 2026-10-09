@@ -5678,14 +5678,17 @@ begin
 end;
 $$;
 
+-- "dm_blocked" must only mean "the other side of this DM blocked you". Staff
+-- forced-contact ability is handled in open_dm() — putting it here made
+-- can_force_contact() true (staff) -> policy "not dm_blocked" false -> staff
+-- could not send messages in ANY channel.
 create or replace function public.dm_blocked(p_channel uuid, p_user uuid default auth.uid())
 returns boolean language sql stable security definer set search_path = '' as $$
-  select public.can_force_contact(p_user)
-     or exists (
-       select 1 from public.channels c
-       join public.dm_participants o on o.channel_id = c.id and o.user_id <> p_user
-       where c.id = p_channel and c.type = 'dm' and not c.is_group
-         and public.is_blocked_between(o.user_id, p_user));
+  select exists (
+    select 1 from public.channels c
+    join public.dm_participants o on o.channel_id = c.id and o.user_id <> p_user
+    where c.id = p_channel and c.type = 'dm' and not c.is_group
+      and public.is_blocked_between(o.user_id, p_user));
 $$;
 
 create or replace function public.force_unblock(p_user uuid)
