@@ -13,6 +13,7 @@ import { VerifiedMark } from './Badges';
 const REPO_URL = 'https://github.com/youragoober999-sketch/venband';
 
 const NAV: { page: PublicPage; label: string }[] = [
+  { page: 'download', label: 'Download' },
   { page: 'discovery', label: 'Discover' },
   { page: 'bots', label: 'Developers' },
   { page: 'voogle', label: 'Voogle' },
@@ -77,7 +78,7 @@ export function PublicLayout({ page, title, children, wide }: { page: PublicPage
       <main className={`public-inner public-main${wide ? ' wide' : ''}`}>{children}</main>
       <footer className="public-inner public-footer small muted">
         <span>© {new Date().getFullYear()} Venband · end-to-end encrypted chat</span>
-        {(['privacy', 'guidelines', 'changelog', 'status'] as PublicPage[]).map((p) => (
+        {(['download', 'discovery', 'privacy', 'guidelines', 'changelog', 'status'] as PublicPage[]).map((p) => (
           <a
             key={p}
             href={`${import.meta.env.BASE_URL}${p}`}

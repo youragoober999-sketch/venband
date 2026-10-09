@@ -11,6 +11,7 @@ import { Landing } from './components/Landing';
 import { parseRoute, go, useRoute, type Route } from './lib/router';
 import { ChangelogPage, GuidelinesPage, PrivacyPage, PublicDiscovery, StatusPage, TermsPage } from './components/PublicPages';
 import { ApplicationsPage } from './components/Apps';
+import { DownloadPage } from './components/Download';
 import { VooglePage } from './components/Voogle';
 import { DialogHost } from './components/Dialogs';
 import { handleSteamRedirect } from './lib/connections';
@@ -96,6 +97,8 @@ function PublicRoute({ route }: { route: Extract<Route, { kind: 'page' }> }) {
       return <ApplicationsPage id={route.id} />;
     case 'voogle':
       return <VooglePage />;
+    case 'download':
+      return <DownloadPage />;
   }
 }
 

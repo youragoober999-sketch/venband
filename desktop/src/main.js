@@ -310,8 +310,12 @@ ipcMain.on('venband:flash', (e) => {
 ipcMain.handle('venband:info', () => ({ version: app.getVersion(), platform: process.platform, safeMode: SAFE_MODE, channel: prefs.channel }));
 
 // ------------------------------------------------------------------ updates --
-// Updates come from GitHub Releases. When one is available, a full-window
-// Venband screen asks the person to update before carrying on.
+// Updates come from the /download folder on www.venband.com (latest.yml, which
+// electron-builder writes from the same version number as the EXE). On every
+// launch -- plus every 4h and on resume -- we compare and, when a newer build is
+// published, a full-window Venband screen asks the person to update before
+// carrying on. Installing quits the app, replaces the files and keeps the login
+// and data untouched.
 let updater = null;
 let updateWindow = null;
 function getUpdater() {

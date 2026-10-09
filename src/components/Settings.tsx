@@ -18,6 +18,7 @@ import { ImageCropper } from './ImageCropper';
 import { askText } from './Dialogs';
 import { Select } from './Select';
 import { go } from '../lib/router';
+import { VERSION } from '../lib/version';
 import { connectBot, deleteApp as deleteAppRpc, disconnectBot, listMyBots, type MyBotRow } from '../lib/bots';
 import { ServerUpdateCard } from './Apps';
 import { Badges } from './Badges';
@@ -344,6 +345,7 @@ function AccountTab() {
   const me = sessionStore.use((s) => s.me)!;
   const session = sessionStore.use((s) => s.session);
   const identity = sessionStore.use((s) => s.identity)!;
+  const desktop = Boolean(window.venbandDesktop?.isDesktop);
   const [fp, setFp] = useState('');
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -404,6 +406,20 @@ function AccountTab() {
               <div className="field-label">Member since</div>
               <div>{accountAge(me.created_at)}</div>
             </div>
+          </div>
+          <div className="account-row">
+            <div>
+              <div className="field-label">Venband version</div>
+              <div>
+                {VERSION}
+                {desktop && (
+                  <span className="tag-soft">Desktop — updates itself in the app</span>
+                )}
+              </div>
+            </div>
+            <a className="btn link" href="download" onClick={(e) => { e.preventDefault(); go('download'); }}>
+              Downloads
+            </a>
           </div>
           {me.account_status && me.account_status !== 'active' && (
             <div className="account-row warn">

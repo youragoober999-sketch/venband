@@ -1,5 +1,35 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
+const VERSION: string = pkg.version;
+
+// Write dist/download.json so the /download page and the desktop app's updater
+// share one machine-readable source of truth for "what's published right now".
+// The files it lists are named by desktop/package.json's artifactName patterns
+// and live next to latest.yml in the /download folder on the site.
+const DOWNLOAD_URL = 'https://www.venband.com/download/';
+function downloadManifest(): Plugin {
+  return {
+    name: 'venband-download-manifest',
+    apply: 'build',
+    closeBundle() {
+      const manifest = {
+        version: VERSION,
+        url: DOWNLOAD_URL,
+        updatedAt: new Date().toISOString(),
+        windows: [
+          { name: `Venband-Setup-${VERSION}.exe`, kind: 'installer' },
+          { name: `Venband-Portable-${VERSION}.exe`, kind: 'portable' },
+        ],
+        android: { name: `Venband-${VERSION}-debug.apk`, kind: 'apk' },
+      };
+      fs.writeFileSync(path.join(process.cwd(), 'dist', 'download.json'), JSON.stringify(manifest, null, 2));
+    },
+  };
+}
 
 // Strict Content-Security-Policy. GitHub Pages can't send headers, so it is
 // delivered as a <meta> tag. Only the configured Supabase project (and an
@@ -92,7 +122,8 @@ export default defineConfig(({ mode }) => {
   return {
     // absolute so deep links like /channels/@me/123 load their assets
     base: process.env.VENBAND_BASE ?? '/',
-    plugins: [react(), csp(env), devApi(loadEnv(mode, process.cwd(), ''))],
+    plugins: [react(), csp(env), devApi(loadEnv(mode, process.cwd(), '')), downloadManifest()],
+    define: { __VENBAND_VERSION__: JSON.stringify(VERSION) },
     build: { target: 'es2022', sourcemap: false, chunkSizeWarningLimit: 900 },
   };
 });

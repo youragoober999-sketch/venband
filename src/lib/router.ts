@@ -4,7 +4,7 @@
 //   /channels/@me/<userId|channelId>   a DM (user id) or group chat (channel id)
 //   /channels/<serverId>[/<channelId>]
 //   /discover
-//   /status /tos /privacy /guidelines /changelog /discovery /bots[/<id>] /voogle  (public)
+//   /status /tos /privacy /guidelines /changelog /discovery /bots[/<id>] /voogle /download  (public)
 import { useSyncExternalStore } from 'react';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
@@ -56,7 +56,7 @@ export type Route =
   | { kind: 'page'; page: PublicPage; id?: string }
   | { kind: 'root' };
 
-export type PublicPage = 'status' | 'tos' | 'privacy' | 'guidelines' | 'changelog' | 'discovery' | 'bots' | 'voogle';
+export type PublicPage = 'status' | 'tos' | 'privacy' | 'guidelines' | 'changelog' | 'discovery' | 'bots' | 'voogle' | 'download';
 const PAGES: Record<string, PublicPage> = {
   status: 'status',
   tos: 'tos',
@@ -66,6 +66,7 @@ const PAGES: Record<string, PublicPage> = {
   changelog: 'changelog',
   discovery: 'discovery',
   bots: 'bots',
+  download: 'download',
   // old links keep working
   applications: 'bots',
   developers: 'bots',

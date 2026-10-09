@@ -102,10 +102,8 @@
     },
     "publish": [
       {
-        "provider": "github",
-        "owner": "youragoober999-sketch",
-        "repo": "venband",
-        "releaseType": "release"
+        "provider": "generic",
+        "url": "https://www.venband.com/download/"
       }
     ]
   }
