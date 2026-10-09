@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon, LogoGlyph, Wordmark } from './ui';
+import { go } from '../lib/router';
 
 const REPO_URL = 'https://github.com/youragoober999-sketch/venband';
 
@@ -22,6 +23,9 @@ export function TopNav({ onLogin, onSignup, onHome, onOpenApp }: { onLogin: () =
           </a>
         </nav>
         <div className="topnav-actions">
+          <button className="btn ghost small" onClick={() => go('download')}>
+            Download
+          </button>
           {onOpenApp ? (
             <button className="btn primary small" onClick={onOpenApp}>
               Open Venband

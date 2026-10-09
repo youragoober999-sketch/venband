@@ -67,6 +67,7 @@ const PAGES: Record<string, PublicPage> = {
   discovery: 'discovery',
   bots: 'bots',
   download: 'download',
+  downloads: 'download',
   // old links keep working
   applications: 'bots',
   developers: 'bots',

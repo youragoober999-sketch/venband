@@ -10,7 +10,7 @@ const VERSION: string = pkg.version;
 // share one machine-readable source of truth for "what's published right now".
 // The files it lists are named by desktop/package.json's artifactName patterns
 // and live next to latest.yml in the /download folder on the site.
-const DOWNLOAD_URL = 'https://www.venband.com/download/';
+const DOWNLOAD_URL = '/download/';
 function downloadManifest(): Plugin {
   return {
     name: 'venband-download-manifest',
@@ -27,6 +27,21 @@ function downloadManifest(): Plugin {
         android: { name: `Venband-${VERSION}-debug.apk`, kind: 'apk' },
       };
       fs.writeFileSync(path.join(process.cwd(), 'dist', 'download.json'), JSON.stringify(manifest, null, 2));
+    },
+  };
+}
+
+// Bump the icon URLs with the build version. Google caches favicons by URL and
+// can keep showing an old one for weeks after the files change; a fresh URL
+// makes crawlers fetch the current logo again.
+function versionedIcons(): Plugin {
+  return {
+    name: 'venband-versioned-icons',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        return html.replaceAll('__VBV__', encodeURIComponent(VERSION));
+      },
     },
   };
 }
@@ -122,7 +137,7 @@ export default defineConfig(({ mode }) => {
   return {
     // absolute so deep links like /channels/@me/123 load their assets
     base: process.env.VENBAND_BASE ?? '/',
-    plugins: [react(), csp(env), devApi(loadEnv(mode, process.cwd(), '')), downloadManifest()],
+    plugins: [react(), csp(env), devApi(loadEnv(mode, process.cwd(), '')), downloadManifest(), versionedIcons()],
     define: { __VENBAND_VERSION__: JSON.stringify(VERSION) },
     build: { target: 'es2022', sourcemap: false, chunkSizeWarningLimit: 900 },
   };

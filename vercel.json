@@ -44,6 +44,28 @@
       ]
     },
     {
+      "source": "/download/(.*\\.(exe|apk|blockmap))",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        },
+        {
+          "key": "Content-Disposition",
+          "value": "attachment"
+        }
+      ]
+    },
+    {
+      "source": "/download/latest.yml",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
       "source": "/index.html",
       "headers": [
         {
@@ -55,7 +77,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!api/|assets/|favicon|icon-|apple-touch-icon|robots\\.txt|sitemap\\.xml|site\\.webmanifest).*)",
+      "source": "/((?!api/|assets/|download/|download\\.json|favicon|icon-|apple-touch-icon|robots\\.txt|sitemap\\.xml|site\\.webmanifest).*)",
       "destination": "/index.html"
     }
   ],
