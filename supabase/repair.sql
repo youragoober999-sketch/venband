@@ -6658,7 +6658,7 @@ create table if not exists public.connections (
   updated_at   timestamptz not null default now(),
   primary key (user_id, provider, external_id)
 );
-create index connections_user_idx on public.connections (user_id, created_at desc);
+create index if not exists connections_user_idx on public.connections (user_id, created_at desc);
 alter table public.connections enable row level security;
 drop policy if exists connections_select on public.connections;
 create policy connections_select on public.connections
