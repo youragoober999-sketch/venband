@@ -13,6 +13,8 @@ import { ChangelogPage, GuidelinesPage, PrivacyPage, PublicDiscovery, StatusPage
 import { ApplicationsPage } from './components/Apps';
 import { VooglePage } from './components/Voogle';
 import { DialogHost } from './components/Dialogs';
+import { handleSteamRedirect } from './lib/connections';
+import { openSettings } from './lib/ui';
 
 export default function App() {
   const status = sessionStore.use((s) => s.status);
@@ -20,6 +22,12 @@ export default function App() {
   const needsOnboarding = sessionStore.use((s) => s.me?.onboarded === false);
   useEffect(() => {
     if (configured) initSession();
+    // a Steam "Connect" landed us back here with ?steam=1: verify + link
+    void handleSteamRedirect().then((msg) => {
+      if (!msg) return;
+      if (msg.startsWith('Steam link failed')) alert(msg);
+      else openSettings('connections');
+    });
   }, []);
 
   const route = parseRoute(useRoute());

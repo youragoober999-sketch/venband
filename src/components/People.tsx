@@ -12,6 +12,7 @@ import type { Profile } from '../lib/types';
 import { openChannel, openServer, useDirectory, type ServerData } from '../hooks/data';
 import { Avatar, Icon, Modal, nameplateVars, StyledName } from './ui';
 import { Badges, OwnerCrown, RoleIcon } from './Badges';
+import { ActivityCard } from './ActivityCard';
 import { copyText, type Entry } from './ContextMenu';
 import { askConfirm, askText } from './Dialogs';
 import { openGlobalModal } from './GlobalModals';
@@ -365,6 +366,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
                 {shown.status_text}
               </div>
             )}
+            <ActivityCard userId={userId} />
             {rel?.blocked && <div className="notice small">You blocked this person.</div>}
             {shown?.account_status && shown.account_status !== 'active' && (shown.platform_role === 'user' || !shown.platform_role) && me.platform_role !== 'user' && (
               <div className="notice small">Account status: {shown.account_status.replace('_', ' ')}</div>

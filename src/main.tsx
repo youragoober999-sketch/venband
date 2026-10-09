@@ -5,8 +5,10 @@ import '@fontsource-variable/inter';
 import '@fontsource/jetbrains-mono/400.css';
 import './styles.css';
 import { restoreTheme } from './lib/themes';
+import { initPlatform } from './lib/ui';
 
 restoreTheme();
+initPlatform();
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };

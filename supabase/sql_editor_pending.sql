@@ -2073,9 +2073,237 @@ revoke execute on function public.bot_dm_post(uuid, uuid, text, jsonb, uuid)
   from public, anon, authenticated;
 grant execute on function public.connect_bot(uuid), public.disconnect_bot(uuid),
   public.list_my_bots(), public.delete_app(uuid), public.dm_commands(uuid),
-  public.use_bot_command_dm(uuid, text, text)
+public.use_bot_command_dm(uuid, text, text)
   to authenticated;
 
+
+-- =============================================================================
+-- Rich presence: what you're doing cross-device.
+--   * activities: one row per user — the current activity (nothing = offline /
+--     nothing to show). Rows are pushed live so every client sees the same thing.
+--   * desktop apps report here via their own Discord-IPC pipe bridge
+--     (VS Code, games, YouTube, Spotify…); the web app confirms with the same
+--     shape it already renders for bots.
+--   * set_my_activity / clear_my_activity are the only writers (security definer).
+-- =============================================================================
+create table if not exists public.activities (
+  user_id           uuid primary key references public.profiles (id) on delete cascade,
+  platform          text not null default 'rpc'
+                    check (platform in ('rpc', 'spotify', 'custom', 'connections')),
+  icon              text,                                   -- emoji or provider slug
+  name              text not null check (char_length(name) between 1 and 64),
+  type              smallint not null default 0,            -- 0 play 1 stream 2 listen 3 watch 4 custom 5 compete
+  details           text check (details is null or char_length(details) <= 200),
+  state             text check (state is null or char_length(state) <= 200),
+  url               text check (url is null or char_length(url) <= 500),
+  uri               text check (uri is null or char_length(uri) <= 300),
+  client_id         text check (client_id is null or char_length(client_id) <= 64),
+  assets_large_key  text check (assets_large_key is null or char_length(assets_large_key) <= 128),
+  assets_large_text text check (assets_large_text is null or char_length(assets_large_text) <= 128),
+  assets_small_key  text check (assets_small_key is null or char_length(assets_small_key) <= 128),
+  assets_small_text text check (assets_small_text is null or char_length(assets_small_text) <= 128),
+  party_id          text check (party_id is null or char_length(party_id) <= 128),
+  party_cur         int,
+  party_max         int,
+  timestamps_start  bigint,
+  timestamps_end    bigint,
+  buttons           jsonb not null default '[]'::jsonb
+                    check (jsonb_typeof(buttons) = 'array' and jsonb_array_length(buttons) <= 2),
+  updated_at        timestamptz not null default now()
+);
+alter table public.activities enable row level security;
+drop policy if exists activities_select on public.activities;
+create policy activities_select on public.activities
+  for select to authenticated using (true);
+-- No direct writes: set_my_activity / clear_my_activity own the row.
+
+create or replace function public.set_my_activity(p_activity jsonb)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid uuid := auth.uid();
+  a     jsonb := p_activity;
+begin
+  if v_uid is null then raise exception 'not authenticated'; end if;
+  if a is null or a = 'null'::jsonb
+     or a ->> 'name' is null or btrim(coalesce(a ->> 'name', '')) = '' then
+    delete from public.activities where user_id = v_uid;
+    return;
+  end if;
+  insert into public.activities
+    (user_id, platform, icon, name, type, details, state, url, uri, client_id,
+     assets_large_key, assets_large_text, assets_small_key, assets_small_text,
+     party_id, party_cur, party_max, timestamps_start, timestamps_end,
+     buttons, updated_at)
+  values (
+    v_uid,
+    case when a ->> 'platform' in ('rpc', 'spotify', 'custom', 'connections')
+         then a ->> 'platform' else 'rpc' end,
+    nullif(coalesce(a ->> 'icon', ''), ''),
+    left(btrim(coalesce(a ->> 'name', '')), 64),
+    coalesce(nullif(a ->> 'type', '')::int, 0),
+    left(a ->> 'details', 200),
+    left(a ->> 'state', 200),
+    left(a ->> 'url', 500),
+    left(a ->> 'uri', 300),
+    left(a ->> 'client_id', 64),
+    left(a ->> 'assets_large_key', 128),
+    left(a ->> 'assets_large_text', 128),
+    left(a ->> 'assets_small_key', 128),
+    left(a ->> 'assets_small_text', 128),
+    left(a ->> 'party_id', 128),
+    nullif((a ->> 'party_cur')::int, 0),
+    nullif((a ->> 'party_max')::int, 0),
+    nullif((a ->> 'timestamps_start')::bigint, 0),
+    nullif((a ->> 'timestamps_end')::bigint, 0),
+    case when jsonb_typeof(a -> 'buttons') = 'array'
+         then (select jsonb_agg(x)
+               from (select left(b.value ->> 'label', 64) x
+                     from jsonb_array_elements(a -> 'buttons') b
+                     where b.value ->> 'label' is not null limit 2) s)
+         else '[]'::jsonb end,
+    now()
+  )
+  on conflict (user_id) do update set
+    platform          = excluded.platform,
+    icon              = excluded.icon,
+    name              = excluded.name,
+    type              = excluded.type,
+    details           = excluded.details,
+    state             = excluded.state,
+    url               = excluded.url,
+    uri               = excluded.uri,
+    client_id         = excluded.client_id,
+    assets_large_key  = excluded.assets_large_key,
+    assets_large_text = excluded.assets_large_text,
+    assets_small_key  = excluded.assets_small_key,
+    assets_small_text = excluded.assets_small_text,
+    party_id          = excluded.party_id,
+    party_cur         = excluded.party_cur,
+    party_max         = excluded.party_max,
+    timestamps_start  = excluded.timestamps_start,
+    timestamps_end    = excluded.timestamps_end,
+    buttons           = excluded.buttons,
+    updated_at        = now();
+end;
+$$;
+
+create or replace function public.clear_my_activity()
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  delete from public.activities where user_id = auth.uid();
+end;
+$$;
+
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime'
+                 and schemaname = 'public' and tablename = 'activities') then
+    alter publication supabase_realtime add table public.activities;
+  end if;
+end $$;
+grant select on public.activities to authenticated;
+revoke execute on function public.set_my_activity(jsonb), public.clear_my_activity()
+  from public, anon;
+grant execute on function public.set_my_activity(jsonb), public.clear_my_activity()
+  to authenticated;
+
+-- =============================================================================
+-- Connections: the outside accounts you linked to your Venband profile.
+--   * One row per (user, provider, external id) — a user can link several
+--     accounts of the same provider.
+--   * Only the owner can read/write their rows, so OAuth tokens / handles are
+--     safe to keep here. Nothing here is public yet.
+--   * add_connection / remove_connection are the only writers (security definer).
+--   * Providers that need a server-held OAuth secret (Spotify, Twitch,
+--     YouTube…) are registered here and appear in Settings → Connections;
+--     Steam links fully client-side via OpenID.
+-- =============================================================================
+create table if not exists public.connections (
+  user_id      uuid not null references public.profiles (id) on delete cascade,
+  provider     text not null
+               check (provider in ('steam', 'spotify', 'twitch', 'discord', 'github',
+                                   'youtube', 'xbox', 'instagram', 'tiktok', 'epic')),
+  external_id  text not null check (char_length(external_id) between 1 and 128),
+  display_name text not null default '' check (char_length(display_name) <= 80),
+  avatar_url   text check (avatar_url is null or char_length(avatar_url) <= 500),
+  metadata     jsonb not null default '{}'::jsonb,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  primary key (user_id, provider, external_id)
+);
+create index connections_user_idx on public.connections (user_id, created_at desc);
+alter table public.connections enable row level security;
+drop policy if exists connections_select on public.connections;
+create policy connections_select on public.connections
+  for select to authenticated using (user_id = auth.uid());
+drop policy if exists connections_insert on public.connections;
+create policy connections_insert on public.connections
+  for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists connections_update on public.connections;
+create policy connections_update on public.connections
+  for update to authenticated using (user_id = auth.uid());
+drop policy if exists connections_delete on public.connections;
+create policy connections_delete on public.connections
+  for delete to authenticated using (user_id = auth.uid());
+
+create or replace function public.add_connection(
+  p_provider    text,
+  p_external_id text,
+  p_display_name text default '',
+  p_avatar_url  text default null,
+  p_metadata    jsonb default '{}'::jsonb
+) returns void language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'not authenticated'; end if;
+  if p_provider not in ('steam', 'spotify', 'twitch', 'discord', 'github',
+                        'youtube', 'xbox', 'instagram', 'tiktok', 'epic') then
+    raise exception 'unknown provider';
+  end if;
+  if btrim(coalesce(p_external_id, '')) = '' then raise exception 'provider gave no account id'; end if;
+  insert into public.connections (user_id, provider, external_id, display_name, avatar_url, metadata, updated_at)
+  values (v_uid, p_provider, left(p_external_id, 128), left(coalesce(p_display_name, ''), 80),
+          nullif(p_avatar_url, ''), coalesce(p_metadata, '{}'::jsonb), now())
+  on conflict (user_id, provider, external_id) do update set
+    display_name = excluded.display_name,
+    avatar_url   = excluded.avatar_url,
+    metadata     = excluded.metadata,
+    updated_at   = now();
+end;
+$$;
+
+create or replace function public.remove_connection(
+  p_provider    text,
+  p_external_id text default null
+) returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  if p_external_id is null then
+    delete from public.connections where user_id = auth.uid() and provider = p_provider;
+  else
+    delete from public.connections where user_id = auth.uid() and provider = p_provider and external_id = p_external_id;
+  end if;
+end;
+$$;
+
+create or replace function public.my_connections()
+returns table (provider text, external_id text, display_name text, avatar_url text,
+               metadata jsonb, created_at timestamptz)
+language sql stable security definer set search_path = '' as $$
+  select c.provider, c.external_id, c.display_name, c.avatar_url, c.metadata, c.created_at
+  from public.connections c
+  where c.user_id = auth.uid()
+  order by c.created_at desc;
+$$;
+
+revoke execute on function public.add_connection(text, text, text, text, jsonb),
+  public.remove_connection(text, text), public.my_connections()
+  from public, anon;
+grant execute on function public.add_connection(text, text, text, text, jsonb),
+  public.remove_connection(text, text), public.my_connections()
+  to authenticated;
 
 -- -----------------------------------------------------------------------------
 notify pgrst, 'reload schema';

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { LooksPanel } from './LooksSettings';
 import { supabase, errorMessage } from '../lib/supabase';
 import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
@@ -26,6 +26,17 @@ import { askConfirm } from './Dialogs';
 import { BadgeDesigner, DiscoveryQueue, ModerationCenter, ReportCentre } from './Moderation';
 import { Markdown } from './Markdown';
 import { SecurityTab } from './Security';
+import {
+  connectionsVersion,
+  myConnections,
+  PROVIDERS,
+  reloadConnections,
+  removeConnection,
+  steamLogin,
+  subscribeConnections,
+  type ConnectionProvider,
+  type ConnectionRow,
+} from '../lib/connections';
 
 const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; admin?: boolean; designer?: boolean }[] = [
   { id: 'account', label: 'My Account', icon: 'user', group: 'User Settings' },
@@ -38,6 +49,7 @@ const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff
   { id: 'chat', label: 'Chat', icon: 'message', group: 'App Settings' },
   { id: 'language', label: 'Language', icon: 'globe', group: 'App Settings' },
   { id: 'my-apps', label: 'My Apps', icon: 'bot', group: 'App Settings' },
+  { id: 'connections', label: 'Connections', icon: 'link', group: 'App Settings' },
   { id: 'moderation', label: 'Moderation', icon: 'gavel', group: 'Venband Staff', staff: true },
   { id: 'discovery-queue', label: 'Discovery Applications', icon: 'compass', group: 'Venband Staff', staff: true },
   { id: 'reports', label: 'Report Centre', icon: 'flag', group: 'Venband Staff', staff: true, admin: true },
@@ -94,6 +106,7 @@ export function SettingsPage() {
           {tab === 'chat' && <ChatTab />}
           {tab === 'language' && <LanguageTab />}
           {tab === 'my-apps' && <MyAppsTab />}
+          {tab === 'connections' && <ConnectionsTab />}
           {tab === 'moderation' && staff && <ModerationCenter />}
           {tab === 'reports' && admin && <ReportCentre />}
           {tab === 'discovery-queue' && staff && <DiscoveryQueue />}
@@ -224,6 +237,93 @@ function MyAppsTab() {
       </div>
     </Section>
   );
+}
+
+// ------------------------------------------------------------- connections --
+
+function ConnectionsTab() {
+  const links = useConnections();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const byProvider = (p: string) => links.filter((c) => c.provider === p);
+
+  async function disconnect(provider: ConnectionProvider, externalId: string) {
+    setBusy(`${provider}-${externalId}`);
+    setError(null);
+    try {
+      await removeConnection(provider, externalId);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Section
+      title="Connections"
+      desc="Link the accounts you use most and Venband can show that activity on your profile — and, on the desktop app, mirror it to the Discord-compatible presence your other apps already read."
+    >
+      {error && <div className="form-error">{error}</div>}
+      <div className="connections-grid">
+        {PROVIDERS.map((info) => {
+          const linked = byProvider(info.provider);
+          return (
+            <div key={info.provider} className="connection-card">
+              <span className="connection-logo" style={{ background: info.color }}>
+                <span className="connection-logo-inner">{info.slug[0].toUpperCase()}</span>
+              </span>
+              <span className="grow">
+                <b>{info.name}</b>
+                <div className="small muted">{info.desc}</div>
+                {linked.map((c) => (
+                  <div key={c.external_id} className="connection-account" title={`Linked ${new Date(c.created_at).toLocaleDateString()}`}>
+                    {c.avatar_url && <img className="connection-avatar" src={c.avatar_url} alt="" referrerPolicy="no-referrer" />}
+                    <span>
+                      <b>{c.display_name || `${info.name} account`}</b>
+                      <span className="small muted"> • linked</span>
+                    </span>
+                    <button
+                      className="btn link small danger-text"
+                      disabled={busy === `${info.provider}-${c.external_id}`}
+                      onClick={() => disconnect(info.provider, c.external_id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </span>
+              {info.kind === 'openid' && linked.length === 0 && (
+                <button className="btn secondary small" onClick={() => (window.location.href = steamLogin())}>
+                  <Icon name="link" size={14} /> Connect
+                </button>
+              )}
+              {info.kind === 'openid' && linked.length > 0 && <span className="tag-soft success">Connected</span>}
+              {info.kind === 'oauth' && (
+                <button className="btn secondary small" disabled title="Needs a Venband-run OAuth server for the client secret — on the roadmap.">
+                  <Icon name="link" size={14} /> Connect
+                </button>
+              )}
+              {info.kind === 'planned' && (
+                <button className="btn secondary small" disabled title="Coming soon.">
+                  <Icon name="lock" size={14} /> Soon
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+function useConnections(): ConnectionRow[] {
+  useSyncExternalStore(subscribeConnections, connectionsVersion);
+  useEffect(() => {
+    void reloadConnections();
+  }, []);
+  return myConnections();
 }
 
 export function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {

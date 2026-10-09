@@ -24,6 +24,8 @@ const {
   powerMonitor,
 } = require('electron');
 const { appBase, isAppUrl, isSafeExternal, deepLinkToUrl, deepLinkFromArgv } = require('./links');
+const { createRpcServer, activityKey } = require('./rpc');
+const { startSpotifyPoller } = require('./spotify');
 
 const BASE = appBase();
 const SAFE_MODE = process.argv.includes('--safe-mode') || process.env.VENBAND_SAFE_MODE === '1';
@@ -390,13 +392,74 @@ ipcMain.on('update:later', (e) => {
   if (updateWindow && e.sender === updateWindow.webContents) updateWindow.close();
 });
 
-// -------------------------------------------------------------------- start --
+// ------------------------------------------------------------------ rpc --
+// A Discord-compatible local socket (discord-ipc-0..9) plus the Spotify local
+// poller feed the renderer a single "what am I doing" activity, which the web
+// app pushes to Supabase so every session (browser, desktop, phone) shows the
+// same live status. RPC activities win over Spotify, like real Discord.
+let rpc = null;
+let stopSpotify = null;
+let rpcActivity = null;
+let spotifyActivity = null;
+let activeActivity = null;
+
+function pushActivity(next) {
+  if (activityKey(next) === activityKey(activeActivity)) return;
+  activeActivity = next;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('rpc:activity', activeActivity);
+}
+
+function recomputeActivity() {
+  pushActivity(rpcActivity || spotifyActivity);
+}
+
+function setupRpcBridge() {
+  rpc = createRpcServer({
+    emit: (e) => {
+      if (e && e.type === 'activity') rpcActivity = e.activity;
+      recomputeActivity();
+    },
+  });
+  rpc.start().catch((e) => {
+    if (e?.code === 'EEXHAUSTED') return; // real Discord owns the pipes — fine
+    console.error('rpc bridge failed to start', e?.message || e);
+  });
+  stopSpotify = startSpotifyPoller({ onChange: (a) => { spotifyActivity = a; recomputeActivity(); } });
+
+  ipcMain.handle('rpc:get-state', () => ({
+    active: Boolean(rpc && rpc.stateRef.pipeIndex >= 0),
+    pipe: rpc ? rpc.stateRef.pipeIndex : -1,
+    activity: activeActivity,
+  }));
+  ipcMain.on('rpc:set-user', (e, u) => {
+    if (!rpc || e.sender !== mainWindow?.webContents || !u || typeof u !== 'object') return;
+    rpc.setUser({ id: u.id, username: u.username, global_name: u.global_name, session_id: u.session_id });
+  });
+}
+
+const OPENABLE = new Set(['https:', 'http:', 'mailto:', 'spotify:', 'spotify-track:', 'steam:', 'twitch:']);
+ipcMain.handle('shell:open-external', (e, raw) => {
+  if (e.sender !== mainWindow?.webContents || typeof raw !== 'string') return false;
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (!OPENABLE.has(u.protocol)) return false;
+  if ((u.protocol === 'https:' || u.protocol === 'http:') && !isSafeExternal(raw)) return false;
+  shell.openExternal(raw);
+  return true;
+});
+
+// ------------------------------------------------------------------ start --
 app.whenReady().then(() => {
   loadPrefs();
   if (process.platform === 'win32') app.setAppUserModelId('com.venband.desktop');
   setupSession();
   createMainWindow();
   setupTray();
+  setupRpcBridge();
   checkForUpdates();
   setInterval(() => checkForUpdates(), UPDATE_CHECK_MS);
   powerMonitor.on('resume', () => checkForUpdates());
@@ -405,6 +468,8 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   quitting = true;
+  stopSpotify?.();
+  rpc?.close?.().catch(() => {});
 });
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

@@ -16,7 +16,8 @@ export type SettingsTab =
   | 'discovery-queue'
   | 'reports'
   | 'badges'
-  | 'my-apps';
+  | 'my-apps'
+  | 'connections';
 
 export const uiStore = createStore<{
   settings: SettingsTab | null;
@@ -39,6 +40,20 @@ export function openSearch(q = '', serverId: string | null = null) {
 
 // narrow layouts show the member list as a slide-in panel
 export const isPhone = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 1000px)').matches;
+
+/** True inside the Android app (Capacitor WebView). */
+export function isAndroid(): boolean {
+  return typeof window !== 'undefined' && 'Capacitor' in window && (window as { Capacitor?: { getPlatform: () => string } }).Capacitor?.getPlatform() === 'android';
+}
+
+let platformInit = false;
+/** Tag the document so CSS can give the Android skin slightly denser spacing. */
+export function initPlatform() {
+  if (platformInit) return;
+  platformInit = true;
+  if (isAndroid()) document.documentElement.dataset.platform = 'android';
+  else if (typeof window !== 'undefined' && 'Capacitor' in window) document.documentElement.dataset.platform = 'ios';
+}
 export function setDrawer(d: 'nav' | 'members' | null) {
   uiStore.set({ drawer: d });
 }

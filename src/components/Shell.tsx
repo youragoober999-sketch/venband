@@ -6,6 +6,7 @@ import { startBackground } from '../lib/background';
 import { useApps, useServerBots } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
 import { isTopStaff, sessionStore, updateMyProfile } from '../lib/session';
+import { ActivityMini } from './ActivityCard';
 import { supabase, errorMessage } from '../lib/supabase';
 import { activeCallVersion, getActiveCall, joinCall, leaveCall, leftRecently, subscribeActiveCall } from '../lib/call';
 import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
@@ -819,6 +820,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
           ) : p?.status_text ? (
             <small className="convo-sub">{p.status_text}</small>
           ) : null}
+          {!d.channel.is_group && d.other && <ActivityMini userId={d.other.id} className="convo-sub" />}
         </span>
         {muted && <Icon name="bellOff" size={12} />}
         {isPinned(d) && <Icon name="pin" size={12} />}
@@ -1598,6 +1600,7 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
                       {p.status_text}
                     </span>
                   )}
+                  <ActivityMini userId={m.user_id} />
                 </span>
                 {data.server?.owner_id === m.user_id && <OwnerCrown size={14} label="Server owner" />}
                 {m.user_id === myId && <span className="tag-soft accent">you</span>}

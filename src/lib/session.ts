@@ -17,6 +17,7 @@ import {
 import { Keyring } from './keyring';
 import { initTrust, loadProfiles, getProfile, putProfile } from './directory';
 import { setPresenceUser } from './presence';
+import { setActivityUser } from './activity';
 import { leaveCall } from './call';
 import type { Profile } from './types';
 import { loadSettings, resetSettingsStore } from './settings';
@@ -69,6 +70,7 @@ async function enterApp(session: Session, identity: Identity) {
   const userId = session.user.id;
   initTrust(userId);
   setPresenceUser(userId);
+  setActivityUser(userId);
   await supabase.realtime.setAuth(session.access_token);
   let me: Profile;
   try {

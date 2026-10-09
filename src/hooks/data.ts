@@ -11,6 +11,22 @@ import type { DecryptedMessage } from '../lib/keyring';
 import type { Channel, ChannelOverwrite, DmChannel, Member, MemberRole, MessageRow, Role, Server } from '../lib/types';
 import { getProfile } from '../lib/directory';
 import { dmBotLinksFor } from '../lib/bots';
+import {
+  activityVersion,
+  getActivity,
+  loadActivity,
+  subscribeActivity,
+  type Activity,
+} from '../lib/activity';
+
+/** The live rich presence of one user (undefined = nothing being shown). */
+export function useActivity(userId: string): Activity | undefined {
+  useSyncExternalStore(subscribeActivity, activityVersion);
+  useEffect(() => {
+    if (userId) void loadActivity(userId);
+  }, [userId]);
+  return getActivity(userId);
+}
 
 // ------------------------------------------------------------- navigation --
 
