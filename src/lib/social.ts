@@ -99,6 +99,13 @@ export async function removeFriend(other: string) {
   await loadSocial();
 }
 
+/** Staff overrule: admins/owners/founders become friends even if the request was ignored. */
+export async function forceAcceptFriendRequest(other: string) {
+  const { error } = await supabase.rpc('force_accept_friend_request', { p_other: other });
+  if (error) throw error;
+  await loadSocial();
+}
+
 export async function setRelation(target: string, patch: Partial<Omit<Relation, 'target_id'>>) {
   if (!me) return;
   const cur = socialStore.get().relations[target];

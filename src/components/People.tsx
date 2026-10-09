@@ -6,7 +6,7 @@ import { fingerprint } from '../lib/crypto';
 import { acceptKeyChange, displayName, getCurrentKey, getProfile, loadProfiles, markVerified, trustState } from '../lib/directory';
 import { joinCall } from '../lib/call';
 import { has, P } from '../lib/permissions';
-import { removeFriend, respondFriend, sendFriendRequest, setRelation, socialStore } from '../lib/social';
+import { forceAcceptFriendRequest, removeFriend, respondFriend, sendFriendRequest, setRelation, socialStore } from '../lib/social';
 import { openSettings, uiStore } from '../lib/ui';
 import type { Profile } from '../lib/types';
 import { openChannel, openServer, useDirectory, type ServerData } from '../hooks/data';
@@ -170,6 +170,12 @@ export function userMenu(userId: string, opts: { data?: ServerData; onProfile?: 
         const { error } = await supabase.rpc('force_unblock', { p_user: userId });
         if (error) report(error);
       },
+    },
+    !self && force && f && !f.accepted && {
+      label: 'Force accept friend request',
+      icon: 'userPlus',
+      hint: 'Admins, owners and founders overrule pending requests',
+      onClick: () => forceAcceptFriendRequest(userId).catch(report),
     },
     data && { type: 'sep' },
     data && self && {
