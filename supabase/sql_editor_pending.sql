@@ -15,6 +15,40 @@ revoke execute on all functions in schema public from anon, public;
 grant usage on schema public to anon, authenticated;
 grant execute on function public.username_available(text) to anon, authenticated;
 
+-- Realtime topic authorization: every feed the app subscribes to. dmb/dmc are
+-- the bot DM feeds — allowed for anyone who can view the channel (this was
+-- missing, so DMs logged "Unauthorized: You do not have permissions to read
+-- from this Channel topic").
+create or replace function public.realtime_topic_allowed(p_topic text)
+returns boolean language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_kind text := split_part(p_topic, ':', 1);
+  v_id_text text := split_part(p_topic, ':', 2);
+  v_id uuid;
+begin
+  if v_id_text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    return false;
+  end if;
+  v_id := v_id_text::uuid;
+  if v_kind = 'scope' then
+    return public.is_server_member(v_id)
+        or exists (select 1 from public.dm_participants where channel_id = v_id and user_id = auth.uid());
+  elsif v_kind in ('chan', 'dmb', 'dmc') then
+    return public.can_view_channel(v_id);
+  elsif v_kind = 'dbs' then   -- database change feed for a server
+    return public.is_server_member(v_id);
+  elsif v_kind = 'dbc' then   -- database change feed for a channel
+    return public.can_view_channel(v_id);
+  elsif v_kind = 'dbu' then   -- database change feed for the user themself
+    return v_id = auth.uid();
+  elsif v_kind = 'call' then
+    return public.channel_has_permission(v_id, 512)
+       and exists (select 1 from public.channels c where c.id = v_id and c.type in ('voice', 'dm'));
+  end if;
+  return false;
+end;
+$$;
+
 -- ------------------------------------------------------------- tables ----
 grant select                         on public.profiles            to authenticated;
 grant update (display_name, avatar_color, about)

@@ -846,6 +846,7 @@ alter table public.channels replica identity full;
 --   chan:<channel-id>        typing indicators
 --   call:<channel-id>        WebRTC signaling for voice/video/screen share
 --   dbs:/dbc:/dbu:<id>       postgres_changes feeds (server / channel / user)
+--   dmb:/dmc:<id>            bot DM feeds (presence + commands)
 create or replace function public.realtime_topic_allowed(p_topic text)
 returns boolean language plpgsql stable security definer set search_path = '' as $$
 declare
@@ -861,6 +862,8 @@ begin
     return public.is_server_member(v_id)
         or exists (select 1 from public.dm_participants where channel_id = v_id and user_id = auth.uid());
   elsif v_kind = 'chan' then
+    return public.can_view_channel(v_id);
+  elsif v_kind in ('dmb', 'dmc') then  -- bot DM feeds (presence / commands)
     return public.can_view_channel(v_id);
   elsif v_kind = 'dbs' then   -- database change feed for a server
     return public.is_server_member(v_id);
