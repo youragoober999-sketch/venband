@@ -3,22 +3,27 @@ import { currentPath, go, parseRoute, useRoute } from '../lib/router';
 import { supabase } from '../lib/supabase';
 import { passwordStrength } from '../lib/crypto';
 import {
+  canUsePasskey,
   completePasswordReset,
   confirmIdentityReset,
   friendlyError,
+  requestEmailCode,
   requestPasswordReset,
   resendVerification,
   sessionStore,
+  verifyEmailSignIn,
   verifyMfa,
   signIn,
   signOut,
   signUp,
   unlock,
+  unlockViaPasskey,
 } from '../lib/session';
+import { hasPasskey, isPasskeySupported } from '../lib/passkey';
 import { Field, Wordmark } from './ui';
 import { Landing, TopNav } from './Landing';
 
-type Mode = 'login' | 'signup' | 'verify' | 'forgot' | 'forgot-sent';
+type Mode = 'login' | 'signup' | 'verify' | 'forgot' | 'forgot-sent' | 'email' | 'email-code';
 
 // ------------------------------------------------------------------ layout --
 
@@ -72,7 +77,7 @@ export function AuthScreen() {
   useEffect(() => {
     const r = parseRoute(route);
     if (r.kind === 'register') setModeState((m) => (m === 'signup' || m === 'verify' ? m : 'signup'));
-    else if (r.kind === 'sign-in') setModeState((m) => (m === 'login' || m === 'forgot' || m === 'forgot-sent' || m === 'verify' ? m : 'login'));
+    else if (r.kind === 'sign-in') setModeState((m) => (m === 'login' || m === 'forgot' || m === 'forgot-sent' || m === 'verify' || m === 'email' || m === 'email-code' ? m : 'login'));
     else if (r.kind === 'root') setModeState('home');
   }, [route]);
   // a notice (e.g. about an email link) belongs next to the login form
@@ -103,6 +108,8 @@ export function AuthScreen() {
   return (
     <AuthLayout nav={nav}>
       {mode === 'login' && <Login email={email} setEmail={setEmail} setMode={setMode} />}
+      {mode === 'email' && <EmailLogin email={email} setEmail={setEmail} setMode={setMode} />}
+      {mode === 'email-code' && <EmailCode email={email} setEmail={setEmail} setMode={setMode} />}
       {mode === 'signup' && <Signup email={email} setEmail={setEmail} setMode={setMode} />}
       {mode === 'verify' && <VerifySent email={email} setMode={setMode} />}
       {mode === 'forgot' && <Forgot email={email} setEmail={setEmail} setMode={setMode} />}
@@ -208,11 +215,114 @@ function Login({ email, setEmail, setMode }: FormProps) {
       <button className="btn primary full" disabled={busy}>
         {busy ? 'Logging in…' : 'Log in'}
       </button>
+      <div className="auth-or">
+        <span>or</span>
+      </div>
+      <button type="button" className="btn secondary full" onClick={() => setMode('email')}>
+        Log in with email
+      </button>
       <p className="switch">
         New here?{' '}
         <button type="button" className="btn link" onClick={() => setMode('signup')}>
           Make an account
         </button>
+      </p>
+    </form>
+  );
+}
+
+/** "Log in with email": ask Supabase to email a one-time code (no password). */
+function EmailLogin({ email, setEmail, setMode }: FormProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+          await requestEmailCode(email);
+          setMode('email-code');
+        } catch (err) {
+          setError(friendlyError(err));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <h1>Log in with email</h1>
+      <p className="sub">We’ll email you a code. No password needed.</p>
+      <Field label="Email">
+        <input type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+      </Field>
+      {error && <div className="form-error">{error}</div>}
+      <button className="btn primary full" disabled={busy || !email.trim()}>
+        {busy ? 'Sending…' : 'Email me a code'}
+      </button>
+      <p className="switch">
+        <button type="button" className="btn link" onClick={() => setMode('login')}>
+          ← Back to log in
+        </button>
+      </p>
+    </form>
+  );
+}
+
+/** Enter the code from the email. When it's right, the app unlocks this device. */
+function EmailCode({ email, setMode }: FormProps) {
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const clean = code.replace(/\s/g, '');
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+          await verifyEmailSignIn(email, clean);
+        } catch (err) {
+          setError(friendlyError(err));
+          setBusy(false);
+        }
+      }}
+    >
+      <h1>Check your email</h1>
+      <p className="sub">
+        Enter the code we sent to <b>{email}</b>.
+      </p>
+      <Field label="Code">
+        <input
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          autoFocus
+          required
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/[^0-9 ]/g, ''))}
+          className="otp-input"
+          aria-label="Email code"
+        />
+      </Field>
+      {error && <div className="form-error">{error}</div>}
+      <button className="btn primary full" disabled={busy || clean.length !== 6}>
+        {busy ? 'Checking…' : 'Continue'}
+      </button>
+      <p className="switch">
+        Didn’t get it?{' '}
+        <button type="button" className="btn link" onClick={() => setMode('email')}>
+          Send it again
+        </button>
+        . Not you?{' '}
+        <button type="button" className="btn link" onClick={() => setMode('login')}>
+          Log in with a password
+        </button>
+        .
+      </p>
+      <p className="switch muted">
+        If this device remembers your keys, you’ll go straight in. Otherwise it asks for your password once — or unlocks
+        with a passkey if you’ve saved one.
       </p>
     </form>
   );
@@ -406,8 +516,12 @@ export function UnlockScreen() {
   const session = sessionStore.use((s) => s.session);
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
+  const [savePasskey, setSavePasskey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const userId = session?.user.id ?? '';
+  const canPasskey = canUsePasskey();
+  const canSavePasskey = isPasskeySupported() && !hasPasskey(userId);
   return (
     <AuthLayout>
       <form
@@ -416,10 +530,10 @@ export function UnlockScreen() {
           setBusy(true);
           setError(null);
           try {
-            await unlock(password, remember);
+            await unlock(password, remember, savePasskey);
+            setBusy(false);
           } catch (err) {
             setError(friendlyError(err));
-          } finally {
             setBusy(false);
           }
         }}
@@ -433,9 +547,38 @@ export function UnlockScreen() {
         </Field>
         {error && <div className="form-error">{error}</div>}
         <StaySignedIn value={remember} onChange={setRemember} />
+        {canSavePasskey && (
+          <label className="checkbox">
+            <input type="checkbox" checked={savePasskey} onChange={(e) => setSavePasskey(e.target.checked)} />
+            <span>
+              Save a passkey on this device
+              <small>Next time, unlock without typing your password (Windows Hello, your phone’s screen lock).</small>
+            </span>
+          </label>
+        )}
         <button className="btn primary full" disabled={busy}>
           {busy ? 'Unlocking…' : 'Continue'}
         </button>
+        {canPasskey && (
+          <button
+            type="button"
+            className="btn secondary full"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                await unlockViaPasskey();
+              } catch (err) {
+                setError(friendlyError(err));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Unlock with passkey
+          </button>
+        )}
         <p className="switch">
           Not you?{' '}
           <button type="button" className="btn link" onClick={() => signOut()}>

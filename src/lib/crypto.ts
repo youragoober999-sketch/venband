@@ -93,16 +93,28 @@ export function normalizeEmail(email: string): string {
 }
 
 export async function deriveMasterKeys(email: string, password: string): Promise<MasterKeys> {
+  if (!password) throw new Error('Enter your password to continue.');
+  const master = await argonMaster(email, password);
+  return deriveKeysFromMaster(master);
+}
+
+/** Argon2id(password, salt=sha256(email)) → the 32-byte master secret. */
+export async function argonMaster(email: string, password: string): Promise<Uint8Array> {
   const salt = await sha256(`venband/v1/salt/${normalizeEmail(email)}`);
-  const master = await argon2id({
+  return argon2id({
     password: password.normalize('NFKC'),
     salt,
     ...KDF_PARAMS,
     hashLength: 32,
     outputType: 'binary',
   });
+}
+
+/** HKDF(master) → authPassword + vaultKey. Zeroes the master afterwards. */
+export async function deriveKeysFromMaster(master: Uint8Array<ArrayBuffer> | Uint8Array): Promise<MasterKeys> {
   const hkdf = await subtle.importKey('raw', master as Uint8Array<ArrayBuffer>, 'HKDF', false, ['deriveBits', 'deriveKey']);
-  master.fill(0);
+  const bytes = new Uint8Array(master);
+  bytes.fill(0);
   const authBits = await subtle.deriveBits(
     { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: te.encode('venband/v1/auth') },
     hkdf,

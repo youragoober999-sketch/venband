@@ -3,7 +3,7 @@ import { loadExpressions, resetExpressions } from './expressions';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, appUrl, errorMessage } from './supabase';
 import { createStore } from './store';
-import { deriveMasterKeys, type Identity } from './crypto';
+import { argonMaster, deriveKeysFromMaster, deriveMasterKeys, type Identity } from './crypto';
 import {
   forgetIdentities,
   IdentityLockedError,
@@ -14,6 +14,7 @@ import {
   resealStoredIdentity,
   verifyVault,
 } from './identity';
+import { hasPasskey, isPasskeySupported, registerPasskey, removePasskey, unlockWithPasskey as passkeyUnlock } from './passkey';
 import { Keyring } from './keyring';
 import { initTrust, loadProfiles, getProfile, putProfile } from './directory';
 import { setPresenceUser } from './presence';
@@ -137,6 +138,17 @@ async function currentIdentityMatches(userId: string, keyId: string): Promise<bo
 // While signIn()/unlock() run they decide what screen to show; the auth
 // listener must not race them (it would flash the unlock screen).
 let authInProgress = 0;
+
+// The freshly derived argon master secret, held only long enough to wrap it
+// with a device passkey. Cleared shortly after; never persisted.
+let recentMaster: Uint8Array | null = null;
+const MASTER_TTL_MS = 5 * 60_000;
+function stashMaster(master: Uint8Array) {
+  recentMaster = master.slice();
+  setTimeout(() => {
+    if (recentMaster) recentMaster = null;
+  }, MASTER_TTL_MS);
+}
 
 // Auth events can arrive in bursts (initial session, token refresh, tab
 // focus). Handle them one at a time so a slow, stale check can't undo a newer
@@ -301,7 +313,10 @@ export async function resendVerification(email: string) {
 }
 
 export async function signIn(email: string, password: string, remember: boolean) {
-  const { authPassword, vaultKey } = await deriveMasterKeys(email, password);
+  if (!password) throw new Error('Enter your password to continue.');
+  const master = await argonMaster(email.trim(), password);
+  stashMaster(master);
+  const { authPassword, vaultKey } = await deriveKeysFromMaster(master);
   authInProgress++;
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: authPassword });
@@ -326,13 +341,26 @@ export async function signIn(email: string, password: string, remember: boolean)
   }
 }
 
-export async function unlock(password: string, remember: boolean) {
+export async function unlock(password: string, remember: boolean, savePasskey = false) {
   const session = sessionStore.get().session;
   if (!session?.user.email) throw new Error('Not signed in');
-  const { vaultKey } = await deriveMasterKeys(session.user.email, password);
+  if (!password) throw new Error('Enter your password to continue.');
+  const master = await argonMaster(session.user.email, password);
+  stashMaster(master);
+  const { vaultKey } = await deriveKeysFromMaster(master);
   authInProgress++;
   try {
     await unlockWith(session, vaultKey, remember);
+    if (savePasskey && recentMaster) {
+      try {
+        await registerPasskey(session.user.id, session.user.email, recentMaster);
+        recentMaster = null;
+      } catch (e) {
+        // The app is already unlocked; the best-effort passkey save must not
+        // look like a failure. Tell the user in a notice instead.
+        sessionStore.set({ notice: errorMessage(e) });
+      }
+    }
   } finally {
     authInProgress--;
   }
@@ -401,6 +429,73 @@ export async function confirmIdentityReset(remember: boolean) {
   await enterApp(session, identity);
 }
 
+// ------------------------------------------------- email (magic code) sign-in --
+// "Log in with email": no password at all. The code is sent by Supabase; the
+// auth listener then unlocks this device the same way a normal login would
+// (remembered identity → straight in; otherwise the password/passkey screen).
+
+export async function requestEmailCode(email: string) {
+  const { error } = await supabase.auth.signInWithOtp({
+    email: email.trim(),
+    options: { shouldCreateUser: false, emailRedirectTo: appUrl() },
+  });
+  if (error) {
+    throw new Error(/signup|not.*found|public user|has no/i.test(error.message) ? 'No Venband account uses that email. Sign up instead.' : error.message);
+  }
+}
+
+export async function verifyEmailSignIn(email: string, token: string) {
+  recentMaster = null;
+  const { data, error } = await supabase.auth.verifyOtp({
+    email: email.trim(),
+    token: token.replace(/\s/g, ''),
+    type: 'email',
+  });
+  if (error) throw error;
+  if (!data.session) throw new Error('That code expired — ask for a new one.');
+  // The auth-state listener calls onSession(), which unlocks a remembered
+  // identity automatically or shows the password/passkey screen.
+}
+
+// -------------------------------------------------------------- passkey unlock --
+// A device passkey (Windows Hello / Google Password Manager / iCloud) unlocks
+// the messages without the password: it reproduces the argon master secret
+// that was wrapped at setup time.
+
+export function canUsePasskey(): boolean {
+  const s = sessionStore.get().session;
+  return !!s && isPasskeySupported() && hasPasskey(s.user.id);
+}
+
+export async function unlockViaPasskey(): Promise<boolean> {
+  const session = sessionStore.get().session;
+  if (!session?.user.email) return false;
+  try {
+    const identity = await passkeyUnlock(session.user.id, session.user.email);
+    if (!identity) return false;
+    await enterApp(session, identity);
+    return true;
+  } catch (e) {
+    if (e instanceof IdentityLockedError) throw new Error('That passkey unlocks a different Venband account. Try another passkey or your password.');
+    throw e;
+  }
+}
+
+/** Add a passkey for this account using the current password (from Security). */
+export async function savePasskeyWithPassword(password: string) {
+  const session = sessionStore.get().session;
+  if (!session?.user.email) throw new Error('Not signed in');
+  if (!password) throw new Error('Enter your password.');
+  const master = await argonMaster(session.user.email, password);
+  await registerPasskey(session.user.id, session.user.email, master);
+  recentMaster = null;
+}
+
+export function removeSavedPasskey() {
+  const s = sessionStore.get().session;
+  if (s) removePasskey(s.user.id);
+}
+
 export async function requestPasswordReset(email: string) {
   const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: appUrl('?reset=1') });
   if (error) throw error;
@@ -409,7 +504,10 @@ export async function requestPasswordReset(email: string) {
 export async function completePasswordReset(newPassword: string) {
   const session = sessionStore.get().session;
   if (!session?.user.email) throw new Error('Reset link expired — request a new one.');
-  const { authPassword, vaultKey } = await deriveMasterKeys(session.user.email, newPassword);
+  if (!newPassword) throw new Error('Choose a new password.');
+  const master = await argonMaster(session.user.email, newPassword);
+  stashMaster(master);
+  const { authPassword, vaultKey } = await deriveKeysFromMaster(master);
   const { error } = await supabase.auth.updateUser({ password: authPassword });
   if (error) throw error;
   recovering = false;
@@ -421,6 +519,7 @@ let signingOut = false;
 
 export async function signOut(notice = 'You’re logged out. See you soon.') {
   signingOut = true;
+  recentMaster = null;
   leaveCall();
   stopSocial();
   stopWatchingSession();

@@ -231,6 +231,8 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 22px 0; }
 .auth-card h1 { font-size: 25px; margin-bottom: 4px; }
 .auth-card .sub { color: var(--muted); margin: 0 0 24px; }
 .auth-card .switch { color: var(--muted); font-size: 14px; margin: 18px 0 0; }
+.auth-or { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--muted); font-size: 13px; }
+.auth-or::before, .auth-or::after { content: ''; flex: 1; height: 1px; background: var(--line-2); }
 .tips { color: var(--text-2); font-size: 14px; padding-left: 18px; margin: 0 0 20px; }
 .tips li { margin-bottom: 4px; }
 

@@ -11,6 +11,10 @@ const VERSION: string = pkg.version;
 // The files it lists are named by desktop/package.json's artifactName patterns
 // and live next to latest.yml in the /download folder on the site.
 const DOWNLOAD_URL = '/download/';
+const MAC_NAMES = () => [
+  { name: `Venband-${VERSION}.dmg`, kind: 'dmg' },
+  { name: `Venband-${VERSION}-mac.zip`, kind: 'zip' },
+];
 function downloadManifest(): Plugin {
   return {
     name: 'venband-download-manifest',
@@ -24,6 +28,7 @@ function downloadManifest(): Plugin {
           { name: `Venband-Setup-${VERSION}.exe`, kind: 'installer', url: `${RELEASE_URL}Venband-Setup-${VERSION}.exe` },
           { name: `Venband-Portable-${VERSION}.exe`, kind: 'portable', url: `${RELEASE_URL}Venband-Portable-${VERSION}.exe` },
         ],
+        mac: MAC_NAMES().map((f) => ({ ...f, url: `${RELEASE_URL}${f.name}` })),
         android: { name: `Venband-${VERSION}-debug.apk`, kind: 'apk', url: `${DOWNLOAD_URL}Venband-${VERSION}-debug.apk` },
       };
       fs.writeFileSync(path.join(process.cwd(), 'dist', 'download.json'), JSON.stringify(manifest, null, 2));

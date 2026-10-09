@@ -634,7 +634,7 @@ export const CHANGELOG: { date: string; title: string; items: string[] }[] = [
     title: 'Venband apps',
     items: [
       'Venband for Windows (installer and portable), macOS and Linux with automatic updates, a tray icon, taskbar badges and venband:// links',
-      'Android and iOS apps (coming to Google Play and the App Store)',
+      'Android app (direct APK install, no store needed)',
       'A phone-style incoming call screen and bigger call buttons on phones',
       'Bigger tap targets on touch screens, plus tablet and foldable layouts',
     ],

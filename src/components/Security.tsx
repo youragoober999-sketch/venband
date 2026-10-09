@@ -2,7 +2,8 @@
 // downloading your data, deleting your account and restoring deleted servers.
 import { useCallback, useEffect, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
-import { sessionStore } from '../lib/session';
+import { removeSavedPasskey, savePasskeyWithPassword, sessionStore } from '../lib/session';
+import { hasPasskey, isPasskeySupported } from '../lib/passkey';
 import { safeFileName } from '../lib/files';
 import { openSettings } from '../lib/ui';
 import { askConfirm } from './Dialogs';
@@ -23,6 +24,19 @@ export function SecurityTab() {
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [deletedServers, setDeletedServers] = useState<{ id: string; name: string; deleted_at: string }[]>([]);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pw, setPw] = useState('');
+  const savePw = async () => {
+    setMsg(null);
+    try {
+      await savePasskeyWithPassword(pw);
+      setPwOpen(false);
+      setPw('');
+      setMsg({ ok: true, text: 'Passkey saved. Log in with it next time.' });
+    } catch (err) {
+      setMsg({ ok: false, text: errorMessage(err) });
+    }
+  };
 
   const load = useCallback(async () => {
     const { data } = await supabase.auth.mfa.listFactors();
@@ -133,6 +147,58 @@ export function SecurityTab() {
             }}
           >
             <Icon name="shield" size={16} /> Set up an authenticator app
+          </button>
+        )}
+      </section>
+
+      <section className="settings-section">
+        <h3>Passkey unlock</h3>
+        <p className="muted small">
+          Unlock Venband on this device with your screen lock (Windows Hello, Google Password Manager, or iCloud) instead of
+          typing your password. The passkey is saved only on this device.
+        </p>
+        {!isPasskeySupported() ? (
+          <p className="muted small">This browser doesn’t support passkeys. Use the Android app or a recent Chrome, Edge or Safari.</p>
+        ) : hasPasskey(session?.user.id ?? '') ? (
+          <div className="row-between">
+            <span className="pill active">Saved on this device</span>
+            <button
+              className="btn danger small"
+              onClick={async () => {
+                if (!(await askConfirm({ title: 'Remove this passkey?', body: 'You’ll unlock with your password again.', confirm: 'Remove', danger: true }))) return;
+                removeSavedPasskey();
+                setMsg({ ok: true, text: 'Passkey removed.' });
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ) : pwOpen ? (
+          <div className="row-start">
+            <Field label="Confirm your password">
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={pw}
+                onChange={(e) => setPw(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && savePw()}
+                aria-label="Password"
+              />
+            </Field>
+            <button
+              className="btn primary"
+              disabled={!pw}
+              onClick={savePw}
+            >
+              Save passkey
+            </button>
+            <button className="btn secondary" onClick={() => (setPwOpen(false), setPw(''))}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button className="btn secondary" onClick={() => setPwOpen(true)}>
+            <Icon name="key" size={16} /> Set up a passkey for this device
           </button>
         )}
       </section>
