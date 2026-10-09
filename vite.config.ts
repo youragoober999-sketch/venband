@@ -21,10 +21,10 @@ function downloadManifest(): Plugin {
         url: DOWNLOAD_URL,
         updatedAt: new Date().toISOString(),
         windows: [
-          { name: `Venband-Setup-${VERSION}.exe`, kind: 'installer' },
-          { name: `Venband-Portable-${VERSION}.exe`, kind: 'portable' },
+          { name: `Venband-Setup-${VERSION}.exe`, kind: 'installer', url: `${RELEASE_URL}Venband-Setup-${VERSION}.exe` },
+          { name: `Venband-Portable-${VERSION}.exe`, kind: 'portable', url: `${RELEASE_URL}Venband-Portable-${VERSION}.exe` },
         ],
-        android: { name: `Venband-${VERSION}-debug.apk`, kind: 'apk' },
+        android: { name: `Venband-${VERSION}-debug.apk`, kind: 'apk', url: `${DOWNLOAD_URL}Venband-${VERSION}-debug.apk` },
       };
       fs.writeFileSync(path.join(process.cwd(), 'dist', 'download.json'), JSON.stringify(manifest, null, 2));
     },
@@ -94,6 +94,10 @@ function csp(env: Record<string, string>): Plugin {
   };
 }
 
+// Windows installers are too big for the Vercel Hobby deploy (100 MB static
+// upload limit), so they publish to GitHub Releases via desktop.yml and the
+// download page links there. The APK is small and stays on the site.
+const RELEASE_URL = 'https://github.com/youragoober999-sketch/venband/releases/latest/download/';
 // In development, serve the Vercel functions in /api (link previews, media proxy).
 function devApi(env: Record<string, string>): Plugin {
   return {

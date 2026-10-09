@@ -14,8 +14,8 @@ interface DownloadManifest {
   version: string;
   url: string;
   updatedAt: string;
-  windows: { name: string; kind: 'installer' | 'portable' }[];
-  android: { name: string; kind: string };
+  windows: { name: string; kind: 'installer' | 'portable'; url: string }[];
+  android: { name: string; kind: string; url: string };
 }
 
 interface DesktopInfo { version: string; platform: Platform; }
@@ -25,10 +25,10 @@ const FALLBACK: DownloadManifest = {
   url: DOWNLOAD_URL,
   updatedAt: new Date().toISOString(),
   windows: [
-    { name: `Venband-Setup-${VERSION}.exe`, kind: 'installer' },
-    { name: `Venband-Portable-${VERSION}.exe`, kind: 'portable' },
+    { name: `Venband-Setup-${VERSION}.exe`, kind: 'installer', url: `${DOWNLOAD_URL}Venband-Setup-${VERSION}.exe` },
+    { name: `Venband-Portable-${VERSION}.exe`, kind: 'portable', url: `${DOWNLOAD_URL}Venband-Portable-${VERSION}.exe` },
   ],
-  android: { name: `Venband-${VERSION}-debug.apk`, kind: 'apk' },
+  android: { name: `Venband-${VERSION}-debug.apk`, kind: 'apk', url: `${DOWNLOAD_URL}Venband-${VERSION}-debug.apk` },
 };
 
 function useManifest() {
@@ -88,7 +88,7 @@ export function DownloadPage() {
           </p>
           <div className="dl-buttons">
             {dl.windows.map((f) => (
-              <a key={f.name} className="btn primary" href={`${dl.url}${f.name}`}>
+              <a key={f.name} className="btn primary" href={f.url}>
                 <Icon name="download" size={14} />
                 {f.kind === 'installer' ? 'Download installer' : 'Portable (no install)'}
               </a>
@@ -107,7 +107,7 @@ export function DownloadPage() {
             data stay.
           </p>
           <div className="dl-buttons">
-            <a className="btn primary" href={`${dl.url}${dl.android.name}`}>
+            <a className="btn primary" href={dl.android.url}>
               <Icon name="download" size={14} /> Download APK
             </a>
           </div>

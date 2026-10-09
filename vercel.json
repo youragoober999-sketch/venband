@@ -44,7 +44,7 @@
       ]
     },
     {
-      "source": "/download/(.*\\.(exe|apk|blockmap))",
+      "source": "/download/(.*\\.apk)",
       "headers": [
         {
           "key": "Cache-Control",
@@ -53,15 +53,6 @@
         {
           "key": "Content-Disposition",
           "value": "attachment"
-        }
-      ]
-    },
-    {
-      "source": "/download/latest.yml",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache"
         }
       ]
     },
