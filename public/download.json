@@ -1,0 +1,38 @@
+{
+  "latest": "1.0.1",
+  "versions": {
+    "1.0.1": {
+      "date": "2026-10-10",
+      "win": {
+        "x64": {
+          "installer": "",
+          "portable": "",
+          "sha256": "",
+          "size": 0
+        },
+        "arm64": {
+          "installer": "",
+          "portable": "",
+          "sha256": "",
+          "size": 0
+        }
+      },
+      "linux": {
+        "appImage": "",
+        "sha256": "",
+        "size": 0
+      },
+      "mac": {
+        "dmg": "",
+        "zip": "",
+        "sha256": "",
+        "size": 0
+      },
+      "android": {
+        "apk": "Venband-1.0.1-debug.apk",
+        "sha256": "",
+        "size": 0
+      }
+    }
+  }
+}
