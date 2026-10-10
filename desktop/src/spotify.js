@@ -99,6 +99,30 @@ function spotifyStatusToActivity(status, now = Date.now()) {
   };
 }
 
+/**
+ * Map an OS media-session snapshot (Windows SMTC / macOS AppleScript) into a
+ * Venband activity. Newer Spotify removed the local HTTP API, so this is the
+ * path that actually works today. `position` is optional (ms into the track).
+ */
+function mediaActivityFrom(props, now = Date.now()) {
+  const title = String((props && props.title) || '').trim();
+  if (!title) return null;
+  const artist = String((props && props.artist) || '').trim();
+  const album = String((props && props.album) || '').trim();
+  return {
+    platform: 'spotify',
+    icon: 'spotify',
+    name: 'Spotify',
+    type: 2, // listening
+    details: title,
+    state: [artist && `by ${artist}`, album && `on ${album}`].filter(Boolean).join(' · ') || undefined,
+    timestamps_start: now,
+    url: `https://open.spotify.com/search/${encodeURIComponent([title, artist].filter(Boolean).join(' '))}`,
+    uri: undefined,
+    created_at: now,
+  };
+}
+
 // ------------------------------------------------------------- the poller --
 
 /** One poll: read token, try each local port, return an activity or null. */
@@ -159,6 +183,7 @@ function activityKey(a) {
 module.exports = {
   readLocalToken,
   spotifyStatusToActivity,
+  mediaActivityFrom,
   pollSpotify,
   startSpotifyPoller,
   LOCAL_PORTS,

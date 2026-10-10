@@ -1,7 +1,7 @@
 {
   "name": "venband",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Venband - open source, end-to-end encrypted chat with servers, roles, channels, voice, video and screen sharing.",
   "license": "MIT",
   "type": "module",

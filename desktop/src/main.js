@@ -26,6 +26,7 @@ const {
 const { appBase, isAppUrl, isSafeExternal, deepLinkToUrl, deepLinkFromArgv } = require('./links');
 const { createRpcServer, activityKey } = require('./rpc');
 const { startSpotifyPoller } = require('./spotify');
+const { startMediaPoller } = require('./media');
 
 const BASE = appBase();
 const SAFE_MODE = process.argv.includes('--safe-mode') || process.env.VENBAND_SAFE_MODE === '1';
@@ -397,15 +398,20 @@ ipcMain.on('update:later', (e) => {
 });
 
 // ------------------------------------------------------------------ rpc --
-// A Discord-compatible local socket (discord-ipc-0..9) plus the Spotify local
-// poller feed the renderer a single "what am I doing" activity, which the web
-// app pushes to Supabase so every session (browser, desktop, phone) shows the
-// same live status. RPC activities win over Spotify, like real Discord.
+// A Discord-compatible local socket (discord-ipc-0..9) plus the OS Spotify
+// poller (and the legacy Spotify local API) feed the renderer a single "what am
+// I doing" activity, which the web app pushes to Supabase so every session
+// (browser, desktop, phone) shows the same live status. Only one activity is
+// ever shown; when Discord RPC and Spotify are both active, whichever changed
+// most recently wins.
 let rpc = null;
 let stopSpotify = null;
+let stopMedia = null;
 let rpcActivity = null;
 let spotifyActivity = null;
 let activeActivity = null;
+let rpcStamp = 0;
+let spotifyStamp = 0;
 
 function pushActivity(next) {
   if (activityKey(next) === activityKey(activeActivity)) return;
@@ -414,21 +420,39 @@ function pushActivity(next) {
 }
 
 function recomputeActivity() {
-  pushActivity(rpcActivity || spotifyActivity);
+  let next;
+  if (rpcActivity && spotifyActivity) {
+    next = rpcStamp >= spotifyStamp ? rpcActivity : spotifyActivity;
+  } else {
+    next = rpcActivity || spotifyActivity;
+  }
+  pushActivity(next);
+}
+
+function setRpcActivity(a) {
+  rpcActivity = a;
+  rpcStamp = Date.now();
+  recomputeActivity();
+}
+
+function setSpotifyActivity(a) {
+  spotifyActivity = a;
+  spotifyStamp = Date.now();
+  recomputeActivity();
 }
 
 function setupRpcBridge() {
   rpc = createRpcServer({
     emit: (e) => {
-      if (e && e.type === 'activity') rpcActivity = e.activity;
-      recomputeActivity();
+      if (e && e.type === 'activity') setRpcActivity(e.activity);
     },
   });
   rpc.start().catch((e) => {
     if (e?.code === 'EEXHAUSTED') return; // real Discord owns the pipes — fine
     console.error('rpc bridge failed to start', e?.message || e);
   });
-  stopSpotify = startSpotifyPoller({ onChange: (a) => { spotifyActivity = a; recomputeActivity(); } });
+  stopSpotify = startSpotifyPoller({ onChange: setSpotifyActivity });
+  stopMedia = startMediaPoller({ onChange: setSpotifyActivity });
 
   ipcMain.handle('rpc:get-state', () => ({
     active: Boolean(rpc && rpc.stateRef.pipeIndex >= 0),
@@ -473,6 +497,7 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   quitting = true;
   stopSpotify?.();
+  stopMedia?.();
   rpc?.close?.().catch(() => {});
 });
 app.on('window-all-closed', () => {

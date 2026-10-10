@@ -1,8 +1,8 @@
 {
   "name": "venband-desktop",
   "productName": "Venband",
-  "version": "1.0.0",
-  "description": "Venband for Windows, macOS and Linux \u2014 end-to-end encrypted chat",
+  "version": "1.0.1",
+  "description": "Venband for Windows, macOS and Linux — end-to-end encrypted chat",
   "main": "src/main.js",
   "author": {
     "name": "Venband",
@@ -15,7 +15,7 @@
     "start": "electron .",
     "start:local": "cross-env VENBAND_URL=http://127.0.0.1:5173/ electron .",
     "safe": "electron . --safe-mode",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/update-preload.js && node --check src/picker-preload.js && node --check src/links.js && node --check src/rpc.js && node --check src/spotify.js && node --test test/*.test.js",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/update-preload.js && node --check src/picker-preload.js && node --check src/links.js && node --check src/rpc.js && node --check src/spotify.js && node --check src/media.js && node --test test/*.test.js",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win nsis portable",
     "dist:mac": "electron-builder --mac",
@@ -33,7 +33,7 @@
   "build": {
     "appId": "com.venband.desktop",
     "productName": "Venband",
-    "copyright": "Copyright \u00a9 2026 Venband",
+    "copyright": "Copyright © 2026 Venband",
     "directories": {
       "output": "release",
       "buildResources": "build"

@@ -640,6 +640,28 @@ export const CHANGELOG: { date: string; title: string; items: string[] }[] = [
     ],
   },
   {
+    date: '2026-10-09',
+    title: 'Version 1.0.1',
+    items: [
+      'Most-recent-wins activity priority (Discord RPC or Spotify now show whichever changed last)',
+      'Fixed Spotify detection on Windows via OS media session API; legacy HTTP poller remains as fallback',
+      'Composer preview and formatting alignment improvements',
+      'Added email OTP + passkey unlock/auth improvements',
+      'Staff "Force accept friend request" option',
+    ],
+  },
+  {
+    date: '2026-10-09',
+    title: 'Version 1.0.1',
+    items: [
+      'Most-recent-wins activity priority (Discord RPC or Spotify now show whichever changed last)',
+      'Fixed Spotify detection on Windows via OS media session API; legacy HTTP poller remains as fallback',
+      'Composer preview and formatting alignment improvements',
+      'Added email OTP + passkey unlock/auth improvements',
+      'Staff "Force accept friend request" option',
+    ],
+  },
+  {
     date: '2026-10-08',
     title: 'Make it yours',
     items: [
@@ -702,7 +724,7 @@ export const CHANGELOG: { date: string; title: string; items: string[] }[] = [
 
 export function ChangelogPage() {
   return (
-    <Doc page="changelog" title="What’s new" updated={CHANGELOG[0].date}>
+    <Doc page="changelog" title="What's new" updated={CHANGELOG[0].date}>
       {CHANGELOG.map((c) => (
         <section key={c.date} className="changelog-entry">
           <div className="small muted">{new Date(c.date + 'T12:00:00').toLocaleDateString(undefined, { dateStyle: 'long' })}</div>
@@ -806,5 +828,5 @@ export function PublicDiscovery() {
 }
 
 function alertError(e: unknown) {
-  askConfirm({ title: 'Couldn’t join', body: errorMessage(e), confirm: 'OK' });
+  askConfirm({ title: "Couldn't join", body: errorMessage(e), confirm: 'OK' });
 }

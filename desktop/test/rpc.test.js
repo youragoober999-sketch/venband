@@ -11,7 +11,7 @@ const {
   createRpcServer,
   pipePath,
 } = require('../src/rpc');
-const { spotifyStatusToActivity } = require('../src/spotify');
+const { spotifyStatusToActivity, mediaActivityFrom } = require('../src/spotify');
 
 test('frame codec round-trips JSON', () => {
   const frames = [];
@@ -194,4 +194,26 @@ test('spotify status maps to a listening activity', () => {
 
 test('spotify idle returns null', () => {
   assert.strictEqual(spotifyStatusToActivity({ playing: false }), null);
+});
+
+test('media session snapshot maps to a listening activity', () => {
+  const now = Date.now();
+  const act = mediaActivityFrom({ title: 'Fortuna', artist: 'Private Coast', album: 'Harder to Handle' }, now);
+  assert.strictEqual(act.name, 'Spotify');
+  assert.strictEqual(act.platform, 'spotify');
+  assert.strictEqual(act.type, 2);
+  assert.strictEqual(act.details, 'Fortuna');
+  assert.strictEqual(act.state, 'by Private Coast · on Harder to Handle');
+  assert.strictEqual(act.timestamps_start, now);
+});
+
+test('media session omits empty artist and album', () => {
+  const act = mediaActivityFrom({ title: 'Untitled' });
+  assert.strictEqual(act.details, 'Untitled');
+  assert.strictEqual(act.state, undefined);
+});
+
+test('media session without a title returns null', () => {
+  assert.strictEqual(mediaActivityFrom({}), null);
+  assert.strictEqual(mediaActivityFrom(null), null);
 });
