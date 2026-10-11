@@ -1,3 +1,4 @@
+import { sanitizeHtml } from '../lib/sanitize';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isRiskyFile } from '../lib/metadata';
 import { askConfirm } from './Dialogs';
@@ -288,7 +289,7 @@ function CodeAttachment({ a }: { a: Attachment }) {
         <DownloadButton a={a} />
       </div>
       <pre className="code-body hljs">
-        <code dangerouslySetInnerHTML={{ __html: html }} />
+        <code dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} />
       </pre>
       {lines.length > PREVIEW_LINES ? (
         <button className="code-expand" onClick={() => setFull(true)}>
@@ -329,7 +330,7 @@ function CodeViewer({ name, text, lang, setLang, a, onClose }: { name: string; t
           ))}
         </div>
         <pre className="hljs">
-          <code dangerouslySetInnerHTML={{ __html: html }} />
+          <code dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} />
         </pre>
       </div>
     </Modal>

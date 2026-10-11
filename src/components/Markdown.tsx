@@ -3,6 +3,7 @@
 //   **bold** *italic* _italic_ __underline__ ~~strike~~ ||spoiler|| `code` ```blocks```
 //   [masked](https://links), <https://no-embed>, <@user> <@&role> <#channel> @everyone @here
 import { guardLink } from './GlobalModals';
+import { sanitizeHtml } from '../lib/sanitize';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { highlightAuto, languageLabel } from '../lib/highlight';
 import { copyText, openMenu } from './ContextMenu';
@@ -52,7 +53,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
         </button>
       </div>
       <pre className="md-codeblock hljs" data-lang={language}>
-        <code dangerouslySetInnerHTML={{ __html: html }} />
+        <code dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} />
       </pre>
     </div>
   );
