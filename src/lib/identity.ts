@@ -128,6 +128,15 @@ export async function recallIdentity(userId: string): Promise<Identity | null> {
   }
 }
 
+/** Forget one account's remembered keys on this device (others stay). */
+export async function forgetIdentity(userId: string) {
+  try {
+    await tx('readwrite', (s) => s.delete(userId));
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function forgetIdentities() {
   try {
     await tx('readwrite', (s) => s.clear());

@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { LooksPanel } from './LooksSettings';
 import { supabase, errorMessage } from '../lib/supabase';
 import { changePassword, loginKeyFor, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
 import { fingerprint, passwordStrength } from '../lib/crypto';
 import { displayName, getProfile, putProfile } from '../lib/directory';
-import { closeSettings, uiStore, type SettingsTab } from '../lib/ui';
+import { closeSettings, openSettings, uiStore, type SettingsTab } from '../lib/ui';
 import { DEFAULT_SETTINGS, updateChat, updateSettings, updateVoice, useSettings } from '../lib/settings';
+import { Section, Toggle } from './SettingsBits';
+import { AccessibilityTab, ActivityTab, AdvancedTab, KeybindsTab, NotificationsTab, StreamerTab, settingsMatch } from './SettingsMore';
+export { Toggle } from './SettingsBits';
 import { BUILT_IN_THEMES, sanitizeTheme, THEME_KEYS, type Theme } from '../lib/themes';
 import { describeAgent, listDevices, revokeDevice, type Device } from '../lib/devices';
 import { setRelation, socialStore } from '../lib/social';
@@ -52,6 +55,12 @@ const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff
   { id: 'language', label: 'Language', icon: 'globe', group: 'App Settings' },
   { id: 'my-apps', label: 'My Apps', icon: 'bot', group: 'App Settings' },
   { id: 'connections', label: 'Connections', icon: 'link', group: 'App Settings' },
+  { id: 'notifications', label: 'Notifications', icon: 'bell', group: 'App Settings' },
+  { id: 'accessibility', label: 'Accessibility', icon: 'accessibility', group: 'App Settings' },
+  { id: 'keybinds', label: 'Keyboard Shortcuts', icon: 'keyboard', group: 'App Settings' },
+  { id: 'activity', label: 'Activity Privacy', icon: 'gamepad', group: 'Activity' },
+  { id: 'streamer', label: 'Streamer Mode', icon: 'video', group: 'Activity' },
+  { id: 'advanced', label: 'Advanced', icon: 'settings', group: 'Activity' },
   { id: 'moderation', label: 'Moderation', icon: 'gavel', group: 'Venband Staff', staff: true },
   { id: 'discovery-queue', label: 'Discovery Applications', icon: 'compass', group: 'Venband Staff', staff: true },
   { id: 'reports', label: 'Report Centre', icon: 'flag', group: 'Venband Staff', staff: true, admin: true },
@@ -65,6 +74,7 @@ export function SettingsPage() {
   const admin = me.platform_role === 'admin' || me.platform_role === 'owner';
   // Venband owners and founders design badges
   const designer = me.platform_role === 'owner' || (me.badges ?? []).includes('founder');
+  const [query, setQuery] = useState('');
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.modal-backdrop') && closeSettings();
     window.addEventListener('keydown', onKey);
@@ -72,18 +82,39 @@ export function SettingsPage() {
   }, []);
   if (!tab) return null;
   const groups = [...new Set(TABS.map((t) => t.group))];
+  const visible = TABS.filter((t) => (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer) && settingsMatch(t.id, t.label, query));
   return (
     <div className="settings-page" role="dialog" aria-modal aria-label="Settings">
       <nav className="sp-nav">
         <div className="sp-nav-inner">
+          <div className="sp-search">
+            <Icon name="search" size={15} />
+            <input
+              placeholder="Search settings"
+              aria-label="Search settings"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && visible[0]) {
+                  openSettings(visible[0].id);
+                  setQuery('');
+                }
+                if (e.key === 'Escape' && query) {
+                  e.stopPropagation();
+                  setQuery('');
+                }
+              }}
+            />
+          </div>
+          {query && !visible.length && <p className="small muted sp-none">No settings match “{query}”.</p>}
           {groups.map((g) => {
-            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer));
+            const items = visible.filter((t) => t.group === g);
             if (!items.length) return null;
             return (
               <div key={g}>
                 <div className="sp-group">{g}</div>
                 {items.map((t) => (
-                  <button key={t.id} className={`sp-tab${tab === t.id ? ' active' : ''}`} onClick={() => uiStore.set({ settings: t.id })}>
+                  <button key={t.id} className={`sp-tab${tab === t.id ? ' active' : ''}`} onClick={() => openSettings(t.id)}>
                     <Icon name={t.icon} size={16} /> {t.label}
                   </button>
                 ))}
@@ -109,6 +140,12 @@ export function SettingsPage() {
           {tab === 'language' && <LanguageTab />}
           {tab === 'my-apps' && <MyAppsTab />}
           {tab === 'connections' && <ConnectionsTab />}
+          {tab === 'notifications' && <NotificationsTab />}
+          {tab === 'accessibility' && <AccessibilityTab />}
+          {tab === 'keybinds' && <KeybindsTab />}
+          {tab === 'activity' && <ActivityTab />}
+          {tab === 'streamer' && <StreamerTab />}
+          {tab === 'advanced' && <AdvancedTab />}
           {tab === 'moderation' && staff && <ModerationCenter />}
           {tab === 'reports' && admin && <ReportCentre />}
           {tab === 'discovery-queue' && staff && <DiscoveryQueue />}
@@ -123,15 +160,6 @@ export function SettingsPage() {
   );
 }
 
-function Section({ title, children, desc }: { title: string; desc?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="settings-section">
-      <h3>{title}</h3>
-      {desc && <p className="muted small">{desc}</p>}
-      {children}
-    </section>
-  );
-}
 
 /** Settings → My Apps — every bot connected to your account, plus the ones you own. */
 function MyAppsTab() {
@@ -328,17 +356,6 @@ function useConnections(): ConnectionRow[] {
   return myConnections();
 }
 
-export function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="toggle-row">
-      <span>
-        <b>{label}</b>
-        {desc && <span className="small muted">{desc}</span>}
-      </span>
-      <input type="checkbox" className="toggle-switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-    </label>
-  );
-}
 
 // ---------------------------------------------------------------- account --
 

@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import '@fontsource-variable/inter';
 import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/atkinson-hyperlegible/400.css';
+import '@fontsource/atkinson-hyperlegible/700.css';
 import './styles.css';
 import { restoreTheme } from './lib/themes';
 import { initPlatform } from './lib/ui';

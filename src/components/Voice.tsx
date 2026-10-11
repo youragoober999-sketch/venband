@@ -203,11 +203,12 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
         {
           type: 'slider',
           label: tile.kind === 'screen' ? 'Stream volume' : 'User volume',
-          value: volumeOf(key),
+          // a stream's bar is full at 100%; voices can be boosted up to 200%
+          value: tile.kind === 'screen' ? Math.min(100, volumeOf(key)) : volumeOf(key),
           min: 0,
-          max: 200,
+          max: tile.kind === 'screen' ? 100 : 200,
           step: 5,
-          format: (v) => `${v}%`,
+          format: (v) => (v > 100 ? `${v}% (boosted)` : `${v}%`),
           onChange: (v) => setVolume(key, v),
         },
       );

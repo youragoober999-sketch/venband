@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExt
 import { watchProfiles } from '../lib/directory';
 import { MarketplaceView } from './Marketplace';
 import { applyCustomCss, safeMode, setSafeMode } from '../lib/customCss';
+import { applyDisplaySettings } from '../lib/display';
 import { startBackground } from '../lib/background';
 import { useApps, useServerBots } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
@@ -28,8 +29,9 @@ import {
 import { currentPath, go, linkTo, parseRoute, useRoute } from '../lib/router';
 import { socialStore } from '../lib/social';
 import { RING_MS, ringFor, subscribeRings } from '../lib/presence';
-import { getSettings, updateLayout, updateSettings, useSettings, type ServerFolder } from '../lib/settings';
-import { isPhone, openSearch, openSettings, setDrawer, uiStore } from '../lib/ui';
+import { getSettings, settingsStore, updateLayout, updateSettings, useSettings, type ServerFolder } from '../lib/settings';
+import { isPhone, openSearch, openSettings, setDrawer, tabFromSlug, uiStore } from '../lib/ui';
+import { handleShortcut } from '../lib/shortcuts';
 import {
   nav,
   openChannel,
@@ -50,6 +52,7 @@ import { ServerSettingsModal } from './ServerSettings';
 import { ContextMenuHost, copyText, openMenu, type Entry } from './ContextMenu';
 import { DialogHost, askConfirm, askText } from './Dialogs';
 import { TermsGate } from './TermsGate';
+import { AccountMenu } from './AccountMenu';
 import { ProfileHost, ServerTag, openProfile, userMenu } from './People';
 import { Badges, OwnerCrown, RoleIcon, ServerBadge, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
@@ -115,7 +118,7 @@ function useMessageAlerts(servers: Server[]) {
     if ((getSettings().dms.mutedUntil[row.channel_id] ?? 0) > Date.now()) return;
     if (meta.server_id && getSettings().rail.folders.some((f) => f.muted && f.servers.includes(meta.server_id!))) return;
     if ((!isDm && !mention) || rel?.muted || me.presence === 'dnd' || meta.request_to === me.id) return;
-    playMessageSound();
+    playMessageSound(mention);
     await loadProfiles([row.author_id]);
     const who = displayName(row.author_id);
     const server = serversRef.current.find((x) => x.id === meta.server_id);
@@ -164,6 +167,8 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
     if (path === lastRoute.current && !waiting) return;
     lastRoute.current = path;
     const r = parseRoute();
+    // back / forward out of a settings page closes it
+    if (r.kind !== 'settings' && uiStore.get().settings) uiStore.set({ settings: null });
     if ((r.kind === 'home' || r.kind === 'server') && r.messageId) uiStore.set({ jump: r.messageId });
     const cur = nav.get();
     if (r.kind === 'discover') {
@@ -196,6 +201,12 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
           startDm(r.target).catch(() => go('channels/@me', { replace: true }));
         }
       }
+    } else if (r.kind === 'settings') {
+      // the conversation behind the settings page stays as it is
+      const tab = tabFromSlug(r.tab);
+      if (!tab) go('settings/account', { replace: true });
+      else if (uiStore.get().settings !== tab) uiStore.set({ settings: tab });
+      return;
     } else if (r.kind === 'group-invite') {
       const code = r.code;
       go('channels/@me', { replace: true });
@@ -231,6 +242,7 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
       path = dm ? `channels/@me/${dm.bot || dm.channel.is_group ? dm.channel.id : (dm.other?.id ?? dm.channel.id)}` : id ? `channels/@me/${id}` : 'channels/@me';
     }
     const r = parseRoute();
+    if (r.kind === 'settings') return; // settings keep their own address until closed
     if (r.kind === 'root' || r.kind === 'sign-in' || r.kind === 'register') go(path, { replace: true, keepQuery: true });
     else go(path);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -293,7 +305,9 @@ export function Shell() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         uiStore.set((s) => ({ switcher: !s.switcher }));
+        return;
       }
+      handleShortcut(e);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -1684,6 +1698,7 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
   const dm = !serverId && !discover ? dms.find((d) => d.channel.id === dmId) : null;
   const where = discover ? 'Discover' : server ? server.name : dm ? (dm.other ? displayName(dm.other.id) : dm.title) : 'Friends';
 
+  const [accountMenu, setAccountMenu] = useState<HTMLElement | null>(null);
   function statusMenu(e: React.MouseEvent) {
     openMenu(e, [
       { type: 'header', label: me.display_name },
@@ -1734,13 +1749,21 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
         <button className="icon-btn" onClick={() => openSettings('account')} title="User settings">
           <Icon name="settings" size={18} />
         </button>
-        <button className="user-chip" onClick={statusMenu} onContextMenu={statusMenu} title="Set status">
+        <button
+          className={`user-chip${accountMenu ? ' open' : ''}`}
+          onClick={(e) => setAccountMenu(accountMenu ? null : e.currentTarget)}
+          onContextMenu={statusMenu}
+          title="Your account"
+          aria-haspopup="menu"
+          aria-expanded={Boolean(accountMenu)}
+        >
           <Avatar profile={me} size={28} online />
           <span className="user-chip-names">
             <span className="name">{me.display_name}</span>
             <span className="tag">{me.status_text || PRESENCE_LABEL[me.presence ?? 'online']}</span>
           </span>
         </button>
+        {accountMenu && <AccountMenu anchor={accountMenu} onClose={() => setAccountMenu(null)} />}
       </div>
     </header>
   );
@@ -2072,6 +2095,14 @@ function BotAvatar({ dm, size }: { dm: DmChannel; size: number }) {
 function useLooks() {
   const css = useSettings((s) => s.customCss);
   useEffect(() => applyCustomCss(css.enabled, css.code), [css.enabled, css.code]);
+  // accessibility, streamer mode (also while you share your screen), developer mode
+  const all = settingsStore.use((x) => x.s);
+  const [sharing, setSharing] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setSharing(Boolean(getActiveCall()?.screen)), 1500);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => applyDisplaySettings(all, sharing), [all, sharing]);
   useEffect(() => {
     startBackground();
     const onKey = (e: KeyboardEvent) => {

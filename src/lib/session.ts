@@ -6,6 +6,7 @@ import { createStore } from './store';
 import { argonMaster, deriveKeysFromMaster, deriveMasterKeys, usernameLoginProof, type Identity } from './crypto';
 import {
   forgetIdentities,
+  forgetIdentity,
   IdentityLockedError,
   loadIdentity,
   recallIdentity,
@@ -25,6 +26,7 @@ import { loadSettings, resetSettingsStore } from './settings';
 import { startSocial, stopSocial } from './social';
 import { registerDevice, stopWatchingSession, watchSession } from './devices';
 import { voogleCheckin } from './voogle';
+import { consumeSwitchFlag, forgetAccount, rememberAccount } from './accounts';
 
 export type AuthStatus =
   | 'loading'
@@ -95,6 +97,8 @@ async function enterApp(session: Session, identity: Identity) {
   loadExpressions(true).catch(() => {});
   startSocial(userId);
   registerDevice(session).catch(() => {});
+  consumeSwitchFlag();
+  void rememberAccount(me);
   // Voogle: link this device to the account (hashes only) and catch ban evasion
   voogleCheckin(userId)
     .then((ok) => {
@@ -191,10 +195,16 @@ async function onSession(session: Session | null) {
     return;
   }
   if (s.status === 'ready' && s.session && s.session.user.id !== session.user.id) {
+    // Switching accounts from the account menu reloads by itself.
+    try {
+      if (sessionStorage.getItem('venband:switching') === '1') return;
+    } catch {
+      /* ignore */
+    }
     // Another tab of this browser logged into a different account; tabs share
     // one saved login, so switch cleanly and say why.
     try {
-      sessionStorage.setItem('venband:notice', 'You logged into a different account in another tab. To use two accounts at once, open the second one in a private/incognito window.');
+      sessionStorage.setItem('venband:notice', 'You switched accounts in another tab, so this tab switched too.');
     } catch {
       /* ignore */
     }
@@ -586,12 +596,17 @@ let signingOut = false;
 export async function signOut(notice = 'You’re logged out. See you soon.') {
   signingOut = true;
   recentMaster = null;
+  const leaving = sessionStore.get().session?.user.id ?? null;
   leaveCall();
   stopSocial();
   stopWatchingSession();
   resetSettingsStore();
   resetExpressions();
-  await forgetIdentities();
+  // only this account's keys and saved login: other accounts on this device stay
+  if (leaving) {
+    await forgetIdentity(leaving);
+    forgetAccount(leaving);
+  } else await forgetIdentities();
   // 'local': only this browser. The default ('global') also logs out every
   // other device, which looks like a random logout there. Ignore errors here
   // (e.g. the account was just deleted) — the local session must still clear.

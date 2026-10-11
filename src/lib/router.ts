@@ -4,6 +4,7 @@
 //   /channels/@me/<userId|channelId>   a DM (user id) or group chat (channel id)
 //   /channels/<serverId>[/<channelId>]
 //   /discover
+//   /settings/<page>                   e.g. /settings/profiles, /settings/connections
 //   /status /tos /privacy /guidelines /changelog /discovery /bots[/<id>] /voogle /download  (public)
 import { useSyncExternalStore } from 'react';
 
@@ -54,6 +55,7 @@ export type Route =
   | { kind: 'invite'; code: string }
   | { kind: 'group-invite'; code: string }
   | { kind: 'page'; page: PublicPage; id?: string }
+  | { kind: 'settings'; tab: string }
   | { kind: 'root' };
 
 export type PublicPage = 'status' | 'tos' | 'privacy' | 'guidelines' | 'changelog' | 'discovery' | 'bots' | 'voogle' | 'download';
@@ -79,6 +81,7 @@ export function parseRoute(path = currentPath()): Route {
   if (parts[0] === 'sign-in' || parts[0] === 'login') return { kind: 'sign-in' };
   if (parts[0] === 'register' || parts[0] === 'signup') return { kind: 'register' };
   if (parts[0] === 'discover') return { kind: 'discover' };
+  if (parts[0] === 'settings') return { kind: 'settings', tab: (parts[1] ?? 'account').toLowerCase() };
   if (parts[0] === 'invite' && parts[1]) return { kind: 'invite', code: parts[1] };
   if (parts[0] === 'join-group' && parts[1]) return { kind: 'group-invite', code: parts[1] };
   const page = parts[0] ? PAGES[parts[0].toLowerCase()] : undefined;

@@ -1,3 +1,4 @@
+import { getSettings } from './settings';
 // Unread counts, desktop notifications and call ringtones.
 import { createStore } from './store';
 
@@ -81,6 +82,12 @@ export async function askForNotifications() {
 
 /** Show a system notification when Venband isn't the tab you're looking at. */
 export function notify(title: string, body: string, onClick?: () => void, tag?: string) {
+  const n = getSettings().notifications;
+  const streaming = getSettings().streamer.enabled;
+  if (!n.desktop) return;
+  // pop-ups can be seen on a shared screen: no message text in streamer mode
+  if (!n.preview || (streaming && getSettings().streamer.hidePersonal)) body = 'You have a new message';
+  if (n.flashTaskbar) (window as unknown as { venbandDesktop?: { flash?: () => void } }).venbandDesktop?.flash?.();
   if (!notificationsSupported() || Notification.permission !== 'granted') return;
   if (document.visibilityState === 'visible' && document.hasFocus()) return;
   try {
@@ -106,8 +113,17 @@ function audio() {
 
 let lastBlip = 0;
 
+/** Sounds are off in streamer mode (when set) and per kind in Settings → Notifications. */
+export function soundAllowed(kind: 'message' | 'mention' | 'call' | 'joinLeave'): boolean {
+  const s = getSettings();
+  if (s.streamer.enabled && s.streamer.mute && kind !== 'call') return false;
+  const n = s.notifications;
+  return kind === 'message' ? n.messageSound : kind === 'mention' ? n.mentionSound : kind === 'call' ? n.callSound : n.joinLeaveSound;
+}
+
 /** One soft, low two-note chime for new messages (at most once every 1.5 s). */
-export function playMessageSound() {
+export function playMessageSound(mention = false) {
+  if (!soundAllowed(mention ? 'mention' : 'message')) return;
   const now = Date.now();
   if (now - lastBlip < 1500) return;
   lastBlip = now;
@@ -148,7 +164,7 @@ function pluck(freq: number, start: number, length: number, volume: number) {
 /** Notification volume 0–1 from settings (localStorage, default 0.8). */
 function soundVolume() {
   try {
-    const v = Number(localStorage.getItem('venband:notify-volume') ?? '0.8');
+    const v = getSettings().notifications.volume / 100;
     return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
   } catch {
     return 0.8;
@@ -164,8 +180,9 @@ const INCOMING = [392, 493.88, 587.33, 493.88]; // G4 B4 D5 B4
 const OUTGOING = [349.23, 440]; // F4 A4
 
 /** Loop a ringtone: 'incoming' for the person being called, 'outgoing' ring-back for the caller. */
-export function startRing(kind: 'incoming' | 'outgoing') {
+export function startRing(kind: 'incoming' | 'outgoing', preview = false) {
   if (ringKind === kind) return;
+  if (!preview && kind === 'incoming' && !soundAllowed('call')) return;
   stopRing();
   ringKind = kind;
   document.documentElement.dataset.ringing = kind; // lets tests (and devtools) see what's ringing

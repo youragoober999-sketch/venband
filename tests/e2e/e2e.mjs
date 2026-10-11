@@ -1103,6 +1103,39 @@ await alice.page.getByRole('button', { name: 'Save badge' }).click();
 await alice.page.locator('.badge-choice', { hasText: `c_event_${run}` }).waitFor({ timeout: 15000 });
 log('✅ the Venband owner can design badges with an uploaded picture');
 
+// ---- settings have addresses, a search box and new pages
+await alice.page.goto(APP + 'settings/connections');
+await alice.page.locator('.sp-tab.active', { hasText: 'Connections' }).waitFor({ timeout: 30000 });
+await alice.page.locator('.sp-search input').fill('ringtone');
+await alice.page.locator('.sp-tab', { hasText: 'Notifications' }).waitFor();
+if (await alice.page.locator('.sp-tab', { hasText: 'Connections' }).count()) throw new Error('settings search did not filter');
+await alice.page.locator('.sp-search input').press('Enter');
+await alice.page.waitForURL(/\/settings\/notifications$/);
+await alice.page.locator('.sp-close').click();
+await alice.page.waitForURL((u) => !u.pathname.includes('/settings'));
+await alice.page.keyboard.press('Control+I');
+await alice.page.waitForURL(/\/settings\/account$/);
+await alice.page.keyboard.press('Escape');
+log('✅ settings: /settings/<page> links, search, Ctrl+I, and closing goes back');
+
+// ---- several accounts on one device: add bob in alice's browser, switch back
+await alice.page.goto(APP + 'channels/@me');
+await alice.page.locator('.user-chip').click();
+await alice.page.locator('.account-menu').getByRole('menuitem', { name: 'Add an account' }).click();
+await alice.page.getByText('Welcome back').waitFor({ timeout: 20000 });
+await alice.page.locator('.saved-account', { hasText: `alice_${run}` }).waitFor();
+await alice.page.locator('.auth-card input[autocomplete=username]').fill(bob.email);
+await alice.page.locator('input[type=password]').fill(bob.password);
+await alice.page.locator('.auth-card').getByRole('button', { name: 'Log in', exact: true }).click();
+await alice.page.locator('.user-chip .name', { hasText: 'Bob' }).waitFor({ timeout: 30000 });
+await alice.page.locator('.user-chip').click();
+await alice.page.locator('.account-menu .am-account', { hasText: `alice_${run}` }).click();
+await alice.page.locator('.user-chip .name, :text("Enter your password")').first().waitFor({ timeout: 30000 });
+if (await alice.page.getByText('Enter your password').count()) await login(alice);
+await alice.page.locator('.user-chip .name', { hasText: 'Alice' }).waitFor({ timeout: 30000 });
+log('✅ add a second account and switch back from the account menu');
+await alice.page.locator('.user-panel [title="User settings"]').click();
+
 // ---- security centre: data export, two-factor sign-in
 await alice.page.locator('.sp-tab', { hasText: 'Security' }).click();
 const [exportDl] = await Promise.all([alice.page.waitForEvent('download'), alice.page.getByRole('button', { name: 'Download my data' }).click()]);

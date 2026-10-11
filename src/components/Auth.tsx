@@ -24,7 +24,8 @@ import {
   unlockViaPasskey,
 } from '../lib/session';
 import { hasPasskey, isPasskeySupported } from '../lib/passkey';
-import { Field, Wordmark } from './ui';
+import { Avatar, Field, Wordmark } from './ui';
+import { allSavedAccounts, switchAccount } from '../lib/accounts';
 import { Landing, TopNav } from './Landing';
 
 type Mode = 'login' | 'signup' | 'verify' | 'forgot' | 'forgot-sent' | 'email' | 'email-code';
@@ -208,6 +209,7 @@ function Login({ email, setEmail, setMode }: FormProps) {
     <form onSubmit={submit}>
       <h1>Welcome back</h1>
       <p className="sub">Log in to pick up where you left off.</p>
+      <SavedAccounts onError={setError} />
       <Field label="Email or username" hint="Either works — same password.">
         <input type="text" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com or jules" />
       </Field>
@@ -239,6 +241,46 @@ function Login({ email, setEmail, setMode }: FormProps) {
         </button>
       </p>
     </form>
+  );
+}
+
+/** Accounts already logged in on this device: one click to go back to them. */
+function SavedAccounts({ onError }: { onError: (e: string | null) => void }) {
+  const [list] = useState(() => allSavedAccounts());
+  const [busy, setBusy] = useState<string | null>(null);
+  if (!list.length) return null;
+  return (
+    <div className="saved-accounts">
+      <div className="small muted">Continue as</div>
+      {list.map((a) => (
+        <button
+          type="button"
+          key={a.id}
+          className="saved-account"
+          disabled={busy !== null}
+          onClick={async () => {
+            setBusy(a.id);
+            onError(null);
+            try {
+              await switchAccount(a.id, null);
+            } catch (e) {
+              onError(friendlyError(e));
+              setBusy(null);
+            }
+          }}
+        >
+          <Avatar profile={{ id: a.id, username: a.username, display_name: a.display_name, avatar_color: a.avatar_color, avatar_url: a.avatar_url } as never} size={32} />
+          <span className="grow">
+            <b>{a.display_name}</b>
+            <span className="small muted"> @{a.username}</span>
+          </span>
+          {busy === a.id ? <span className="spinner small" /> : <span aria-hidden>→</span>}
+        </button>
+      ))}
+      <div className="auth-or">
+        <span>or log in</span>
+      </div>
+    </div>
   );
 }
 

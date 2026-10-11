@@ -26,6 +26,8 @@ export type CodeTheme = 'vscode-dark' | 'vs-2026' | 'github-dark' | 'monokai' | 
 
 export interface Settings {
   themeId: string;
+  /** the dark theme to go back to from Daylight (Ctrl+Shift+T) */
+  lastDarkTheme?: string;
   installedThemes: Theme[];
   translateMode: 'auto' | 'manual' | 'off';
   /** allow the online translator (your IP is never shared) when the device can't translate */
@@ -90,6 +92,45 @@ export interface Settings {
   /** DM list organisation */
   dms: { pinned: string[]; archived: string[]; folders: { id: string; name: string; channels: string[] }[]; mutedUntil: Record<string, number> };
   gifFavorites: GifFavorite[];
+  /** sounds and pop-ups */
+  notifications: {
+    desktop: boolean;
+    /** show the message text in pop-ups (off: just "New message from …") */
+    preview: boolean;
+    messageSound: boolean;
+    mentionSound: boolean;
+    callSound: boolean;
+    joinLeaveSound: boolean;
+    /** 0-100 */
+    volume: number;
+    /** in servers, only notify for @mentions and replies */
+    serverMentionsOnly: boolean;
+    flashTaskbar: boolean;
+    /** ringtone for incoming calls */
+    ringtone: 'venband' | 'soft' | 'classic' | 'pulse';
+  };
+  accessibility: {
+    /** whole-app zoom, percent */
+    uiScale: number;
+    highContrast: boolean;
+    /** 0-100, colour saturation */
+    saturation: number;
+    underlineLinks: boolean;
+    /** a font built for easy reading */
+    readableFont: boolean;
+    /** always show keyboard focus rings */
+    focusRings: boolean;
+    /** bigger tap targets / spacing */
+    roomy: boolean;
+  };
+  /** hide personal things while streaming or sharing your screen */
+  streamer: { enabled: boolean; hidePersonal: boolean; hideInvites: boolean; mute: boolean; autoOnShare: boolean };
+  advanced: {
+    /** shows "Copy ID" everywhere and extra debug info */
+    developerMode: boolean;
+    /** share what you're playing or listening to */
+    shareActivity: boolean;
+  };
   layout: { sidebar: number; members: number; callHeight: number };
   /** per-user stream / voice volume, percent (0-200) */
   volumes: Record<string, number>;
@@ -140,6 +181,21 @@ export const DEFAULT_SETTINGS: Settings = {
   serverThemes: 'override',
   soundboard: { volume: 80, perUser: {}, muted: [], joinSound: null },
   gifFavorites: [],
+  notifications: {
+    desktop: true,
+    preview: true,
+    messageSound: true,
+    mentionSound: true,
+    callSound: true,
+    joinLeaveSound: true,
+    volume: 80,
+    serverMentionsOnly: false,
+    flashTaskbar: true,
+    ringtone: 'venband',
+  },
+  accessibility: { uiScale: 100, highContrast: false, saturation: 100, underlineLinks: false, readableFont: false, focusRings: false, roomy: false },
+  streamer: { enabled: false, hidePersonal: true, hideInvites: true, mute: true, autoOnShare: false },
+  advanced: { developerMode: false, shareActivity: true },
   layout: { sidebar: 248, members: 248, callHeight: 320 },
   volumes: {},
 };
@@ -181,6 +237,10 @@ function merge(raw: unknown): Settings {
     trustedDomains: Array.isArray(r.trustedDomains) ? r.trustedDomains.filter((x) => typeof x === 'string').slice(0, 200) : [],
     serverThemes: r.serverThemes === 'merge' || r.serverThemes === 'never' ? r.serverThemes : 'override',
     soundboard: { ...DEFAULT_SETTINGS.soundboard, ...(r.soundboard ?? {}) },
+    notifications: { ...DEFAULT_SETTINGS.notifications, ...(r.notifications ?? {}) },
+    accessibility: { ...DEFAULT_SETTINGS.accessibility, ...(r.accessibility ?? {}) },
+    streamer: { ...DEFAULT_SETTINGS.streamer, ...(r.streamer ?? {}) },
+    advanced: { ...DEFAULT_SETTINGS.advanced, ...(r.advanced ?? {}) },
     dms: {
       pinned: Array.isArray(r.dms?.pinned) ? r.dms!.pinned.slice(0, 100) : [],
       archived: Array.isArray(r.dms?.archived) ? r.dms!.archived.slice(0, 1000) : [],

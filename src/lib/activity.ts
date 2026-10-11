@@ -9,6 +9,7 @@
 //   * Everyone who can see a profile can see its activity; realtime pushes new
 //     rows the same way profile updates do.
 import { supabase } from './supabase';
+import { getSettings } from './settings';
 
 export type ActivityPlatform = 'rpc' | 'spotify' | 'custom' | 'connections';
 
@@ -252,6 +253,8 @@ function toServerShape(input: ActivityInput) {
  */
 export function pushMyActivity(input: ActivityInput | null) {
   if (!myUserId) return;
+  // Settings → Activity Privacy: sharing off clears whatever was shown
+  if (getSettings().advanced.shareActivity === false) input = null;
   const payload = !input || !input.name?.trim() ? null : toServerShape(input);
   const rpc = payload ? supabase.rpc('set_my_activity', { p_activity: payload }) : supabase.rpc('clear_my_activity');
   void rpc.then(({ error }) => {
