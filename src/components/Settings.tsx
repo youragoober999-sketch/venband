@@ -360,10 +360,13 @@ function AccountTab() {
   const deletePhrase = 'I want to delete my account';
   async function deleteAccount() {
     if (!(await askConfirm({ title: 'Delete your account?', body: 'Your DMs, files, messages, username and email are erased right now, and this device signs out. This cannot be undone.', confirm: 'Delete my account', danger: true }))) return;
+    // a stolen session alone must never be enough to delete an account
+    const password = await askText({ title: 'Confirm it’s you', label: 'Your password', password: true, maxLength: 200, confirm: 'Delete my account' });
+    if (password === null) return;
     setBusy(true);
     setMsg(null);
     try {
-      const { error } = await supabase.rpc('delete_my_account', { p_confirm: delPhrase });
+      const { error } = await supabase.rpc('delete_my_account', { p_confirm: delPhrase, p_password: password });
       if (error) throw error;
       await signOut('Your account and everything on it was deleted. See you around.');
     } catch (err) {

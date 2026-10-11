@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('venbandDesktop', {
   /** flash the taskbar button (incoming call, mention) */
   flash: () => ipcRenderer.send('venband:flash'),
   info: () => ipcRenderer.invoke('venband:info'),
+  /** anonymous hashed machine id (Voogle alt detection and hardware bans) */
+  hardwareId: () => ipcRenderer.invoke('venband:hardware-id'),
   /** live rich presence: what apps like VS Code / Spotify report locally */
   onActivity: (cb) => {
     const listener = (_e, activity) => cb(activity ?? null);

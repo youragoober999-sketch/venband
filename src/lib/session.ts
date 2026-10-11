@@ -24,6 +24,7 @@ import type { Profile } from './types';
 import { loadSettings, resetSettingsStore } from './settings';
 import { startSocial, stopSocial } from './social';
 import { registerDevice, stopWatchingSession, watchSession } from './devices';
+import { voogleCheckin } from './voogle';
 
 export type AuthStatus =
   | 'loading'
@@ -94,6 +95,12 @@ async function enterApp(session: Session, identity: Identity) {
   loadExpressions(true).catch(() => {});
   startSocial(userId);
   registerDevice(session).catch(() => {});
+  // Voogle: link this device to the account (hashes only) and catch ban evasion
+  voogleCheckin(userId)
+    .then((ok) => {
+      if (!ok) signOut('This account was banned: it was made on a device that belongs to a banned account.');
+    })
+    .catch(() => {});
   watchSession(() => {
     signOut('This device was logged out from another device.');
   });
@@ -228,7 +235,7 @@ export function friendlyError(e: unknown): string {
   if (/error sending .*email/i.test(msg))
     return 'The email couldn’t be sent. If you run this site, set up custom SMTP in Supabase (see the README).';
   if (/permission denied/i.test(msg))
-    return `The server is missing a database permission (${msg}). If you run this site, run supabase/repair.sql in the Supabase SQL editor.`;
+    return `The server is missing a database permission (${msg}). If you run this site, run supabase/sql_editor_pending.sql in the Supabase SQL editor.`;
   if (/failed to fetch|networkerror|load failed/i.test(msg)) return 'Can’t reach the server. Check your internet connection.';
   if (/invalid or has expired|otp_expired|expired/i.test(msg))
     return 'That link has expired or was already used. If you already confirmed your email, just log in.';

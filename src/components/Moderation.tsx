@@ -12,7 +12,7 @@ import { Avatar, Field, Icon, Modal } from './ui';
 import { ImageCropper } from './ImageCropper';
 import { Select } from './Select';
 import { BadgeIcon, Badges, loadCustomBadges, useAllBadges, VerifiedMark } from './Badges';
-import { askConfirm, askText } from './Dialogs';
+import { askChoice, askConfirm, askText } from './Dialogs';
 import { startDm } from './Modals';
 import { openProfile } from './People';
 import { openGlobalModal } from './GlobalModals';
@@ -77,6 +77,10 @@ export function ModerationCenter() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [badgesFor, setBadgesFor] = useState<ModUser | null>(null);
+  const [hasMfa, setHasMfa] = useState(true);
+  useEffect(() => {
+    supabase.rpc('has_mfa').then(({ data }) => setHasMfa(data !== false));
+  }, []);
   const myRank = RANK[me.platform_role ?? 'user'];
   const top = isTopStaff(me);
 
@@ -153,6 +157,12 @@ export function ModerationCenter() {
         </h2>
         <span className="tag-soft">{me.platform_role}</span>
       </div>
+      {!hasMfa && (
+        <div className="warning-box">
+          <b>Turn on two-factor authentication.</b> Erasing accounts, changing staff roles and giving staff badges need it, so a stolen
+          password alone can never be used against Venband. Settings → Security → Two-factor.
+        </div>
+      )}
       <div className="mod-search">
         <Icon name="search" size={18} />
         <input autoFocus placeholder="Search users and servers by name, username or ID" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -228,22 +238,50 @@ export function ModerationCenter() {
                           <Icon name="gavel" size={14} /> Ban Account
                         </button>
                       )}
+                      <button
+                        className="btn danger small"
+                        title="Ban the devices and network this account used. New accounts on them are caught automatically."
+                        onClick={async () => {
+                          const reason = await askText({
+                            title: `Ban @${u.username}'s devices and network?`,
+                            label: 'Reason (kept in the staff audit log)',
+                            hint: 'New accounts on the same device are banned automatically. New accounts from the same network are held for review for 30 days.',
+                            placeholder: 'e.g. ban evasion',
+                            maxLength: 500,
+                            confirm: 'Ban devices',
+                          });
+                          if (reason === null) return;
+                          run(`@${u.username}'s devices and network are banned.`, () => supabase.rpc('mod_ban_devices', { p_user: u.id, p_reason: reason.trim() }));
+                        }}
+                      >
+                        <Icon name="block" size={14} /> Ban Devices
+                      </button>
+                      <button
+                        className="btn secondary small"
+                        onClick={() => run(`Device and network bans for @${u.username} lifted.`, () => supabase.rpc('mod_unban_devices', { p_user: u.id }))}
+                      >
+                        Lift Device Bans
+                      </button>
                     </>
                   )}
                   {top && u.id !== me.id && !isTopStaff(u) && (
                     <button
                       className="btn danger small"
                       onClick={async () => {
-                        if (
-                          !(await askConfirm({
-                            title: `Erase @${u.username} permanently?`,
-                            body: 'Deletes their servers, DMs, files, messages and the account itself. There is no undo. A record stays in the staff audit log.',
-                            confirm: 'Erase account permanently',
-                            danger: true,
-                          }))
-                        )
-                          return;
-                        run(`@${u.username} erased permanently.`, () => supabase.rpc('delete_account', { p_user: u.id }));
+                        const choice = await askChoice({
+                          title: `Erase @${u.username} permanently?`,
+                          body: 'Deletes their servers, DMs, files, messages and the account itself. There is no undo. A record stays in the staff audit log. Banning their devices also stops new accounts on the same device and new sign-ups from the same network (30 days). Only scrambled fingerprints are kept, never IP addresses.',
+                          options: [
+                            { value: 'erase', label: 'Erase account', danger: true },
+                            { value: 'erase+ban', label: 'Erase + ban devices', danger: true },
+                          ],
+                        });
+                        if (!choice) return;
+                        const reason = await askText({ title: 'Why?', label: 'Reason (kept in the staff audit log)', placeholder: 'e.g. spam bot, ban evasion', maxLength: 500 });
+                        if (reason === null) return;
+                        run(`@${u.username} erased permanently.`, () =>
+                          supabase.rpc('delete_account', { p_user: u.id, p_reason: reason.trim(), p_ban_devices: choice === 'erase+ban' }),
+                        );
                       }}
                     >
                       <Icon name="trash" size={14} /> Erase Account

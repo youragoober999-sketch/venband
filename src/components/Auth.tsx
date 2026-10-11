@@ -161,14 +161,23 @@ function Login({ email, setEmail, setMode }: FormProps) {
     sessionStore.set({ notice: null });
     try {
       const raw = email.trim();
-      // Resolves a username or an email to the account, and flags a ban so the
-      // form can say "You are banned on @username" before any password check.
-      const { data, error } = await supabase.rpc('resolve_login', { p_identifier: raw });
-      if (error) throw error;
-      const hit = data?.[0];
-      if (!hit?.email) throw new Error('No account with that username or email.');
-      if (hit.banned) return setBanned({ username: (hit.username as string) || raw.replace(/@.*$/, '') });
-      await signIn(hit.email as string, password, remember);
+      let address = raw;
+      if (!raw.includes('@')) {
+        // A username is turned into the account's email only when the password
+        // is right (checked in the database), so nobody can collect emails.
+        const { data, error } = await supabase.rpc('resolve_login', { p_identifier: raw, p_password: password });
+        if (error) throw error;
+        const hit = data?.[0];
+        if (!hit?.email) throw new Error('That username and password don’t match.');
+        if (hit.banned) return setBanned({ username: (hit.username as string) || raw });
+        address = hit.email as string;
+      }
+      try {
+        await signIn(address, password, remember);
+      } catch (err) {
+        if (/banned/i.test(String((err as Error)?.message))) return setBanned({ username: raw.replace(/@.*$/, '') });
+        throw err;
+      }
     } catch (err) {
       if (/not confirmed/i.test(String((err as Error)?.message))) {
         setMode('verify');

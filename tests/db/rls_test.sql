@@ -121,9 +121,9 @@ do $t$ begin
 end $t$;
 
 -- bob cannot do admin things
+select pg_temp.must_fail($$delete from public.servers$$);
 do $t$ begin
   assert pg_temp.affected($$update public.servers set name = 'pwned'$$) = 0;
-  assert pg_temp.affected($$delete from public.servers$$) = 0;
   assert pg_temp.affected($$delete from public.messages$$) = 0, 'cannot delete alice message';
   assert pg_temp.affected($$update public.messages set ciphertext = 'x'$$) = 0, 'cannot edit alice message';
   assert pg_temp.affected($$delete from public.server_members where user_id <> auth.uid()$$) = 0, 'cannot kick';
@@ -225,7 +225,16 @@ do $t$ begin
 end $t$;
 
 -- group chats ---------------------------------------------------------------
+-- you can only put friends (or people you DM) into a group
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+select pg_temp.must_fail($$select public.create_group(array['00000000-0000-0000-0000-00000000000c']::uuid[], 'Strangers')$$);
+reset role;
+insert into public.friendships (user_a, user_b, requester, accepted) values
+  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000a', true),
+  ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-00000000000a', true),
+  ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-00000000000c', true)
+on conflict (user_a, user_b) do update set accepted = true;
+set role authenticated;
 select set_config('t.group', public.create_group(array['00000000-0000-0000-0000-00000000000b','00000000-0000-0000-0000-00000000000d']::uuid[], 'Trip')::text, false);
 do $t$ begin
   assert (select count(*) from public.dm_participants where channel_id = current_setting('t.group')::uuid) = 3;
@@ -247,6 +256,8 @@ do $t$ begin
   assert not public.can_view_channel(current_setting('t.group')::uuid), 'left the group';
 end $t$;
 reset role;
+-- (dave and carol were only friends for the group test)
+delete from public.friendships where user_a = '00000000-0000-0000-0000-00000000000c' and user_b = '00000000-0000-0000-0000-00000000000d';
 do $t$ begin
   assert (select name from public.channels where id = current_setting('t.group')::uuid) = 'Road trip';
   assert (select key_rotation_needed from public.channels where id = current_setting('t.group')::uuid), 'leaving rotates keys';
@@ -276,7 +287,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b
 select public.respond_friend_request('00000000-0000-0000-0000-00000000000d', true);
 do $t$ begin
   assert public.are_friends('00000000-0000-0000-0000-00000000000d'), 'friends after accepting';
-  assert (select count(*) from public.friendships) = 1;
+  assert (select count(*) from public.friendships) = 2, 'bob sees his friendships with dave and (from the group test) alice';
 end $t$;
 
 -- blocking: carol can't reach bob
@@ -366,8 +377,9 @@ select pg_temp.must_fail($$insert into public.messages (channel_id, author_id, a
   values (current_setting('t.general')::uuid, auth.uid(), 'aliceKey000000000001', 2, 'iv', 'ct', 'sig')$$);
 do $t$ begin
   assert pg_temp.affected($$update public.servers set name = 'escape' where id = current_setting('t.server')::uuid$$) = 0;
-  assert pg_temp.affected($$delete from public.servers where id = current_setting('t.server')::uuid$$) = 0;
 end $t$;
+-- servers are only ever deleted through delete_server (the 7-day recycle bin)
+select pg_temp.must_fail($$delete from public.servers where id = current_setting('t.server')::uuid$$);
 select public.mod_server_action(current_setting('t.server')::uuid, 'approve');
 select public.mod_server_action(current_setting('t.server')::uuid, 'verify');
 do $t$ begin
@@ -630,8 +642,12 @@ do $t$ begin
   assert exists (select 1 from public.channels where server_id = current_setting('t.gs')::uuid and type = 'forum'), 'template includes a forum';
   assert (select welcome_channel_id from public.servers where id = current_setting('t.gs')::uuid) is not null;
 end $t$;
--- vanity links need 500+ members or verification
-select pg_temp.must_fail($$select public.set_vanity(current_setting('t.gs')::uuid, 'gamers')$$);
+-- owners pick their own custom link, but never an official-looking one
+select pg_temp.must_fail($$select public.set_vanity(current_setting('t.gs')::uuid, 'venband-support')$$);
+select pg_temp.must_fail($$select public.set_vanity(current_setting('t.gs')::uuid, 'official')$$);
+select pg_temp.must_fail($$select public.set_vanity(current_setting('t.gs')::uuid, 'help')$$);
+select public.set_vanity(current_setting('t.gs')::uuid, 'gamers');
+select public.set_vanity(current_setting('t.gs')::uuid, '');
 -- nobody sets discovery approval or vanity directly
 select pg_temp.must_fail($$update public.servers set discovery_status = 'approved' where id = current_setting('t.gs')::uuid$$);
 select pg_temp.must_fail($$update public.servers set vanity = 'sneaky' where id = current_setting('t.gs')::uuid$$);
@@ -843,7 +859,7 @@ do $t$ declare r record; begin
 end $t$;
 select public.handle_server_report((select id from public.server_reports(current_setting('t.gs')::uuid, 'open') limit 1), 'actioned', 'handled');
 -- deleted servers can be restored by the owner within 7 days
-select pg_temp.must_fail($$select public.request_account_deletion()$$);  -- owns servers
+select pg_temp.must_fail($$select public.delete_my_account('I want to delete my account')$$);  -- owns servers
 select public.delete_server(current_setting('t.gs')::uuid);
 do $t$ begin
   assert (select status from public.servers where id = current_setting('t.gs')::uuid) = 'deleted';
@@ -853,10 +869,9 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2
 select pg_temp.must_fail($$select public.restore_server(current_setting('t.gs')::uuid)$$);
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
 select public.restore_server(current_setting('t.gs')::uuid);
--- account deletion can be requested and cancelled; export works
+-- deleting your account needs the exact phrase; export works
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
-select public.request_account_deletion();
-select public.cancel_account_deletion();
+select pg_temp.must_fail($$select public.delete_my_account('delete me')$$);
 do $t$ begin
   assert (public.export_my_data() -> 'profile' ->> 'username') = 'alttwo', 'export includes your profile';
 end $t$;
@@ -891,6 +906,11 @@ select pg_temp.must_fail($$update public.profiles set avatar_frame = 'nope' wher
 -- marketplace items of other kinds
 insert into public.themes (author_id, name, data, kind) values (auth.uid(), 'Lava plate', '{"colors": ["#f00", "#ff0"]}', 'nameplate');
 -- groups: up to 15, the owner removes people, invite links
+reset role;
+insert into public.friendships (user_a, user_b, requester, accepted)
+  values ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-0000000000b1', true)
+  on conflict (user_a, user_b) do update set accepted = true;
+set role authenticated;
 select set_config('t.grp', public.create_group(array['00000000-0000-0000-0000-0000000000b2'::uuid], 'Crew')::text, false);
 select set_config('t.ginv', public.create_group_invite(current_setting('t.grp')::uuid), false);
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);

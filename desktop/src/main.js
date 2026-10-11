@@ -27,6 +27,7 @@ const { appBase, isAppUrl, isSafeExternal, deepLinkToUrl, deepLinkFromArgv } = r
 const { createRpcServer, activityKey } = require('./rpc');
 const { startSpotifyPoller } = require('./spotify');
 const { startMediaPoller } = require('./media');
+const { hardwareId } = require('./hwid');
 
 const BASE = appBase();
 const SAFE_MODE = process.argv.includes('--safe-mode') || process.env.VENBAND_SAFE_MODE === '1';
@@ -309,6 +310,8 @@ ipcMain.on('venband:flash', (e) => {
   if (mainWindow && e.sender === mainWindow.webContents && !mainWindow.isFocused()) mainWindow.flashFrame(true);
 });
 ipcMain.handle('venband:info', () => ({ version: app.getVersion(), platform: process.platform, safeMode: SAFE_MODE, channel: prefs.channel }));
+// hashed machine id for Voogle (alt detection / hardware bans); Venband pages only
+ipcMain.handle('venband:hardware-id', (e) => (e.sender === mainWindow?.webContents ? hardwareId() : null));
 
 // ------------------------------------------------------------------ updates --
 // Updates come from the /download folder on www.venband.com (latest.yml, which
@@ -475,6 +478,8 @@ ipcMain.handle('shell:open-external', (e, raw) => {
     return false;
   }
   if (!OPENABLE.has(u.protocol)) return false;
+  // steam:// can start installs and pass launch options: only plain store / run links by number
+  if (u.protocol === 'steam:' && !/^steam:\/\/(store|run|rungameid|nav\/games\/details)\/\d{1,12}\/?$/.test(raw)) return false;
   if ((u.protocol === 'https:' || u.protocol === 'http:') && !isSafeExternal(raw)) return false;
   shell.openExternal(raw);
   return true;

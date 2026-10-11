@@ -96,6 +96,46 @@ export async function browserTraitsHash(): Promise<string> {
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** A hashed hardware id from the desktop or phone app (never the raw id). */
+async function hardwareId(): Promise<string | null> {
+  try {
+    const desktop = await window.venbandDesktop?.hardwareId?.();
+    if (desktop && /^[0-9a-f]{64}$/.test(desktop)) return desktop;
+    const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean; Plugins?: Record<string, unknown> } }).Capacitor;
+    const device = cap?.isNativePlatform?.() ? (cap.Plugins?.Device as { getId?: () => Promise<{ identifier?: string }> } | undefined) : undefined;
+    const raw = (await device?.getId?.())?.identifier;
+    if (!raw) return null;
+    const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`venband-hw-v1|${raw.toLowerCase()}`));
+    return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return null;
+  }
+}
+
+const CHECKIN_KEY = 'venband:voogle-checkin';
+
+/**
+ * Tell Voogle this account is on this device (on app start and after sign-in,
+ * at most every 6 hours). Only hashes are sent. Returns false when the account
+ * was just banned for ban evasion.
+ */
+export async function voogleCheckin(userId: string, force = false): Promise<boolean> {
+  try {
+    const last = JSON.parse(localStorage.getItem(CHECKIN_KEY) ?? '{}') as { user?: string; at?: number };
+    if (!force && last.user === userId && Date.now() - (last.at ?? 0) < 6 * 3600_000) return true;
+  } catch {
+    /* storage unavailable: check in anyway */
+  }
+  const { data, error } = await supabase.rpc('voogle_checkin', { p_device: await deviceToken(), p_fp: await browserTraitsHash(), p_hw: await hardwareId() });
+  if (error) return true; // an old database without check-in: never block the app
+  try {
+    localStorage.setItem(CHECKIN_KEY, JSON.stringify({ user: userId, at: Date.now() }));
+  } catch {
+    /* ignore */
+  }
+  return !(data as { banned?: boolean } | null)?.banned;
+}
+
 export interface VoogleResult {
   result: 'passed' | 'blocked' | 'review';
   reason: string;

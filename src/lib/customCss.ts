@@ -4,8 +4,23 @@
 // (?safe=1, or Ctrl+Shift+Alt+S) turns it off if a style breaks the app.
 export const CSS_LIMIT = 16_000;
 
+/**
+ * CSS lets any letter be written as an escape (`\75 rl(` is `url(`), which
+ * would sneak past the filters below. Decode every escape first so the
+ * filters see what the browser will see.
+ */
+function decodeEscapes(css: string): string {
+  return css
+    .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_m, hex: string) => {
+      const code = parseInt(hex, 16);
+      return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : '\uFFFD';
+    })
+    .replace(/\\(\r\n|[\n\r\f])/g, '')
+    .replace(/\\(.)/g, '$1');
+}
+
 export function sanitizeCss(css: string): string {
-  let out = css.slice(0, CSS_LIMIT);
+  let out = decodeEscapes(css.slice(0, CSS_LIMIT)).replace(/\\/g, '');
   out = out.replace(/<\/?\s*style/gi, '');
   out = out.replace(/@import[^;]*;?/gi, '/* @import removed */');
   out = out.replace(/@charset[^;]*;?/gi, '');
@@ -15,7 +30,11 @@ export function sanitizeCss(css: string): string {
   out = out.replace(/javascript\s*:/gi, 'removed:');
   // only pictures embedded in the CSS itself may be used
   out = out.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/gi, (m, _q, u: string) => (/^data:image\/(png|jpe?g|gif|webp|svg\+xml);/i.test(u.trim()) ? m : 'none'));
-  out = out.replace(/image-set\(/gi, 'removed(');
+  // an unclosed url( still loads in browsers, and src() is url() by another name
+  out = out.replace(/url\((?!\s*(['"]?)data:image\/(png|jpe?g|gif|webp|svg\+xml);)[^)};\n]*\)?/gi, 'none');
+  out = out.replace(/(^|[^-\w])src\([^)};\n]*\)?/gi, '$1none');
+  out = out.replace(/(-webkit-)?image-set\([^};\n]*/gi, 'none');
+  out = out.replace(/@namespace[^;]*;?/gi, '');
   return out;
 }
 

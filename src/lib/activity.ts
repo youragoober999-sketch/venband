@@ -285,6 +285,7 @@ declare global {
       rpcState: () => Promise<{ up: boolean; index: number | null; spotify: boolean }>;
       setRpcUser: (u: { id: string }) => void;
       openExternal: (url: string) => Promise<unknown>;
+      hardwareId?: () => Promise<string | null>;
     };
   }
 }

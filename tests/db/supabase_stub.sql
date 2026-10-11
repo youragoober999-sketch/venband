@@ -14,7 +14,9 @@ create schema storage;
 grant usage on schema public, auth, realtime, storage, extensions to anon, authenticated;
 
 create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb,
-                         banned_until timestamptz);
+                         banned_until timestamptz, instance_id uuid, aud text, role text, encrypted_password text,
+                         email_confirmed_at timestamptz, raw_app_meta_data jsonb, created_at timestamptz default now(),
+                         updated_at timestamptz default now());
 create table auth.sessions (id uuid primary key, user_id uuid not null references auth.users (id) on delete cascade,
                             created_at timestamptz default now(), updated_at timestamptz, refreshed_at timestamp,
                             user_agent text, ip inet);
@@ -36,7 +38,7 @@ alter table realtime.messages enable row level security;
 grant select, insert on realtime.messages to authenticated;
 
 create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint);
-create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner_id text);
+create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner_id text, owner uuid);
 alter table storage.objects enable row level security;
 grant select, insert, delete on storage.objects to authenticated;
 

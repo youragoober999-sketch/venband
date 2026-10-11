@@ -39,3 +39,12 @@ test('finds the deep link in a second instance command line', () => {
   assert.equal(deepLinkFromArgv(['Venband.exe', '--flag', 'venband://invite/abc']), 'venband://invite/abc');
   assert.equal(deepLinkFromArgv(['Venband.exe']), null);
 });
+
+const { hashMachineId } = require('../src/hwid.js');
+test('machine ids are hashed with a Venband label, never passed through', () => {
+  const h = hashMachineId('6F9619FF-8B86-D011-B42D-00C04FC964FF');
+  assert.match(h, /^[0-9a-f]{64}$/);
+  assert.equal(h, hashMachineId('6f9619ff-8b86-d011-b42d-00c04fc964ff'), 'case does not matter');
+  assert.ok(!h.includes('6f9619ff'));
+  assert.equal(hashMachineId(''), null);
+});
