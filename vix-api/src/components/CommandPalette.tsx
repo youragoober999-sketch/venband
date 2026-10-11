@@ -56,6 +56,7 @@ export function CommandPalette({ open, onClose, onHelp }: { open: boolean; onClo
         { id: 'newkey', group: 'Actions', label: 'Create an API key', icon: 'key', run: go('/keys?new=1') },
         { id: 'addfriend', group: 'Actions', label: 'Add a friend', icon: 'users', run: go('/friends?add=1') },
         { id: 'p-dash', group: 'Pages', label: 'Dashboard', icon: 'home', run: go('/dashboard') },
+        { id: 'p-ai', group: 'Pages', label: 'AI Studio', icon: 'bot', run: go('/ai'), keywords: 'chat chatbot assistant' },
         { id: 'p-keys', group: 'Pages', label: 'API Keys', icon: 'key', run: go('/keys') },
         { id: 'p-friends', group: 'Pages', label: 'Friends', icon: 'users', run: go('/friends') },
         { id: 'p-ext', group: 'Pages', label: 'Extensions', icon: 'puzzle', run: go('/extensions') },

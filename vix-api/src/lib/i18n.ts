@@ -2,6 +2,7 @@
 
 const en = {
   'nav.dashboard': 'Dashboard',
+  'nav.ai': 'AI Studio',
   'nav.keys': 'API Keys',
   'nav.friends': 'Friends',
   'nav.extensions': 'Extensions',
@@ -123,6 +124,7 @@ export type I18nKey = keyof typeof en
 type Dict = Partial<Record<I18nKey, string>>
 
 const es: Dict = {
+  'nav.ai': 'Estudio de IA',
   'nav.dashboard': 'Panel', 'nav.keys': 'Claves API', 'nav.friends': 'Amigos', 'nav.extensions': 'Extensiones', 'nav.docs': 'Guías y documentación', 'nav.settings': 'Ajustes', 'nav.signout': 'Cerrar sesión', 'nav.skip': 'Saltar al contenido', 'nav.menu': 'Menú', 'nav.search': 'Buscar o ejecutar un comando',
   'landing.tagline': 'Crea APIs en cualquier lenguaje. Mantenlas en línea para siempre.',
   'landing.sub': 'Escribe endpoints en JavaScript, Python, Rust, Batch, Java, C# y más de 50 lenguajes, pruébalos en un sandbox integrado y conéctalos a agentes de IA, Unity, Unreal, Godot, Roblox y cualquier motor.',
@@ -143,6 +145,7 @@ const es: Dict = {
 }
 
 const fr: Dict = {
+  'nav.ai': 'Studio IA',
   'nav.dashboard': 'Tableau de bord', 'nav.keys': 'Clés API', 'nav.friends': 'Amis', 'nav.extensions': 'Extensions', 'nav.docs': 'Guides et docs', 'nav.settings': 'Paramètres', 'nav.signout': 'Se déconnecter', 'nav.skip': 'Aller au contenu', 'nav.menu': 'Menu', 'nav.search': 'Rechercher ou lancer une commande',
   'landing.tagline': "Créez des API dans n'importe quel langage. Gardez-les en ligne pour toujours.",
   'landing.sub': 'Écrivez des endpoints en JavaScript, Python, Rust, Batch, Java, C# et plus de 50 langages, testez-les dans un bac à sable intégré et branchez-les sur des agents IA, Unity, Unreal, Godot, Roblox et tous les moteurs.',
@@ -162,6 +165,7 @@ const fr: Dict = {
 }
 
 const de: Dict = {
+  'nav.ai': 'KI-Studio',
   'nav.dashboard': 'Übersicht', 'nav.keys': 'API-Schlüssel', 'nav.friends': 'Freunde', 'nav.extensions': 'Erweiterungen', 'nav.docs': 'Anleitungen & Doku', 'nav.settings': 'Einstellungen', 'nav.signout': 'Abmelden', 'nav.skip': 'Zum Inhalt springen', 'nav.menu': 'Menü', 'nav.search': 'Suchen oder Befehl ausführen',
   'landing.tagline': 'Baue APIs in jeder Sprache. Für immer online.',
   'landing.sub': 'Schreibe Endpunkte in JavaScript, Python, Rust, Batch, Java, C# und über 50 weiteren Sprachen, teste sie in der eingebauten Sandbox und verbinde sie mit KI-Agenten, Unity, Unreal, Godot, Roblox und jeder Engine.',
@@ -181,6 +185,7 @@ const de: Dict = {
 }
 
 const pt: Dict = {
+  'nav.ai': 'Estúdio de IA',
   'nav.dashboard': 'Painel', 'nav.keys': 'Chaves de API', 'nav.friends': 'Amigos', 'nav.extensions': 'Extensões', 'nav.docs': 'Guias e docs', 'nav.settings': 'Configurações', 'nav.signout': 'Sair', 'nav.skip': 'Pular para o conteúdo', 'nav.search': 'Pesquisar ou executar um comando',
   'landing.tagline': 'Crie APIs em qualquer linguagem. Mantenha-as online para sempre.',
   'landing.sub': 'Escreva endpoints em JavaScript, Python, Rust, Batch, Java, C# e mais de 50 linguagens, teste-os em um sandbox integrado e conecte-os a agentes de IA, Unity, Unreal, Godot, Roblox e qualquer engine.',
@@ -195,6 +200,7 @@ const pt: Dict = {
 }
 
 const it: Dict = {
+  'nav.ai': 'Studio IA',
   'nav.dashboard': 'Dashboard', 'nav.keys': 'Chiavi API', 'nav.friends': 'Amici', 'nav.extensions': 'Estensioni', 'nav.docs': 'Guide e documentazione', 'nav.settings': 'Impostazioni', 'nav.signout': 'Esci', 'nav.skip': 'Vai al contenuto',
   'landing.tagline': 'Crea API in qualsiasi linguaggio. Online per sempre.',
   'landing.start': 'Crea un account gratuito', 'landing.signin': 'Ho già un account',
@@ -205,6 +211,7 @@ const it: Dict = {
 }
 
 const ru: Dict = {
+  'nav.ai': 'Студия ИИ',
   'nav.dashboard': 'Панель', 'nav.keys': 'API-ключи', 'nav.friends': 'Друзья', 'nav.extensions': 'Расширения', 'nav.docs': 'Руководства', 'nav.settings': 'Настройки', 'nav.signout': 'Выйти', 'nav.skip': 'Перейти к содержимому', 'nav.search': 'Поиск или команда',
   'landing.tagline': 'Создавайте API на любом языке. Они работают всегда.',
   'landing.sub': 'Пишите эндпоинты на JavaScript, Python, Rust, Batch, Java, C# и ещё 50+ языках, тестируйте во встроенной песочнице и подключайте к ИИ-агентам, Unity, Unreal, Godot, Roblox и любым движкам.',
@@ -219,6 +226,7 @@ const ru: Dict = {
 }
 
 const ar: Dict = {
+  'nav.ai': 'استوديو الذكاء الاصطناعي',
   'nav.dashboard': 'لوحة التحكم', 'nav.keys': 'مفاتيح API', 'nav.friends': 'الأصدقاء', 'nav.extensions': 'الإضافات', 'nav.docs': 'الأدلة والتوثيق', 'nav.settings': 'الإعدادات', 'nav.signout': 'تسجيل الخروج', 'nav.skip': 'انتقل إلى المحتوى',
   'landing.tagline': 'أنشئ واجهات API بأي لغة. واجعلها متصلة دائمًا.',
   'landing.start': 'أنشئ حسابًا مجانيًا', 'landing.signin': 'لدي حساب بالفعل',
@@ -230,6 +238,7 @@ const ar: Dict = {
 }
 
 const hi: Dict = {
+  'nav.ai': 'एआई स्टूडियो',
   'nav.dashboard': 'डैशबोर्ड', 'nav.keys': 'API कुंजियाँ', 'nav.friends': 'दोस्त', 'nav.extensions': 'एक्सटेंशन', 'nav.docs': 'गाइड और डॉक्स', 'nav.settings': 'सेटिंग्स', 'nav.signout': 'साइन आउट', 'nav.skip': 'मुख्य सामग्री पर जाएँ',
   'landing.tagline': 'किसी भी भाषा में API बनाएँ। उन्हें हमेशा ऑनलाइन रखें।',
   'landing.start': 'मुफ़्त खाता बनाएँ', 'landing.signin': 'मेरा पहले से खाता है',
@@ -240,6 +249,7 @@ const hi: Dict = {
 }
 
 const ja: Dict = {
+  'nav.ai': 'AIスタジオ',
   'nav.dashboard': 'ダッシュボード', 'nav.keys': 'APIキー', 'nav.friends': 'フレンド', 'nav.extensions': '拡張機能', 'nav.docs': 'ガイドとドキュメント', 'nav.settings': '設定', 'nav.signout': 'サインアウト', 'nav.skip': 'メインコンテンツへ移動', 'nav.search': '検索またはコマンド実行',
   'landing.tagline': 'どんな言語でもAPIを作成。ずっとオンライン。',
   'landing.sub': 'JavaScript、Python、Rust、Batch、Java、C# など50以上の言語でエンドポイントを書き、内蔵サンドボックスでテストし、AIエージェントやUnity、Unreal、Godot、Robloxにつなげましょう。',
@@ -254,6 +264,7 @@ const ja: Dict = {
 }
 
 const ko: Dict = {
+  'nav.ai': 'AI 스튜디오',
   'nav.dashboard': '대시보드', 'nav.keys': 'API 키', 'nav.friends': '친구', 'nav.extensions': '확장 기능', 'nav.docs': '가이드 및 문서', 'nav.settings': '설정', 'nav.signout': '로그아웃', 'nav.skip': '본문으로 건너뛰기',
   'landing.tagline': '어떤 언어로든 API를 만들고 항상 온라인으로 유지하세요.',
   'landing.start': '무료 계정 만들기', 'landing.signin': '이미 계정이 있어요',
@@ -264,6 +275,7 @@ const ko: Dict = {
 }
 
 const zh: Dict = {
+  'nav.ai': 'AI 工作室',
   'nav.dashboard': '控制台', 'nav.keys': 'API 密钥', 'nav.friends': '好友', 'nav.extensions': '扩展', 'nav.docs': '指南与文档', 'nav.settings': '设置', 'nav.signout': '退出登录', 'nav.skip': '跳到主要内容', 'nav.search': '搜索或运行命令',
   'landing.tagline': '用任何语言构建 API，让它永远在线。',
   'landing.sub': '使用 JavaScript、Python、Rust、Batch、Java、C# 等 50 多种语言编写接口，在内置沙盒中测试，并接入 AI 智能体、Unity、Unreal、Godot、Roblox 等任何引擎。',

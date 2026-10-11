@@ -15,10 +15,15 @@ const Friends = lazy(() => import('./pages/Friends').then((m) => ({ default: m.F
 const ExtensionsPage = lazy(() => import('./pages/Extensions').then((m) => ({ default: m.ExtensionsPage })))
 const Docs = lazy(() => import('./pages/Docs').then((m) => ({ default: m.Docs })))
 const SettingsPage = lazy(() => import('./pages/Settings').then((m) => ({ default: m.SettingsPage })))
+const AiPages = () => import('./pages/Ai')
+const AiHome = lazy(() => AiPages().then((m) => ({ default: m.AiHome })))
+const AiStudio = lazy(() => AiPages().then((m) => ({ default: m.AiStudio })))
+const AiByName = lazy(() => AiPages().then((m) => ({ default: m.AiByName })))
 const Profile = lazy(() => import('./pages/Profile').then((m) => ({ default: m.Profile })))
 
 const NAV = [
   { href: '/dashboard', icon: 'home', key: 'nav.dashboard' as const },
+  { href: '/ai', icon: 'bot', key: 'nav.ai' as const },
   { href: '/keys', icon: 'key', key: 'nav.keys' as const },
   { href: '/friends', icon: 'users', key: 'nav.friends' as const },
   { href: '/extensions', icon: 'puzzle', key: 'nav.extensions' as const },
@@ -77,6 +82,11 @@ export function App() {
     if (path === '/dashboard') return <Dashboard />
     let m = match('/p/:id/:tab?', path)
     if (m) return <Workspace id={m.id} tab={m.tab} />
+    if (path === '/ai') return <AiHome />
+    m = match('/ai/u/:username/:slug', path)
+    if (m) return <AiByName username={m.username} slug={m.slug} />
+    m = match('/ai/:id/:tab?', path)
+    if (m) return <AiStudio id={m.id} tab={m.tab} />
     if (path === '/keys') return <Keys />
     if (path === '/friends') return <Friends />
     if (path === '/extensions') return <ExtensionsPage />
@@ -186,7 +196,7 @@ function NotFound() {
 const SHORTCUTS: [string[], string][] = [
   [['Ctrl', 'K'], 'Open the command palette (search pages, APIs, files and actions)'],
   [['?'], 'Show this list'],
-  [['Alt', '1-6'], 'Jump to Dashboard, Keys, Friends, Extensions, Guides, Settings'],
+  [['Alt', '1-7'], 'Jump to Dashboard, AI Studio, Keys, Friends, Extensions, Guides, Settings'],
   [['Ctrl', 'S'], 'Save the current file'],
   [['Ctrl', 'Shift', 'S'], 'Save all files'],
   [['Ctrl', 'Enter'], 'Run the current file in the sandbox'],

@@ -22,6 +22,30 @@ Build APIs in any language, test them in a built-in sandbox, and keep them onlin
   - 12 interface languages, including right-to-left Arabic.
   - Every page and theme passes an automated axe-core WCAG 2.1 AA audit.
 
+## AI Studio: make your own AI
+
+Open **AI Studio** in the sidebar to build a chat AI that is yours:
+
+- **Brain**
+  - *On each person's device (free):* open models run in the browser with WebGPU via [WebLLM](https://github.com/mlc-ai/web-llm). The options are Qwen 3.5 9B (the smartest one that fits in a browser, needs about 6.5 GB of GPU memory), Qwen 3 8B, Llama 3.1 8B, DeepSeek R1 7B, Qwen 2.5 Coder 7B, Mistral 7B, and smaller models for laptops and phones. The model downloads once, then runs privately with no API key.
+  - *Cloud:* any OpenAI-compatible provider (Groq, OpenRouter, Together, your own Ollama). This mode lets games, bots and apps call your AI.
+- **Personality:** name, avatar, tagline, instructions and greeting.
+- **Knowledge and training**
+  - Upload documents. The AI searches them before answering (keyword search).
+  - Add example answers, or let your own 👍 teach it.
+  - Export a `.jsonl` dataset for real fine-tuning.
+- **Rules and safety**
+  - Presets: Kids, Standard, Relaxed.
+  - Blocked words (catches tricks like `sp0iler`) and blocked topics.
+  - "Only talk about…", your own rules, and a custom refusal message.
+  - Message length limit and per-person daily limits.
+  - An optional AI double-check of every message, plus an always-on safety floor.
+  - A log of blocked attempts, with one-click blocking of the person.
+- **Access:** only you, your friends, or anyone with the link. You can block specific users.
+- **Use in apps:** an OpenAI-compatible endpoint at `/api/ai/v1/chat/completions`. Set `model` to `"<username>/<ai>"` and use a Vix API key. Cloud brains only.
+
+Note: Vercel servers have no GPU, so no model runs on Vercel itself. Browser brains run on the visitor's graphics card. Cloud brains call the provider you choose.
+
 ## How it works
 
 ```

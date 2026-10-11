@@ -13,6 +13,7 @@ import { makeHost, apiEnv } from './_lib/runtime.js'
 import { LANGUAGES, languageForPath } from '../shared/languages.js'
 import { EXTENSIONS, extensionById, defaultApiExtensions } from '../shared/extensions.js'
 import { TEMPLATES, templateById } from '../shared/templates.js'
+import { registerAiRoutes, STREAMED } from './_lib/aiRoutes.js'
 
 const routes = []
 const route = (method, pattern, fn) => routes.push({ method, pattern, fn })
@@ -786,6 +787,8 @@ route('POST', '/exec', async (req) => {
   return { language: lang.id, ...result }
 })
 
+registerAiRoutes(route)
+
 // ----------------------------------------------------------------- server ---
 
 export default async function handler(req, res) {
@@ -810,7 +813,8 @@ export default async function handler(req, res) {
       if (!params) continue
       methodMatched = true
       if (r.method !== req.method) continue
-      const out = await r.fn(req, params, url)
+      const out = await r.fn(req, params, url, res)
+      if (out === STREAMED) return
       if (out && typeof out === 'object' && 'status' in out && 'body' in out && Object.keys(out).length === 2) return send(res, out.status, out.body)
       return send(res, 200, out)
     }

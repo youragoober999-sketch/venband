@@ -10,6 +10,7 @@ export default defineConfig({
       '/v1': process.env.VIX_API_ORIGIN || 'http://localhost:3000',
     },
   },
+  worker: { format: 'es' },
   build: {
     chunkSizeWarningLimit: 1500,
   },

@@ -156,6 +156,61 @@ create table if not exists public.vix_rate (
   hits int not null default 0
 );
 
+-- ---- Vix AI ----
+create table if not exists public.vix_ais (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.vix_users(id) on delete cascade,
+  slug text not null check (slug ~ '^[a-z0-9][a-z0-9-]{0,47}$'),
+  name text not null,
+  avatar text not null default '🤖',
+  tagline text not null default '',
+  persona text not null default '' check (length(persona) <= 20000),
+  greeting text not null default '',
+  engine text not null default 'browser' check (engine in ('browser', 'cloud')),
+  model text not null default '',
+  cloud jsonb not null default '{}'::jsonb,
+  cloud_key text not null default '',
+  rules jsonb not null default '{}'::jsonb,
+  settings jsonb not null default '{}'::jsonb,
+  examples jsonb not null default '[]'::jsonb,
+  access text not null default 'private' check (access in ('private', 'friends', 'public')),
+  blocked_users text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (owner_id, slug)
+);
+
+create table if not exists public.vix_ai_docs (
+  id uuid primary key default gen_random_uuid(),
+  ai_id uuid not null references public.vix_ais(id) on delete cascade,
+  title text not null,
+  content text not null check (length(content) <= 300000),
+  created_at timestamptz not null default now()
+);
+create index if not exists vix_ai_docs_ai on public.vix_ai_docs(ai_id);
+
+create table if not exists public.vix_ai_chats (
+  id uuid primary key default gen_random_uuid(),
+  ai_id uuid not null references public.vix_ais(id) on delete cascade,
+  user_id uuid not null references public.vix_users(id) on delete cascade,
+  title text not null default 'New chat',
+  messages jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists vix_ai_chats_user on public.vix_ai_chats(ai_id, user_id, updated_at desc);
+
+create table if not exists public.vix_ai_events (
+  id bigint generated always as identity primary key,
+  ai_id uuid not null references public.vix_ais(id) on delete cascade,
+  user_id uuid references public.vix_users(id) on delete set null,
+  kind text not null,
+  detail text not null default '',
+  message text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists vix_ai_events_ai on public.vix_ai_events(ai_id, created_at desc);
+
 -- Atomic fixed-window rate limiter. Returns true while the bucket is under the limit.
 create or replace function public.vix_hit(p_bucket text, p_limit int, p_window_seconds int)
 returns boolean
@@ -198,6 +253,7 @@ begin
   delete from vix_cache where expires_at < now();
   delete from vix_rate where window_start < now() - interval '1 day';
   delete from vix_logs where created_at < now() - interval '14 days';
+  delete from vix_ai_events where created_at < now() - interval '60 days';
   delete from vix_logs l using (
     select id from (
       select id, row_number() over (partition by api_id order by created_at desc) as rn from vix_logs
@@ -210,7 +266,7 @@ $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['vix_users','vix_sessions','vix_friends','vix_apis','vix_api_members','vix_files','vix_endpoints','vix_keys','vix_logs','vix_kv','vix_versions','vix_cache','vix_rate'] loop
+  foreach t in array array['vix_users','vix_sessions','vix_friends','vix_apis','vix_api_members','vix_files','vix_endpoints','vix_keys','vix_logs','vix_kv','vix_versions','vix_cache','vix_rate','vix_ais','vix_ai_docs','vix_ai_chats','vix_ai_events'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on public.%I from anon, authenticated', t);
     execute format('grant all on public.%I to service_role', t);
