@@ -15,7 +15,10 @@ import { DownloadPage } from './components/Download';
 import { VooglePage } from './components/Voogle';
 import { DialogHost } from './components/Dialogs';
 import { handleSteamRedirect } from './lib/connections';
-import { openSettings } from './lib/ui';
+import { isAppShell, openSettings } from './lib/ui';
+
+/** set once this page load showed a login / unlock screen */
+let signedInThisVisit = false;
 
 export default function App() {
   const status = sessionStore.use((s) => s.status);
@@ -43,9 +46,11 @@ export default function App() {
   if (!configured) return <NotConfigured />;
   // invite links work signed in or out
   if (route.kind === 'invite' && (status === 'signed-out' || (status === 'ready' && hasProfile && !needsOnboarding))) return <InvitePage code={route.code} />;
-  // venband.com shows the landing page even when you're signed in; open the
-  // app from the "Open Venband" button instead of landing straight in your DMs.
-  if (route.kind === 'root' && status === 'ready' && hasProfile) {
+  // Someone who just logged in (or confirmed their email) goes into the app.
+  if (status !== 'ready' && status !== 'loading') signedInThisVisit = true;
+  // venband.com shows the landing page when you visit it already signed in;
+  // the apps and fresh logins open straight into Venband.
+  if (route.kind === 'root' && status === 'ready' && hasProfile && !isAppShell() && !signedInThisVisit) {
     return <Landing onOpenApp={() => go('channels/@me')} onLogin={() => go('sign-in')} onSignup={() => go('register')} />;
   }
   switch (status) {

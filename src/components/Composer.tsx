@@ -330,12 +330,28 @@ export function Composer({
       all = [{ id: crypto.randomUUID(), file: new File([t], 'message.txt', { type: 'text/plain' }), spoiler: false, alt: '' }, ...all];
       t = '';
     }
-    setBusy(true);
+    // Text-only messages clear the box straight away (it comes back if sending
+    // fails), so you can keep typing; uploads keep the box busy until done.
+    const instant = !all.length && !opts.scheduleAt;
+    if (instant) {
+      setText('');
+      tokens.current = new Map();
+      try {
+        localStorage.removeItem(draftKey(channelId));
+      } catch {
+        /* ignore */
+      }
+    } else setBusy(true);
     setError(null);
     setNotice(null);
     try {
       setUpload(all.length ? 0 : null);
-      await onSend(t, all, { ...opts, onProgress: all.length ? setUpload : undefined });
+      try {
+        await onSend(t, all, { ...opts, onProgress: all.length ? setUpload : undefined });
+      } catch (e) {
+        if (instant) setText((now) => (now ? now : raw));
+        throw e;
+      }
       for (const e of emojiIn(t)) noteEmojiUse(e);
       if (opts.scheduleAt) setNotice(`Scheduled for ${new Date(opts.scheduleAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}${opts.repeat ? `, repeating every ${opts.repeat.every} (${opts.repeat.times}×)` : ''}.`);
       if (raw === text) {
@@ -753,15 +769,34 @@ function renderMistakes(text: string, mistakes: { start: number; end: number }[]
 
 // Live formatting inside the message box (Discord-style): only text-styling
 // tokens are transformed so the overlay stays aligned with the textarea.
-const PREVIEW_TOKENS: { re: RegExp; wrap: (m: RegExpExecArray, inner: ReactNode) => ReactNode }[] = [
-  { re: /`([^`\n]+)`/, wrap: (_m, inner) => <code className="md-code">{inner}</code> },
-  { re: /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)/, wrap: (_m, inner) => inner },
-  { re: /\|\|([\s\S]+?)\|\|/, wrap: (_m, inner) => inner },
-  { re: /\*\*\*([\s\S]+?)\*\*\*/, wrap: (m, inner) => <>{m[0].slice(0, 3)}<strong><em>{inner}</em></strong>{m[0].slice(-3)}</> },
-  { re: /\*\*([\s\S]+?)\*\*/, wrap: (m, inner) => <>{m[0].slice(0, 2)}<strong>{inner}</strong>{m[0].slice(-2)}</> },
-  { re: /__([\s\S]+?)__/, wrap: (_m, inner) => <u>{inner}</u> },
-  { re: /\*([^*\s][\s\S]*?)\*|\b_([^_\s][\s\S]*?)_\b/, wrap: (_m, inner) => <em>{inner}</em> },
-  { re: /~~([\s\S]+?)~~/, wrap: (_m, inner) => <s>{inner}</s> },
+// Live formatting behind the message box. The text box itself is see-through,
+// so this layer must keep EVERY character (the ** and __ markers are shown
+// dimmed, never removed) and only use styles that don't change letter widths:
+// otherwise the caret, selection and spell-check lines drift out of place.
+// Bold is a thin outline instead of a heavier weight, italics are slanted
+// (Inter ships no italic face, so the slant keeps widths), code keeps the
+// normal font with a tint.
+const mark = (s: string) => <span className="mdp-mark">{s}</span>;
+
+type PreviewToken = { re: RegExp; wrap: (m: RegExpExecArray, parse: (t: string) => ReactNode[]) => ReactNode };
+const PREVIEW_TOKENS: PreviewToken[] = [
+  { re: /`([^`\n]+)`/, wrap: (m) => <>{mark('`')}<span className="mdp-code">{m[1]}</span>{mark('`')}</> },
+  {
+    re: /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)/,
+    wrap: (m, parse) => <>{mark('[')}<span className="mdp-link">{parse(m[1])}</span>{mark('](')}<span className="mdp-url">{m[2]}</span>{mark(')')}</>,
+  },
+  { re: /\|\|([\s\S]+?)\|\|/, wrap: (m, parse) => <>{mark('||')}<span className="mdp-spoiler">{parse(m[1])}</span>{mark('||')}</> },
+  { re: /\*\*\*([\s\S]+?)\*\*\*/, wrap: (m, parse) => <>{mark('***')}<span className="mdp-b mdp-i">{parse(m[1])}</span>{mark('***')}</> },
+  { re: /\*\*([\s\S]+?)\*\*/, wrap: (m, parse) => <>{mark('**')}<span className="mdp-b">{parse(m[1])}</span>{mark('**')}</> },
+  { re: /__([\s\S]+?)__/, wrap: (m, parse) => <>{mark('__')}<span className="mdp-u">{parse(m[1])}</span>{mark('__')}</> },
+  {
+    re: /\*([^*\s][\s\S]*?)\*|\b_([^_\s][\s\S]*?)_\b/,
+    wrap: (m, parse) => {
+      const ch = m[0][0];
+      return <>{mark(ch)}<span className="mdp-i">{parse(m[1] ?? m[2])}</span>{mark(ch)}</>;
+    },
+  },
+  { re: /~~([\s\S]+?)~~/, wrap: (m, parse) => <>{mark('~~')}<span className="mdp-s">{parse(m[1])}</span>{mark('~~')}</> },
 ];
 
 function renderPreview(text: string, ns = ''): ReactNode[] {
@@ -769,7 +804,7 @@ function renderPreview(text: string, ns = ''): ReactNode[] {
   let rest = text;
   let n = 0;
   while (rest) {
-    let best: { t: (typeof PREVIEW_TOKENS)[number]; m: RegExpExecArray } | null = null;
+    let best: { t: PreviewToken; m: RegExpExecArray } | null = null;
     for (const t of PREVIEW_TOKENS) {
       const m = t.re.exec(rest);
       if (m && (!best || m.index < best.m.index)) best = { t, m };
@@ -781,9 +816,12 @@ function renderPreview(text: string, ns = ''): ReactNode[] {
     const { t, m } = best;
     if (m.index > 0) out.push(rest.slice(0, m.index));
     const k = `${ns}${n++}`;
-    out.push(<Fragment key={k}>{t.wrap(m, renderPreview(m[1] ?? m[2], `${k}-`))}</Fragment>);
+    let sub = 0;
+    out.push(<Fragment key={k}>{t.wrap(m, (inner) => renderPreview(inner, `${k}-${sub++}-`))}</Fragment>);
     rest = rest.slice(m.index + m[0].length);
   }
+  // a trailing newline needs a character after it to take up a line
+  if (text.endsWith('\n') && !ns) out.push('\u200b');
   return out;
 }
 

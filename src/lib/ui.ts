@@ -46,6 +46,23 @@ export function isAndroid(): boolean {
   return typeof window !== 'undefined' && 'Capacitor' in window && (window as { Capacitor?: { getPlatform: () => string } }).Capacitor?.getPlatform() === 'android';
 }
 
+/**
+ * True in the Venband apps (Windows/macOS/Linux, Android, iOS) and when the
+ * site is installed as an app. They open straight into Venband, never the
+ * marketing page.
+ */
+export function isAppShell(): boolean {
+  if (typeof window === 'undefined') return false;
+  const w = window as { venbandDesktop?: { isDesktop?: boolean }; Capacitor?: { isNativePlatform?: () => boolean } };
+  if (w.venbandDesktop?.isDesktop) return true;
+  if (w.Capacitor?.isNativePlatform?.()) return true;
+  try {
+    return window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: window-controls-overlay)').matches;
+  } catch {
+    return false;
+  }
+}
+
 let platformInit = false;
 /** Tag the document so CSS can give the Android skin slightly denser spacing. */
 export function initPlatform() {

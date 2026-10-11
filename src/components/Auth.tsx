@@ -2,6 +2,9 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { currentPath, go, parseRoute, useRoute } from '../lib/router';
 import { supabase } from '../lib/supabase';
 import { passwordStrength } from '../lib/crypto';
+import { NAME_NOT_ALLOWED, nameIsBlocked } from '../lib/nameFilter';
+import { TERMS_VERSION } from '../lib/legal';
+import { BirthdayPicker, LegalLinks, ageOn, birthDate } from './LegalBits';
 import {
   canUsePasskey,
   completePasswordReset,
@@ -336,38 +339,52 @@ function EmailCode({ email, setMode }: FormProps) {
   );
 }
 
+const PRONOUN_PRESETS = ['he/him', 'she/her', 'they/them', 'he/they', 'she/they', 'any pronouns', 'ask me'];
 function Signup({ email, setEmail, setMode }: FormProps) {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [pronounChoice, setPronounChoice] = useState('');
+  const [customPronouns, setCustomPronouns] = useState('');
+  const [bio, setBio] = useState('');
+  const [birthday, setBirthday] = useState({ y: '', m: '', d: '' });
+  const [agreed, setAgreed] = useState(false);
   const [understood, setUnderstood] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const strength = passwordStrength(password);
   const usernameValid = /^[a-z0-9_.]{2,32}$/.test(username);
+  const usernameBlocked = username !== '' && nameIsBlocked(username);
+  const displayBlocked = displayName !== '' && nameIsBlocked(displayName);
+  const pronouns = pronounChoice === 'custom' ? customPronouns.trim() : pronounChoice;
 
   useEffect(() => {
     setAvailable(null);
-    if (!usernameValid) return;
+    if (!usernameValid || usernameBlocked) return;
     const t = setTimeout(async () => {
       const { data } = await supabase.rpc('username_available', { p_username: username });
       setAvailable(Boolean(data));
     }, 350);
     return () => clearTimeout(t);
-  }, [username, usernameValid]);
+  }, [username, usernameValid, usernameBlocked]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (usernameBlocked || displayBlocked) return setError(NAME_NOT_ALLOWED);
     if (!usernameValid) return setError('Usernames are 2–32 characters: lowercase letters, numbers, _ and .');
     if (available === false) return setError('Someone already has that username.');
+    const born = birthDate(birthday.y, birthday.m, birthday.d);
+    if (!born) return setError('Enter your date of birth.');
+    if (ageOn(born) < 13) return setError('You must be at least 13 years old to use Venband.');
     if (!strength.ok) return setError('Pick a longer password — at least 10 characters. A short sentence works well.');
     if (password !== confirm) return setError('The two passwords don’t match.');
+    if (!agreed) return setError('Please agree to the Terms of Service, Privacy Policy and Community Guidelines.');
     setBusy(true);
     try {
-      await signUp({ email, password, username, displayName });
+      await signUp({ email, password, username, displayName, pronouns, about: bio.trim(), birthDate: born, termsVersion: TERMS_VERSION });
       setMode('verify');
     } catch (err) {
       setError(friendlyError(err));
@@ -376,8 +393,9 @@ function Signup({ email, setEmail, setMode }: FormProps) {
     }
   }
 
-  const usernameHint =
-    username && !usernameValid
+  const usernameHint = usernameBlocked
+    ? NAME_NOT_ALLOWED
+    : username && !usernameValid
       ? 'Lowercase letters, numbers, _ and . only'
       : available === false
         ? 'Taken, try another'
@@ -393,10 +411,10 @@ function Signup({ email, setEmail, setMode }: FormProps) {
         <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
       </Field>
       <div className="row">
-        <Field label="Display name">
+        <Field label="Display name" hint={displayBlocked ? <span className="bad">{NAME_NOT_ALLOWED}</span> : undefined}>
           <input maxLength={32} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Jules" />
         </Field>
-        <Field label="Username" hint={<span className={available === false ? 'bad' : available ? 'good' : ''}>{usernameHint}</span>}>
+        <Field label="Username" hint={<span className={usernameBlocked || available === false ? 'bad' : available ? 'good' : ''}>{usernameHint}</span>}>
           <input
             required
             autoComplete="username"
@@ -406,6 +424,28 @@ function Signup({ email, setEmail, setMode }: FormProps) {
           />
         </Field>
       </div>
+      <Field label="Date of birth" hint="Only used to confirm you’re 13 or older. Nobody else can see it.">
+        <BirthdayPicker value={birthday} onChange={setBirthday} />
+      </Field>
+      <div className="row">
+        <Field label="Pronouns (optional)">
+          <select value={pronounChoice} onChange={(e) => setPronounChoice(e.target.value)}>
+            <option value="">Don’t show</option>
+            {PRONOUN_PRESETS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+            <option value="custom">Something else…</option>
+          </select>
+          {pronounChoice === 'custom' && (
+            <input className="mt-6" maxLength={40} value={customPronouns} onChange={(e) => setCustomPronouns(e.target.value)} placeholder="e.g. xe/xem" />
+          )}
+        </Field>
+      </div>
+      <Field label="Bio (optional)" hint={`${bio.length}/190`}>
+        <textarea rows={2} maxLength={190} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="A little about you" />
+      </Field>
       <Field label="Password" hint={password ? `${strength.label}` : 'At least 10 characters.'}>
         <input type="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         <div className="strength">
@@ -422,8 +462,14 @@ function Signup({ email, setEmail, setMode }: FormProps) {
           <small>It never leaves this device, so nobody can recover it for you.</small>
         </span>
       </label>
+      <label className="checkbox">
+        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} required />
+        <span>
+          I’m 13 or older and I agree to <LegalLinks />.
+        </span>
+      </label>
       {error && <div className="form-error">{error}</div>}
-      <button className="btn primary full" disabled={busy || !understood}>
+      <button className="btn primary full" disabled={busy || !understood || !agreed}>
         {busy ? 'Setting things up…' : 'Create account'}
       </button>
       <p className="switch">

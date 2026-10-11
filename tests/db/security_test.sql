@@ -186,3 +186,48 @@ end $t$;
 select pg_temp.fails_with($$select public.delete_my_account('I want to delete my account', 'nope')$$, 'password');
 
 reset role;
+
+-- 9. blocked names, date of birth and terms at sign-up -------------------------
+reset role;
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-00000000f101', 's1@example.com',
+   '{"username":"newbie","pronouns":"she/her","about":"hi there","birth_date":"2000-02-02","terms_version":"2026-10-11"}'),
+  ('00000000-0000-0000-0000-00000000f102', 's2@example.com', '{"username":"n1gg3r","display_name":"c u n t"}');
+do $t$ begin
+  assert (select pronouns from public.profiles where id = '00000000-0000-0000-0000-00000000f101') = 'she/her';
+  assert (select about from public.profiles where id = '00000000-0000-0000-0000-00000000f101') = 'hi there';
+  assert (select birth_date from public.user_private_info where user_id = '00000000-0000-0000-0000-00000000f101') = '2000-02-02';
+  assert (select username from public.profiles where id = '00000000-0000-0000-0000-00000000f102') ~ '^user', 'blocked name replaced';
+  assert not public.name_is_blocked((select display_name from public.profiles where id = '00000000-0000-0000-0000-00000000f102'));
+end $t$;
+-- under 13: no account
+select pg_temp.fails_with($$insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-00000000f103', 's3@example.com', jsonb_build_object('username', 'kiddo', 'birth_date', (current_date - interval '10 years')::date))$$, '13');
+set role anon;
+do $t$ begin
+  assert not public.username_available('n_i_g_g_a'), 'blocked names are never available';
+  assert public.username_available('totally_fine_name');
+end $t$;
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000f101', false);
+select pg_temp.fails_with($$select public.set_username('f4gg0t')$$, 'that username is not allowed, try again');
+select pg_temp.fails_with($$update public.profiles set display_name = 'Big Cuck' where id = auth.uid()$$, 'not allowed');
+select pg_temp.fails_with($$select public.create_server('cunt club')$$, 'not allowed');
+update public.profiles set display_name = 'Nightingale' where id = auth.uid();
+do $t$ begin
+  assert (public.my_legal_status() ->> 'needs_terms')::boolean = false, 'accepted at sign-up';
+  assert (public.my_legal_status() ->> 'needs_birth_date')::boolean = false;
+end $t$;
+-- nobody reads anyone else's birthday
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000f004', false);
+do $t$ begin
+  assert (select count(*) from public.user_private_info) = 0;
+  assert (public.my_legal_status() ->> 'needs_terms')::boolean, 'older account must accept the terms';
+end $t$;
+select pg_temp.fails_with($$select public.accept_terms(public.current_terms_version(), (current_date - interval '12 years')::date)$$, '13');
+select pg_temp.fails_with($$select public.accept_terms('1999-01-01', '2001-01-01')$$, 'reload');
+select public.accept_terms(public.current_terms_version(), '2001-01-01');
+do $t$ begin
+  assert (public.my_legal_status() ->> 'needs_terms')::boolean = false;
+end $t$;
+reset role;

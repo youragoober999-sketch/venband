@@ -49,6 +49,7 @@ import { CategorySettingsModal, ChannelSettingsModal, CreateChannelModal, Create
 import { ServerSettingsModal } from './ServerSettings';
 import { ContextMenuHost, copyText, openMenu, type Entry } from './ContextMenu';
 import { DialogHost, askConfirm, askText } from './Dialogs';
+import { TermsGate } from './TermsGate';
 import { ProfileHost, ServerTag, openProfile, userMenu } from './People';
 import { Badges, OwnerCrown, RoleIcon, ServerBadge, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
@@ -382,6 +383,7 @@ export function Shell() {
       <SettingsPage />
       <ContextMenuHost />
       <DialogHost />
+      <TermsGate />
     </div>
   );
 }

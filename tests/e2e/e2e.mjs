@@ -48,10 +48,20 @@ async function signupAndVerify(u) {
   const inputs = page.locator('form input');
   await inputs.nth(0).fill(u.email);
   await inputs.nth(1).fill(u.name[0].toUpperCase() + u.name.slice(1));
+  if (u.name === 'alice') {
+    // blocked names get the exact error, instantly
+    await inputs.nth(2).fill('n1gg3r_' + run);
+    await page.getByText('that username is not allowed, try again').first().waitFor();
+    log('✅ blocked usernames are refused with "that username is not allowed, try again"');
+  }
   await inputs.nth(2).fill(`${u.name}_${run}`);
+  await page.getByLabel('Month').selectOption('3');
+  await page.getByLabel('Day').selectOption('14');
+  await page.getByLabel('Year').selectOption('2000');
+  if (u.name === 'alice') await page.locator('form select').nth(3).selectOption('she/her');
   await page.locator('form input[type=password]').nth(0).fill(u.password);
   await page.locator('form input[type=password]').nth(1).fill(u.password);
-  await page.getByRole('checkbox').check();
+  for (const box of await page.getByRole('checkbox').all()) await box.check();
   await page.waitForTimeout(600);
   if (SHOTS && u.name === 'alice') await page.screenshot({ path: `${SHOTS}/1-signup.png` });
   await page.getByRole('button', { name: 'Create account' }).click();
@@ -73,10 +83,10 @@ async function login(u, remember = false) {
     await page.locator('input[type=password]').fill(u.password);
     await page.getByRole('button', { name: 'Continue' }).click();
   } else if (/Welcome back/.test(status)) {
-    await page.locator('input[type=email]').fill(u.email);
+    await page.locator('.auth-card input[autocomplete=username]').fill(u.loginAs ?? u.email);
     await page.locator('input[type=password]').fill(u.password);
     if (remember) await page.getByRole('checkbox').check();
-    await page.locator('.auth-card').getByRole('button', { name: 'Log in' }).click();
+    await page.locator('.auth-card').getByRole('button', { name: 'Log in', exact: true }).click();
   }
   await page.locator('.user-panel, .onboarding').first().waitFor({ timeout: 30000 });
   if (await page.locator('.onboarding').count()) {
@@ -111,6 +121,7 @@ const { execSync: sh } = await import('node:child_process');
 try { sh(`psql ${DB} -Atc "delete from public.signup_ips"`); } catch { /* table may not exist on old schemas */ }
 // earlier runs' test accounts would look like alts of this run's (same browser, same network)
 try { sh(`psql ${DB} -Atc "delete from public.voogle_verifications; delete from public.voogle_signals"`); } catch { /* older schema */ }
+try { sh(`psql ${DB} -Atc "delete from public.platform_bans; delete from public.login_failures"`); } catch { /* older schema */ }
 
 // ---- unverified login is rejected
 await alice.page.goto(APP);
@@ -133,7 +144,7 @@ const hqId = new URL(alice.page.url()).pathname.split('/')[2];
 await alice.page.locator('.composer textarea:not([disabled])').waitFor({ timeout: 20000 });
 await alice.page.locator('.composer textarea').fill('hello bob, this is **encrypted** 🔐');
 await alice.page.keyboard.press('Enter');
-await alice.page.getByText('hello bob, this is').waitFor();
+await alice.page.locator('.message-text', { hasText: 'hello bob, this is' }).first().waitFor();
 log('alice sent a message');
 
 // ---- invite
@@ -160,7 +171,7 @@ await alice.page.locator('.system-message', { hasText: 'Bob' }).waitFor({ timeou
 log('✅ join message shown in #welcome');
 await alice.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
 await bob.page.locator('.channel .channel-name').getByText('chat', { exact: true }).click();
-await bob.page.getByText('hello bob, this is').waitFor({ timeout: 30000 });
+await bob.page.locator('.message-text', { hasText: 'hello bob, this is' }).first().waitFor({ timeout: 30000 });
 log('✅ bob decrypted alice message (key was distributed E2E)');
 await bob.page.locator('.message-text strong', { hasText: 'encrypted' }).waitFor();
 log('✅ markdown **bold** renders');
@@ -446,7 +457,7 @@ await bob.page.locator('.rail-item.home').click();
 await bob.page.evaluate(() => { history.replaceState(null, '', location.pathname); });
 // bob also has a second tab open (same login)
 const bobTab2 = await bob.ctx.newPage();
-await bobTab2.goto(APP);
+await bobTab2.goto(APP + 'channels/@me');
 await bobTab2.locator('.user-panel').waitFor({ timeout: 30000 });
 const ringing = (p) => p.evaluate(() => document.documentElement.dataset.ringing || '');
 await alice.page.locator('.chat-header').getByRole('button', { name: /Call/ }).click();
@@ -916,12 +927,13 @@ await alice.page.goto(APP + 'bots');
 await alice.page.locator('.preset-card', { hasText: 'Server management' }).click();
 await alice.page.locator('.create-app input').fill('HQ Helper');
 await alice.page.getByRole('button', { name: 'Create bot' }).click();
-await alice.page.locator('.app-dash-head h1', { hasText: 'HQ Helper' }).waitFor({ timeout: 15000 });
+await alice.page.locator('.dash-side-bot', { hasText: 'HQ Helper' }).waitFor({ timeout: 15000 });
 if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/22-bot-dashboard.png` });
+await alice.page.locator('.dash-nav button', { hasText: 'Manage Servers' }).click();
 await alice.page.getByLabel('Server invite').fill(invite2);
 await alice.page.getByRole('button', { name: 'Add bot' }).click();
 await alice.page.locator('.form-notice', { hasText: 'joined the server' }).waitFor({ timeout: 15000 });
-await alice.page.locator('.app-dash .tabs button', { hasText: 'Token' }).click();
+await alice.page.locator('.dash-nav button', { hasText: 'Token' }).click();
 await alice.page.getByRole('button', { name: 'Make a token' }).click();
 const botToken = await alice.page.getByLabel('Bot token').inputValue();
 if (!/^vb_[0-9a-f]{32}_/.test(botToken)) throw new Error('unexpected token ' + botToken.slice(0, 12));
@@ -953,6 +965,7 @@ await alice.page.goto(APP + 'bots');
 await alice.page.locator('.preset-card', { hasText: 'Connect a site' }).click();
 await alice.page.locator('.create-app input').fill('Shop Feed');
 await alice.page.getByRole('button', { name: 'Create bot' }).click();
+await alice.page.locator('.dash-nav button', { hasText: 'Manage Servers' }).click();
 await alice.page.getByLabel('Server invite').fill(invite2);
 await alice.page.getByRole('button', { name: 'Add bot' }).click();
 await alice.page.locator('.form-notice', { hasText: 'joined the server' }).waitFor({ timeout: 15000 });
@@ -1097,9 +1110,9 @@ await alice.page.locator('.pill.active', { hasText: 'On' }).waitFor({ timeout: 1
 await alice.page.locator('.sp-tab', { hasText: 'My Account' }).click();
 await alice.page.getByRole('button', { name: /Log Out/i }).click();
 await alice.page.getByText('Welcome back').waitFor({ timeout: 20000 });
-await alice.page.locator('input[type=email]').fill(alice.email);
+await alice.page.locator('.auth-card input[autocomplete=username]').fill(alice.email);
 await alice.page.locator('input[type=password]').fill(alice.password);
-await alice.page.locator('.auth-card').getByRole('button', { name: 'Log in' }).click();
+await alice.page.locator('.auth-card').getByRole('button', { name: 'Log in', exact: true }).click();
 await alice.page.getByText('Two-factor check').waitFor({ timeout: 20000 });
 if (SHOTS) await alice.page.screenshot({ path: `${SHOTS}/33-two-factor.png` });
 await alice.page.getByLabel('Authenticator code').fill(totp(secret, 1));
@@ -1251,11 +1264,21 @@ log('✅ phone layout: slide-in channel list and member list, settings fit');
 await alice.page.locator('.user-panel [title="User settings"]').click();
 await alice.page.getByRole('button', { name: /Log Out/i }).click();
 await alice.page.getByText('Welcome back').waitFor({ timeout: 20000 });
-await alice.page.locator('input[type=email]').fill(alice.email);
+// by username this time: the username login was set up after her email logins
+await alice.page.locator('.auth-card input[autocomplete=username]').fill(`alice_${run}`);
+await alice.page.locator('input[type=password]').fill('wrong-password-123');
+await alice.page.locator('.auth-card').getByRole('button', { name: 'Log in', exact: true }).click();
+await alice.page.getByText('That username and password don’t match').waitFor({ timeout: 30000 });
 await alice.page.locator('input[type=password]').fill(alice.password);
 await alice.page.getByRole('checkbox').uncheck();
-await alice.page.locator('.auth-card').getByRole('button', { name: 'Log in' }).click();
+await alice.page.locator('.auth-card').getByRole('button', { name: 'Log in', exact: true }).click();
+await alice.page.locator('.user-panel, .auth-card :text("Two-factor check")').first().waitFor({ timeout: 30000 });
+if (await alice.page.getByText('Two-factor check').count()) {
+  await alice.page.getByLabel('Authenticator code').fill(totp(secret));
+  await alice.page.locator('.auth-card').getByRole('button', { name: 'Continue' }).click();
+}
 await alice.page.locator('.user-panel').waitFor({ timeout: 30000 });
+log('✅ logging in by username works, and a wrong password is refused');
 await alice.page.reload();
 await alice.page.getByText('Enter your password').waitFor({ timeout: 20000 });
 await login(alice);
@@ -1264,9 +1287,9 @@ log('✅ logout / login / password-on-refresh all work');
 // ---- wrong password gives a clear message
 await bob.page.locator('.user-panel [title="User settings"]').click();
 await bob.page.getByRole('button', { name: /Log Out/i }).click();
-await bob.page.locator('input[type=email]').fill(bob.email);
+await bob.page.locator('.auth-card input[autocomplete=username]').fill(bob.email);
 await bob.page.locator('input[type=password]').fill('not-the-password-123');
-await bob.page.locator('.auth-card').getByRole('button', { name: 'Log in' }).click();
+await bob.page.locator('.auth-card').getByRole('button', { name: 'Log in', exact: true }).click();
 await bob.page.getByText('don’t match an account').waitFor({ timeout: 30000 });
 log('✅ wrong password shows a friendly error');
 if (SHOTS) await bob.page.screenshot({ path: `${SHOTS}/0-login-error.png` });

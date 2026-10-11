@@ -1670,7 +1670,19 @@ button.edited:hover { text-decoration: underline; color: var(--text-2); }
 .composer-input textarea { position: relative; z-index: 2; width: 100%; color: transparent; caret-color: var(--text); font-variant-ligatures: none; }
 .composer-input.composing textarea { color: var(--text); }
 .composer-input.composing .md-backdrop { display: none; }
-.md-backdrop { position: absolute; inset: 0; padding: 9px 2px; white-space: pre-wrap; overflow-wrap: break-word; overflow: hidden; pointer-events: none; font: inherit; line-height: inherit; z-index: 0; letter-spacing: normal; word-spacing: normal; font-variant-ligatures: none; }
+.md-backdrop { position: absolute; inset: 0; padding: 9px 2px; white-space: pre-wrap; overflow-wrap: break-word; overflow: hidden; pointer-events: none; font: inherit; line-height: inherit; z-index: 0; letter-spacing: normal; word-spacing: normal; font-variant-ligatures: none; color: var(--text); }
+/* the text box and both layers must wrap at exactly the same width: no scrollbar in the box */
+.composer-input textarea { scrollbar-width: none; }
+.composer-input textarea::-webkit-scrollbar { display: none; }
+/* width-neutral formatting (see renderPreview) */
+.mdp-mark { color: var(--muted); opacity: .75; }
+.mdp-b { -webkit-text-stroke: .045em currentColor; paint-order: stroke fill; }
+.mdp-i { font-style: italic; font-synthesis: style; }
+.mdp-u { text-decoration: underline; text-underline-offset: 2px; }
+.mdp-s { text-decoration: line-through; }
+.mdp-code { background: color-mix(in srgb, var(--text) 12%, transparent); border-radius: 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.mdp-spoiler { background: color-mix(in srgb, var(--text) 16%, transparent); border-radius: 3px; }
+.mdp-link, .mdp-url { color: var(--accent); }
 .spell-backdrop { position: absolute; inset: 0; padding: 9px 2px; white-space: pre-wrap; overflow-wrap: break-word; overflow: hidden; color: transparent; pointer-events: none; font: inherit; line-height: inherit; z-index: 1; }
 .spell-wrong { text-decoration: underline wavy var(--danger); text-decoration-skip-ink: none; text-underline-offset: 3px; }
 .send-btn { color: var(--muted); }
@@ -2511,3 +2523,11 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 [data-platform='android'] .status-bubble { font-size: 12px; margin-top: 6px; }
 [data-platform='android'] .activity-card { padding: 10px; }
 [data-platform='android'] .nameplate-row .avatar, [data-platform='android'] .avatar { font-size: 12px; }
+
+/* ---- sign-up: birthday pickers, motto */
+.birthday-row { display: grid; grid-template-columns: 1.4fr 0.8fr 1fr; gap: 8px; }
+.birthday-row select { width: 100%; }
+.mt-6 { margin-top: 6px; }
+.motto { font-weight: 650; letter-spacing: -0.01em; background: linear-gradient(90deg, var(--text), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; margin: 6px 0 14px; }
+.public-doc .motto { font-size: 1.05rem; }
+.terms-gate .checkbox { margin: 12px 0; }

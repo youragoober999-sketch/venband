@@ -16,6 +16,7 @@ import type { AvatarFrame, NameEffect, NameFont, PresenceStatus, Profile, Server
 import { Avatar, ColorPicker, Field, Icon, nameplateVars, StyledName } from './ui';
 import { ImageCropper } from './ImageCropper';
 import { askText } from './Dialogs';
+import { NAME_NOT_ALLOWED, nameIsBlocked } from '../lib/nameFilter';
 import { Select } from './Select';
 import { go } from '../lib/router';
 import { VERSION } from '../lib/version';
@@ -558,6 +559,7 @@ function ProfileTab() {
     setMsg(null);
     try {
       const newName = usernameDraft?.trim().toLowerCase();
+      if ((newName && nameIsBlocked(newName)) || (draft.display_name && nameIsBlocked(draft.display_name))) throw new Error(NAME_NOT_ALLOWED);
       if (newName && newName !== me.username) {
         const { error } = await supabase.rpc('set_username', { p_username: newName });
         if (error) throw error;

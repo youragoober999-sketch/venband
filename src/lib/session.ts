@@ -227,6 +227,9 @@ async function onSession(session: Session | null) {
 export function friendlyError(e: unknown): string {
   const msg = errorMessage(e);
   if (/user is banned|banned/i.test(msg)) return 'This account has been banned from Venband.';
+  if (/not allowed, try again/i.test(msg)) return 'that username is not allowed, try again';
+  if (/at least 13/i.test(msg)) return 'You must be at least 13 years old to use Venband.';
+  if (/database error saving new user/i.test(msg)) return 'That account couldn’t be made. Check your username and date of birth, then try again.';
   if (/too many accounts/i.test(msg)) return 'Too many accounts have been created from your network. Use an existing account instead.';
   if (/invalid login credentials/i.test(msg))
     return 'That email and password don’t match an account. Check for typos, or make a new account.';
@@ -295,14 +298,31 @@ export function initSession() {
 
 // ---------------------------------------------------------------- actions --
 
-export async function signUp(input: { email: string; password: string; username: string; displayName: string }) {
+export async function signUp(input: {
+  email: string;
+  password: string;
+  username: string;
+  displayName: string;
+  pronouns?: string;
+  about?: string;
+  /** yyyy-mm-dd: kept private, only used to confirm the person is 13+ */
+  birthDate?: string;
+  termsVersion?: string;
+}) {
   const { authPassword } = await deriveMasterKeys(input.email, input.password);
   const { data, error } = await supabase.auth.signUp({
     email: input.email.trim(),
     password: authPassword,
     options: {
       emailRedirectTo: appUrl(),
-      data: { username: input.username.toLowerCase(), display_name: input.displayName || input.username },
+      data: {
+        username: input.username.toLowerCase(),
+        display_name: input.displayName || input.username,
+        pronouns: input.pronouns ?? '',
+        about: input.about ?? '',
+        birth_date: input.birthDate ?? '',
+        terms_version: input.termsVersion ?? '',
+      },
     },
   });
   if (error) throw error;

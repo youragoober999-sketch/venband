@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Icon, LogoGlyph, Wordmark } from './ui';
 import { go } from '../lib/router';
+import { MOTTO } from '../lib/legal';
 
 const REPO_URL = 'https://github.com/youragoober999-sketch/venband';
 
@@ -65,6 +66,7 @@ export function Landing({ onLogin, onSignup, onOpenApp }: { onLogin: () => void;
             Servers, channels, DMs and voice calls in one place. Every message is encrypted on your device before it’s
             sent, so the server only ever stores scrambled text.
           </p>
+          <p className="motto">{MOTTO}</p>
           <div className="hero-actions">
             {onOpenApp ? (
               <button className="btn primary big" onClick={onOpenApp}>
@@ -141,6 +143,9 @@ export function Landing({ onLogin, onSignup, onOpenApp }: { onLogin: () => void;
           <LogoGlyph size={18} /> Venband
         </span>
         <span className="muted">Open source under the MIT license. Not affiliated with any other chat app.</span>
+        <a href={`${import.meta.env.BASE_URL}tos`}>Terms</a>
+        <a href={`${import.meta.env.BASE_URL}privacy`}>Privacy</a>
+        <a href={`${import.meta.env.BASE_URL}guidelines`}>Guidelines</a>
         <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
           GitHub
         </a>
