@@ -1,6 +1,6 @@
 // Discord-style markdown, rendered safely (React elements only, never HTML).
 //   # / ## / ### headings, -# subtext, > quotes, >>> quotes, - lists, 1. lists
-//   **bold** *italic* _italic_ __underline__ ~~strike~~ ||spoiler|| `code` ```blocks```
+//   **bold** *italic* _italic_ __underline__ ~~strike~~ ==highlight== ||spoiler|| `code` ```blocks```
 //   [masked](https://links), <https://no-embed>, <@user> <@&role> <#channel> @everyone @here
 import { guardLink } from './GlobalModals';
 import { sanitizeHtml } from '../lib/sanitize';
@@ -173,6 +173,7 @@ const INLINE: { name: string; re: RegExp }[] = [
   { name: 'underline', re: /__([\s\S]+?)__/ },
   { name: 'italic', re: /\*([^*\s][\s\S]*?)\*|\b_([^_\s][\s\S]*?)_\b/ },
   { name: 'strike', re: /~~([\s\S]+?)~~/ },
+  { name: 'highlight', re: /==([^=\n][^\n]*?)==/ },
 ];
 
 function inline(text: string, ctx: MentionContext | undefined, key: string): ReactNode[] {
@@ -265,6 +266,8 @@ function renderToken(name: string, m: RegExpExecArray, ctx: MentionContext | und
       return <em key={k}>{inline(m[1] ?? m[2], ctx, k)}</em>;
     case 'strike':
       return <s key={k}>{inline(m[1], ctx, k)}</s>;
+    case 'highlight':
+      return <mark key={k} className="md-highlight">{inline(m[1], ctx, k)}</mark>;
   }
   return m[0];
 }

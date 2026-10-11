@@ -146,6 +146,13 @@ await alice.page.locator('.composer textarea').fill('hello bob, this is **encryp
 await alice.page.keyboard.press('Enter');
 await alice.page.locator('.message-text', { hasText: 'hello bob, this is' }).first().waitFor();
 log('alice sent a message');
+// start typing anywhere: keys land in the message box; :sob: becomes 😭 straight away
+await alice.page.locator('.chat-header').click();
+await alice.page.keyboard.type('so sad :sob:');
+const typed = await alice.page.locator('.composer textarea').inputValue();
+if (typed !== 'so sad 😭') throw new Error('type-anywhere / live emoji gave: ' + JSON.stringify(typed));
+await alice.page.locator('.composer textarea').fill('');
+log('✅ typing anywhere fills the message box, and :sob: turns into 😭 as you type');
 
 // ---- invite
 await alice.page.locator('.server-header').click();

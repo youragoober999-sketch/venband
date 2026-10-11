@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 const g = globalThis as unknown as {
   __SMART_TRANSLATE_URL__?: string;
 };
@@ -31,9 +33,12 @@ export async function smartTranslate(text: string, options: SmartTranslateOption
   const timer = globalThis.setTimeout(() => controller.abort(), 12000);
 
   try {
+    // the server only translates for signed-in people
+    const token = (await supabase.auth.getSession()).data.session?.access_token;
+    if (!token) return null;
     const response = await fetch(endpoint(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       credentials: 'same-origin',
       signal: controller.signal,
       body: JSON.stringify({

@@ -114,8 +114,10 @@ async function deviceTranslate(text: string, from: string, target: string): Prom
   const pair = `${from}>${target}`;
   let tr = translators.get(pair);
   if (!tr) {
+    // 'downloadable' / 'downloading': Chrome fetches the language pack once (it
+    // then works offline). Only 'unavailable' means this pair can't be done here.
     const avail = await g.Translator.availability({ sourceLanguage: from, targetLanguage: target });
-    if (avail !== 'available' && avail !== 'readily') return null;
+    if (avail === 'unavailable' || avail === 'no') return null;
     tr = g.Translator.create({ sourceLanguage: from, targetLanguage: target });
     translators.set(pair, tr);
     tr.catch(() => translators.delete(pair));
@@ -140,7 +142,7 @@ export function translate(key: string, text: string, opts: { from?: string } = {
 
     // If the browser translator is unavailable or fails, try the smart server translator.
     // The endpoint should keep provider API keys on the server instead of exposing them in the client.
-    const smartOut = await smartTranslate(text, { from, target });
+    const smartOut = getSettings().translateOnline === false ? null : await smartTranslate(text, { from, target });
     if (smartOut) return { text: smartOut, from, engine: 'smart' };
 
     // Final fallback: the offline phrasebook/transliteration path.

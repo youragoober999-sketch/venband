@@ -188,7 +188,7 @@ app.on('web-contents-created', (_e, contents) => {
 
 function setupSession() {
   const ses = session.defaultSession;
-  const allowed = new Set(['media', 'display-capture', 'notifications', 'clipboard-sanitized-write', 'fullscreen', 'mediaKeySystem']);
+  const allowed = new Set(['media', 'display-capture', 'notifications', 'clipboard-read', 'clipboard-sanitized-write', 'fullscreen', 'mediaKeySystem']);
   ses.setPermissionRequestHandler((wc, permission, callback) => {
     callback(isAppUrl(wc.getURL(), BASE) && allowed.has(permission));
   });

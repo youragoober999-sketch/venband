@@ -476,7 +476,7 @@ function AccountTab() {
           <li>Key exchange: ECDH P-256 (ECIES). The server only ever stores wrapped keys.</li>
           <li>Password: Argon2id (64 MiB) on your device; only a derived login key is sent to the server.</li>
           <li>Calls: peer-to-peer WebRTC (DTLS-SRTP) with signed session descriptions.</li>
-          <li>Translation runs on your device, so decrypted messages never leave it.</li>
+          <li>Translation runs on your device when your browser can; otherwise only the message you choose to translate goes to the online translator (Settings → Language).</li>
         </ul>
       </Section>
       <Section title="Delete account" desc="Wipes your account off Venband for good.">
@@ -1502,11 +1502,23 @@ function ChatTab() {
           checked={c.enterToSend}
           onChange={(v) => updateChat({ enterToSend: v })}
         />
+        <Toggle
+          label="Turn :shortcodes: into emoji as you type"
+          desc="Typing :sob: becomes 😭 as soon as you type the closing colon."
+          checked={c.liveEmoji !== false}
+          onChange={(v) => updateChat({ liveEmoji: v })}
+        />
+        <Toggle
+          label="Start typing anywhere"
+          desc="In a channel, just start typing: your keys go into the message box even if you didn’t click it."
+          checked={c.typeToFocus !== false}
+          onChange={(v) => updateChat({ typeToFocus: v })}
+        />
         <Toggle label="24-hour clock" checked={c.clock24} onChange={(v) => updateChat({ clock24: v })} />
       </Section>
       <Section title="Formatting cheat sheet">
         <div className="md-cheats">
-          {['**bold**', '*italic*', '__underline__', '~~strike~~', '||spoiler||', '`code`', '# Big heading', '-# small text', '> quote', '- list item', '[link](https://venband.com)', '@everyone'].map((x) => (
+          {['**bold**', '*italic*', '__underline__', '~~strike~~', '==highlight==', '||spoiler||', '`code`', '# Big heading', '-# small text', '> quote', '- list item', '[link](https://venband.com)', '@everyone'].map((x) => (
             <div key={x} className="md-cheat">
               <code>{x}</code>
               <span>
@@ -1525,6 +1537,7 @@ function ChatTab() {
 function LanguageTab() {
   const language = useSettings((s) => s.language);
   const mode = useSettings((s) => s.translateMode);
+  const translateOnline = useSettings((s) => s.translateOnline !== false);
   const me = sessionStore.use((s) => s.me)!;
   const device = deviceTranslationSupported();
   return (
@@ -1542,11 +1555,19 @@ function LanguageTab() {
           options={LANGUAGES.map((l) => ({ value: l.code, label: `${l.native} — ${l.name}` }))}
         />
       </Section>
-      <Section title="Translation" desc="Translation happens on your device, so encrypted messages stay private.">
+      <Section title="Translation" desc="Translate messages written in other languages into yours.">
         <div className="notice small">
-          Venband translates into {LANGUAGES.length} languages with nothing to download: a built-in phrasebook ({PHRASEBOOK_SIZE} common phrases and words in {PHRASEBOOK_LANGS.length} languages), a letter-by-letter writer that spells any unknown word in your language's alphabet, and a server-backed translator for full sentences.
-          {device ? ' Your browser also has on-device translation, which Venband uses first when its language model is ready.' : ''}
+          {device
+            ? 'Your browser can translate on this device: Venband uses that first, so the message never leaves your device. '
+            : 'This browser can’t translate on the device. '}
+          When it can’t, Venband’s online translator handles full sentences: only the message you translate is sent, through
+          Venband’s server, so the translation service never sees who you are or your IP address. With that off, a small offline
+          phrasebook ({PHRASEBOOK_SIZE} phrases in {PHRASEBOOK_LANGS.length} languages) is used instead.
         </div>
+        <label className="check-row">
+          <input type="checkbox" checked={translateOnline} onChange={(e) => updateSettings({ translateOnline: e.target.checked })} />
+          <span>Use the online translator when this device can’t translate</span>
+        </label>
         <div className="radio-cards">
           {(
             [

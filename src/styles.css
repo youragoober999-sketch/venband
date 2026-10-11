@@ -2531,3 +2531,6 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .motto { font-weight: 650; letter-spacing: -0.01em; background: linear-gradient(90deg, var(--text), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; margin: 6px 0 14px; }
 .public-doc .motto { font-size: 1.05rem; }
 .terms-gate .checkbox { margin: 12px 0; }
+/* ==highlight== (Venband's own: a highlighter-pen stroke) */
+.md-highlight { color: inherit; background: linear-gradient(transparent 55%, color-mix(in srgb, var(--accent) 45%, transparent) 55%); padding: 0 1px; border-radius: 2px; }
+.mdp-hl { background: linear-gradient(transparent 55%, color-mix(in srgb, var(--accent) 45%, transparent) 55%); }

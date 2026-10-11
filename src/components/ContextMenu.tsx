@@ -40,16 +40,32 @@ export function closeMenu() {
   menuStore.set({ open: null });
 }
 
+/** Copy to the clipboard, with a fallback for app WebViews without the async clipboard. */
 export function copyText(text: string) {
-  navigator.clipboard?.writeText(text).catch(() => {
+  const fallback = () => {
+    const active = document.activeElement as HTMLElement | null;
     const ta = document.createElement('textarea');
     ta.value = text;
+    ta.setAttribute('readonly', ''); // no on-screen keyboard on phones
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none';
     document.body.appendChild(ta);
     ta.select();
-    document.execCommand('copy');
+    ta.setSelectionRange(0, text.length);
+    try {
+      document.execCommand('copy');
+    } catch {
+      /* nothing else to try */
+    }
     ta.remove();
-  });
+    active?.focus?.();
+  };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).catch(fallback);
+  else fallback();
 }
+
+/** Did this context menu come from a finger (long-press) rather than a mouse? */
+let lastTouch = 0;
+const fromTouch = (e: MouseEvent) => (e as PointerEvent).pointerType === 'touch' || Date.now() - lastTouch < 1200;
 
 function fieldMenu(el: HTMLInputElement | HTMLTextAreaElement): MenuItem[] {
   const selected = (el.selectionEnd ?? 0) > (el.selectionStart ?? 0);
@@ -74,11 +90,23 @@ function fieldMenu(el: HTMLInputElement | HTMLTextAreaElement): MenuItem[] {
       label: 'Paste',
       icon: 'clipboard',
       disabled: !editable,
-      onClick: () => navigator.clipboard?.readText().then(replaceSelection).catch(() => {}),
+      onClick: () => {
+        const paste = navigator.clipboard?.readText?.();
+        if (!paste) return pasteHint(el);
+        paste.then(replaceSelection).catch(() => pasteHint(el));
+      },
     },
     { type: 'sep' },
     { label: 'Select all', onClick: () => (el.focus(), el.select()) },
   ];
+}
+
+/** The clipboard can't be read here: focus the field and say how to paste. */
+function pasteHint(el: HTMLInputElement | HTMLTextAreaElement) {
+  el.focus();
+  const was = el.placeholder;
+  el.placeholder = /Mac|iPhone|iPad/.test(navigator.userAgent) ? 'Press ⌘V to paste' : 'Press Ctrl+V (or long-press) to paste';
+  setTimeout(() => (el.placeholder = was), 2500);
 }
 
 /** Mount once. Owns the global listeners and renders the open menu. */
@@ -90,9 +118,13 @@ export function ContextMenuHost() {
   useEffect(() => {
     const onContext = (e: MouseEvent & { [HANDLED]?: boolean }) => {
       if (e[HANDLED]) return;
-      e.preventDefault();
       const t = e.target as HTMLElement;
-      const field = t.closest('input, textarea') as HTMLInputElement | HTMLTextAreaElement | null;
+      const field = t.closest('input, textarea, [contenteditable]') as HTMLInputElement | HTMLTextAreaElement | null;
+      // Phones: long-pressing a text field or selected text must open the
+      // phone's own Copy / Paste / Select all menu (Venband's Paste can't read
+      // the clipboard in app WebViews).
+      if (fromTouch(e) && (field || window.getSelection()?.toString())) return;
+      e.preventDefault();
       if (field && !['checkbox', 'radio', 'range', 'color', 'file'].includes((field as HTMLInputElement).type)) {
         menuStore.set({ open: { x: e.clientX, y: e.clientY, items: fieldMenu(field) } });
         return;
@@ -112,6 +144,7 @@ export function ContextMenuHost() {
       start = null;
     };
     const onTouchStart = (e: TouchEvent) => {
+      lastTouch = Date.now();
       if (e.touches.length !== 1) return cancel();
       const t = e.touches[0];
       start = { x: t.clientX, y: t.clientY, target: e.target };

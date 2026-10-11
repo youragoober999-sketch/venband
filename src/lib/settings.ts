@@ -28,6 +28,8 @@ export interface Settings {
   themeId: string;
   installedThemes: Theme[];
   translateMode: 'auto' | 'manual' | 'off';
+  /** allow the online translator (your IP is never shared) when the device can't translate */
+  translateOnline: boolean;
   language: string;
   voice: {
     inputId: string;
@@ -64,6 +66,10 @@ export interface Settings {
     linkPreviews: boolean;
     /** ask before opening links: every untrusted site, only risky ones, or never */
     linkWarnings: 'always' | 'risky' | 'off';
+    /** :sob: turns into 😭 as soon as you type the closing colon */
+    liveEmoji: boolean;
+    /** typing anywhere in a channel jumps into the message box */
+    typeToFocus: boolean;
   };
   /** sites you chose to trust in the "Leaving Venband" dialog */
   trustedDomains: string[];
@@ -93,6 +99,7 @@ export const DEFAULT_SETTINGS: Settings = {
   themeId: 'default',
   installedThemes: [],
   translateMode: 'manual',
+  translateOnline: true,
   language: '',
   voice: {
     inputId: '',
@@ -120,6 +127,8 @@ export const DEFAULT_SETTINGS: Settings = {
     mediaAutoload: 'always',
     linkPreviews: true,
     linkWarnings: 'always',
+    liveEmoji: true,
+    typeToFocus: true,
   },
   trustedDomains: [],
   background: { enabled: false, dim: 35, blur: 18 },

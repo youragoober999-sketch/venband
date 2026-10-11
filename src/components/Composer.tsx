@@ -6,7 +6,7 @@ import { sessionStore } from '../lib/session';
 import { MAX_FILE } from '../lib/files';
 import { socialStore } from '../lib/social';
 import { getSettings, noteEmojiUse, useSettings } from '../lib/settings';
-import { emojiIn, loadEmoji, replaceShortcodes, searchEmoji, type CustomEmoji, type EmojiMatch } from '../lib/emoji';
+import { emojiByName, emojiIn, loadEmoji, replaceShortcodes, searchEmoji, type CustomEmoji, type EmojiMatch } from '../lib/emoji';
 import { addToDictionary, autoFix, findMistakes, suggestions as spellSuggestions } from '../lib/spell';
 import type { Profile } from '../lib/types';
 import { formatSize } from './Attachments';
@@ -124,6 +124,28 @@ export function Composer({
 
   useEffect(() => {
     loadEmoji();
+  }, []);
+
+  // Start typing anywhere in a channel: the keys land in the message box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = textarea.current;
+      if (!el || el.disabled || getSettings().chat.typeToFocus === false || e.defaultPrevented) return;
+      if (document.activeElement === el) return;
+      const printable = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+      const paste = (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'v';
+      if (!printable && !paste) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (active && active !== document.body && active.closest('input, textarea, select, button[aria-haspopup], [contenteditable], [role="menu"], [role="listbox"], .modal, .ctx-menu')) return;
+      if (document.querySelector('.modal-backdrop, .ctx-menu, .settings-page, .gif-picker, [role="dialog"]')) return;
+      // only the first visible message box takes the keys
+      if (document.querySelector('.composer textarea:not([disabled])') !== el || !el.offsetParent) return;
+      el.focus({ preventScroll: true });
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   // drafts: restore when switching conversations, save as you type
@@ -414,11 +436,24 @@ export function Composer({
       wrong && { type: 'sep' },
       a !== b && { label: 'Cut', icon: 'scissors', onClick: () => (el.focus(), document.execCommand('cut')) },
       a !== b && { label: 'Copy', icon: 'copy', onClick: () => (el.focus(), document.execCommand('copy')) },
-      { label: 'Paste', icon: 'clipboard', onClick: () => navigator.clipboard?.readText().then((t) => insertAtCaret(t)).catch(() => {}) },
+      {
+        label: 'Paste',
+        icon: 'clipboard',
+        onClick: () => {
+          const read = navigator.clipboard?.readText?.();
+          const hint = () => {
+            el.focus();
+            setNotice(/Mac|iPhone|iPad/.test(navigator.userAgent) ? 'Press ⌘V to paste here.' : 'Press Ctrl+V to paste here.');
+          };
+          if (!read) return hint();
+          read.then((t) => insertAtCaret(t)).catch(hint);
+        },
+      },
       a !== b && { type: 'sep' },
       a !== b && { label: 'Bold', hint: 'Ctrl+B', onClick: () => applyFormat('wrap', '**') },
       a !== b && { label: 'Italic', hint: 'Ctrl+I', onClick: () => applyFormat('wrap', '*') },
       a !== b && { label: 'Strikethrough', hint: 'Ctrl+Shift+S', onClick: () => applyFormat('wrap', '~~') },
+      a !== b && { label: 'Highlight', onClick: () => applyFormat('wrap', '==') },
       a !== b && { label: 'Spoiler', onClick: () => applyFormat('wrap', '||') },
       a !== b && { label: 'Code block', onClick: wrapBlock },
     ];
@@ -525,6 +560,7 @@ export function Composer({
           <button title="Italic (Ctrl+I)" onClick={() => applyFormat('wrap', '*')}><i>I</i></button>
           <button title="Underline (Ctrl+U)" onClick={() => applyFormat('wrap', '__')}><u>U</u></button>
           <button title="Strikethrough (Ctrl+Shift+S)" onClick={() => applyFormat('wrap', '~~')}><s>S</s></button>
+          <button title="Highlight (Ctrl+Shift+H)" onClick={() => applyFormat('wrap', '==')}><mark className="md-highlight">H</mark></button>
           <button title="Inline code (Ctrl+E)" className="mono" onClick={() => applyFormat('wrap', '`')}>{'</>'}</button>
           <button title="Code block" className="mono" onClick={wrapBlock}>{'{ }'}</button>
           <button title="Spoiler" onClick={() => applyFormat('wrap', '||')}><Icon name="eyeOff" size={14} /></button>
@@ -584,8 +620,22 @@ export function Composer({
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}
             onChange={(e) => {
-              setText(e.target.value);
-              setCaret(e.target.selectionStart ?? e.target.value.length);
+              let value = e.target.value;
+              let at = e.target.selectionStart ?? value.length;
+              // :sob: -> 😭 the moment the closing colon is typed (not inside `code`)
+              if (chat.liveEmoji !== false && !composing && value.length > text.length) {
+                const before = value.slice(0, at);
+                const m = /(^|[^\w<]):([a-z0-9_+-]{1,40}):$/i.exec(before);
+                const u = m && (before.split('`').length - 1) % 2 === 0 ? emojiByName(m[2]) : undefined;
+                if (m && u) {
+                  const start = at - m[2].length - 2;
+                  value = value.slice(0, start) + u + value.slice(at);
+                  at = start + u.length;
+                  pendingCaret.current = at;
+                }
+              }
+              setText(value);
+              setCaret(at);
               if (Date.now() - lastTyping.current > 3000) {
                 lastTyping.current = Date.now();
                 sendTyping();
@@ -637,6 +687,11 @@ export function Composer({
               if (mod && hasSel && e.shiftKey && e.key.toLowerCase() === 's') {
                 e.preventDefault();
                 applyFormat('wrap', '~~');
+                return;
+              }
+              if (mod && hasSel && e.shiftKey && e.key.toLowerCase() === 'h') {
+                e.preventDefault();
+                applyFormat('wrap', '==');
                 return;
               }
               // hands-free autocorrect: fix the word you just finished
@@ -797,6 +852,7 @@ const PREVIEW_TOKENS: PreviewToken[] = [
     },
   },
   { re: /~~([\s\S]+?)~~/, wrap: (m, parse) => <>{mark('~~')}<span className="mdp-s">{parse(m[1])}</span>{mark('~~')}</> },
+  { re: /==([^=\n][^\n]*?)==/, wrap: (m, parse) => <>{mark('==')}<span className="mdp-hl">{parse(m[1])}</span>{mark('==')}</> },
 ];
 
 function renderPreview(text: string, ns = ''): ReactNode[] {
