@@ -6,6 +6,7 @@ import {
   canUsePasskey,
   completePasswordReset,
   confirmIdentityReset,
+  emailForUsername,
   friendlyError,
   requestEmailCode,
   requestPasswordReset,
@@ -163,14 +164,12 @@ function Login({ email, setEmail, setMode }: FormProps) {
       const raw = email.trim();
       let address = raw;
       if (!raw.includes('@')) {
-        // A username is turned into the account's email only when the password
-        // is right (checked in the database), so nobody can collect emails.
-        const { data, error } = await supabase.rpc('resolve_login', { p_identifier: raw, p_password: password });
-        if (error) throw error;
-        const hit = data?.[0];
-        if (!hit?.email) throw new Error('That username and password don’t match.');
-        if (hit.banned) return setBanned({ username: (hit.username as string) || raw });
-        address = hit.email as string;
+        // A username is turned into the account's email only when a proof made
+        // from the password matches, so nobody can collect emails.
+        const hit = await emailForUsername(raw.toLowerCase(), password);
+        if (!hit) throw new Error('That username and password don’t match.');
+        if (hit.banned) return setBanned({ username: hit.username });
+        address = hit.email;
       }
       try {
         await signIn(address, password, remember);

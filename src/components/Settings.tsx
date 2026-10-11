@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { LooksPanel } from './LooksSettings';
 import { supabase, errorMessage } from '../lib/supabase';
-import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
+import { changePassword, loginKeyFor, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
 import { fingerprint, passwordStrength } from '../lib/crypto';
 import { displayName, getProfile, putProfile } from '../lib/directory';
 import { closeSettings, uiStore, type SettingsTab } from '../lib/ui';
@@ -366,7 +366,7 @@ function AccountTab() {
     setBusy(true);
     setMsg(null);
     try {
-      const { error } = await supabase.rpc('delete_my_account', { p_confirm: delPhrase, p_password: password });
+      const { error } = await supabase.rpc('delete_my_account', { p_confirm: delPhrase, p_login_key: await loginKeyFor(password) });
       if (error) throw error;
       await signOut('Your account and everything on it was deleted. See you around.');
     } catch (err) {

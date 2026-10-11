@@ -40,19 +40,37 @@ update public.profiles set platform_role = 'moderator' where id = '00000000-0000
 update public.profiles set platform_role = 'owner' where id = '00000000-0000-0000-0000-00000000f003';
 
 -- 1. resolve_login never hands out an email without the password --------------
+-- the victim turns on username login (the app does this after an email login)
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000f004', false);
+do $t$ begin
+  assert (public.my_login_salt() ->> 'ready')::boolean = false;
+  assert (public.my_login_salt() ->> 'salt') ~ '^[0-9a-f]{64}$';
+end $t$;
+select public.set_login_verifier(repeat('ab', 32));
+reset role;
 set role anon;
 do $t$ begin
   assert (select count(*) from public.resolve_login('sec_victim')) = 0, 'username alone resolves nothing';
   assert (select email from public.resolve_login('someone@example.com')) = 'someone@example.com', 'email is echoed, not looked up';
   assert (select username from public.resolve_login('vic@example.com')) is null, 'email never reveals the username';
-  assert (select count(*) from public.resolve_login('sec_victim', 'wrong password')) = 0, 'wrong password: nothing';
-  assert (select email from public.resolve_login('sec_victim', 'correct horse battery')) = 'vic@example.com', 'right password: email';
+  assert (select count(*) from public.resolve_login('sec_victim', repeat('cd', 32))) = 0, 'wrong proof: nothing';
+  assert (select email from public.resolve_login('sec_victim', repeat('ab', 32))) = 'vic@example.com', 'right proof: email';
+  -- the salt is real for set-up accounts and made-up (but stable) for anyone else
+  assert public.login_salt('sec_victim') ~ '^[0-9a-f]{64}$';
+  assert public.login_salt('nobody_here') = public.login_salt('nobody_here');
+  assert public.login_salt('nobody_here') <> public.login_salt('sec_victim');
 end $t$;
--- lockout after 8 wrong passwords
+-- accounts that never set it up are told to use their email once
+select pg_temp.fails_with($$select public.resolve_login('sec_boss', repeat('ab', 32))$$, 'log in with your email');
+-- nobody else can set it up for you, or read the table
+select pg_temp.must_fail($$select public.set_login_verifier(repeat('ab', 32))$$);
+select pg_temp.must_fail($$select * from public.login_verifiers$$);
+-- lockout after 8 wrong proofs
 do $t$ begin
-  for i in 1..8 loop perform public.resolve_login('sec_victim', 'guess' || i); end loop;
+  for i in 1..8 loop perform public.resolve_login('sec_victim', repeat('0' || i, 32)); end loop;
 end $t$;
-select pg_temp.fails_with($$select public.resolve_login('sec_victim', 'correct horse battery')$$, 'too many wrong passwords');
+select pg_temp.fails_with($$select public.resolve_login('sec_victim', repeat('ab', 32))$$, 'too many wrong passwords');
 reset role;
 delete from public.login_failures;
 

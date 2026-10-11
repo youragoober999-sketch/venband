@@ -6856,6 +6856,12 @@ revoke execute on function public.has_mfa(uuid), public.staff_guard(text, intege
 grant execute on function public.has_mfa(uuid) to authenticated;
 
 -- ------------------------------------------------------- 1. resolve_login --
+-- Venband never sends your password anywhere: the app derives a login key from
+-- it (Argon2id, salted with your email). Logging in by *username* therefore
+-- uses a second, random salt per account: the app derives a proof from your
+-- password with it, and only a correct proof turns the username into the
+-- account's email. The database keeps a bcrypt hash of the proof, like any
+-- password hash; nobody can read it.
 
 create table if not exists public.login_failures (
   key        text not null,
@@ -6864,6 +6870,27 @@ create table if not exists public.login_failures (
 create index if not exists login_failures_key_idx on public.login_failures (key, failed_at desc);
 alter table public.login_failures enable row level security;
 revoke all on public.login_failures from anon, authenticated;
+
+create table if not exists public.login_verifiers (
+  user_id    uuid primary key references auth.users (id) on delete cascade,
+  salt       text not null,
+  verifier   text,
+  updated_at timestamptz not null default now()
+);
+alter table public.login_verifiers enable row level security;
+revoke all on public.login_verifiers from anon, authenticated;
+
+-- The random salt for a username (a made-up but stable one for unknown names,
+-- so the answer doesn't reveal anything).
+create or replace function public.login_salt(p_username text)
+returns text language sql stable security definer set search_path = '' as $$
+  select coalesce(
+    (select lv.salt from public.profiles p join public.login_verifiers lv on lv.user_id = p.id
+     where p.username = lower(btrim(coalesce(p_username, ''))) and lv.verifier is not null),
+    encode(extensions.hmac('login-salt|' || lower(btrim(coalesce(p_username, ''))),
+                           coalesce((select value from public.platform_config where key = 'voogle_pepper'), 'venband'),
+                           'sha256'), 'hex'));
+$$;
 
 -- Old shape (identifier only): kept so older apps can still log in by email,
 -- but it never looks anything up any more.
@@ -6875,8 +6902,9 @@ language sql stable security definer set search_path = '' as $$
   where position('@' in coalesce(p_identifier, '')) > 0;
 $$;
 
--- Username + password -> the account's email, only when the password is right.
-create or replace function public.resolve_login(p_identifier text, p_password text)
+-- Username + proof -> the account's email, only when the proof is right.
+drop function if exists public.resolve_login(text, text);
+create or replace function public.resolve_login(p_identifier text, p_proof text)
 returns table (email text, username text, banned boolean)
 language plpgsql volatile security definer set search_path = '' as $$
 declare
@@ -6885,23 +6913,30 @@ declare
   v_mail text;
   v_hash text;
   v_ban  boolean;
+  v_found boolean;
 begin
   if position('@' in v_name) > 0 then
     -- email logins go straight to Supabase Auth; nothing to look up
     return query select btrim(p_identifier), null::text, false;
     return;
   end if;
-  if v_name !~ '^[a-z0-9_.]{2,32}$' or coalesce(p_password, '') = '' then return; end if;
+  if v_name !~ '^[a-z0-9_.]{2,32}$' or coalesce(p_proof, '') !~ '^[0-9a-f]{64}$' then return; end if;
   v_key := 'u:' || v_name;
   if (select count(*) from public.login_failures where key = v_key and failed_at > now() - interval '15 minutes') >= 8 then
     raise exception 'too many wrong passwords for this username. Wait 15 minutes or log in with your email.';
   end if;
   delete from public.login_failures where failed_at < now() - interval '1 day';
-  select u.email, u.encrypted_password, (u.banned_until is not null and u.banned_until > now()) or p.account_status = 'banned'
-    into v_mail, v_hash, v_ban
-  from auth.users u join public.profiles p on p.id = u.id
+  select true, u.email, lv.verifier,
+         (u.banned_until is not null and u.banned_until > now()) or p.account_status = 'banned'
+    into v_found, v_mail, v_hash, v_ban
+  from public.profiles p
+  join auth.users u on u.id = p.id
+  left join public.login_verifiers lv on lv.user_id = p.id
   where p.username = v_name;
-  if v_mail is null or coalesce(v_hash, '') = '' or extensions.crypt(p_password, v_hash) <> v_hash then
+  if v_found and v_hash is null then
+    raise exception 'log in with your email address once to turn on username login for this account';
+  end if;
+  if v_mail is null or extensions.crypt(p_proof, v_hash) <> v_hash then
     insert into public.login_failures (key) values (v_key);
     return;
   end if;
@@ -6909,8 +6944,42 @@ begin
   return query select v_mail, v_name, coalesce(v_ban, false);
 end;
 $$;
-revoke execute on function public.resolve_login(text), public.resolve_login(text, text) from public;
-grant execute on function public.resolve_login(text), public.resolve_login(text, text) to anon, authenticated;
+
+-- Signed in: your username-login salt (made on first ask) and whether it's set up.
+create or replace function public.my_login_salt()
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v public.login_verifiers%rowtype;
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  insert into public.login_verifiers (user_id, salt)
+  values (auth.uid(), encode(extensions.gen_random_bytes(32), 'hex'))
+  on conflict (user_id) do nothing;
+  select * into v from public.login_verifiers where user_id = auth.uid();
+  return jsonb_build_object('salt', v.salt, 'ready', v.verifier is not null);
+end;
+$$;
+
+-- Signed in: store the bcrypt of your username-login proof (after logging in
+-- or changing your password).
+create or replace function public.set_login_verifier(p_proof text)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  if coalesce(p_proof, '') !~ '^[0-9a-f]{64}$' then raise exception 'malformed proof'; end if;
+  update public.login_verifiers
+     set verifier = extensions.crypt(p_proof, extensions.gen_salt('bf', 10)), updated_at = now()
+   where user_id = auth.uid();
+  if not found then raise exception 'ask for your login salt first'; end if;
+end;
+$$;
+
+revoke execute on function public.resolve_login(text), public.resolve_login(text, text), public.login_salt(text),
+  public.my_login_salt(), public.set_login_verifier(text) from public;
+grant execute on function public.resolve_login(text), public.resolve_login(text, text), public.login_salt(text)
+  to anon, authenticated;
+revoke execute on function public.my_login_salt(), public.set_login_verifier(text) from anon;
+grant execute on function public.my_login_salt(), public.set_login_verifier(text) to authenticated;
 
 -- ---------------------------------------------------- 2. badges & roles ----
 
@@ -7231,9 +7300,11 @@ revoke execute on function public.delete_account(uuid, text, boolean) from publi
 grant execute on function public.delete_account(uuid, text, boolean) to authenticated;
 
 -- Deleting your own account needs your password (a stolen session alone
--- can't do it). Accounts without a password (none today) skip the check.
+-- can't do it). The app sends the login key it derives from the password,
+-- which is what Supabase Auth stores the bcrypt of.
 drop function if exists public.delete_my_account(text);
-create or replace function public.delete_my_account(p_confirm text, p_password text default null)
+drop function if exists public.delete_my_account(text, text);
+create or replace function public.delete_my_account(p_confirm text, p_login_key text default null)
 returns void language plpgsql security definer set search_path = '' as $$
 declare
   v_uid uuid := auth.uid();
@@ -7245,7 +7316,7 @@ begin
   end if;
   if not public.mfa_ok() then raise exception 'finish two-factor sign-in first'; end if;
   select encrypted_password into v_hash from auth.users where id = v_uid;
-  if coalesce(v_hash, '') <> '' and (coalesce(p_password, '') = '' or extensions.crypt(p_password, v_hash) <> v_hash) then
+  if coalesce(v_hash, '') <> '' and (coalesce(p_login_key, '') = '' or extensions.crypt(p_login_key, v_hash) <> v_hash) then
     raise exception using message = 'that password isn''t right';
   end if;
 
@@ -7522,7 +7593,7 @@ $$;
 
 -- security checklist: every row should say ok
 select item, case when ok then 'ok' else 'MISSING' end as status from (values
-  ('login look-up needs the password', exists (select 1 from pg_proc where proname = 'resolve_login' and pronargs = 2)),
+  ('login look-up needs the password', to_regclass('public.login_verifiers') is not null),
   ('staff powers need 2FA + limits',   exists (select 1 from pg_proc where proname = 'staff_guard')),
   ('hardware & network bans',          to_regclass('public.platform_bans') is not null),
   ('Voogle check-in',                  exists (select 1 from pg_proc where proname = 'voogle_checkin')),

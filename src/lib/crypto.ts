@@ -110,6 +110,22 @@ export async function argonMaster(email: string, password: string): Promise<Uint
   });
 }
 
+/**
+ * Username login: Argon2id(password, the account's random login salt) → HKDF →
+ * a 64-hex proof. The database keeps only a bcrypt of the proof and turns a
+ * username into its email only when the proof matches, so emails can't be
+ * collected and the password still never leaves this device.
+ */
+export async function usernameLoginProof(saltHex: string, password: string): Promise<string> {
+  if (!/^[0-9a-f]{64}$/.test(saltHex)) throw new Error('Bad login salt.');
+  const salt = new Uint8Array(saltHex.match(/../g)!.map((h) => parseInt(h, 16)));
+  const key = await argon2id({ password: password.normalize('NFKC'), salt, ...KDF_PARAMS, hashLength: 32, outputType: 'binary' });
+  const hkdf = await subtle.importKey('raw', key as Uint8Array<ArrayBuffer>, 'HKDF', false, ['deriveBits']);
+  key.fill(0);
+  const bits = await subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: te.encode('venband/v1/username-login') }, hkdf, 256);
+  return toHex(new Uint8Array(bits));
+}
+
 /** HKDF(master) → authPassword + vaultKey. Zeroes the master afterwards. */
 export async function deriveKeysFromMaster(master: Uint8Array<ArrayBuffer> | Uint8Array): Promise<MasterKeys> {
   const hkdf = await subtle.importKey('raw', master as Uint8Array<ArrayBuffer>, 'HKDF', false, ['deriveBits', 'deriveKey']);

@@ -3,7 +3,7 @@ import { loadExpressions, resetExpressions } from './expressions';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, appUrl, errorMessage } from './supabase';
 import { createStore } from './store';
-import { argonMaster, deriveKeysFromMaster, deriveMasterKeys, type Identity } from './crypto';
+import { argonMaster, deriveKeysFromMaster, deriveMasterKeys, usernameLoginProof, type Identity } from './crypto';
 import {
   forgetIdentities,
   IdentityLockedError,
@@ -319,6 +319,43 @@ export async function resendVerification(email: string) {
   if (error) throw error;
 }
 
+/**
+ * Turn on (or refresh) logging in by username for this account. Runs in the
+ * background after an email login or a password change; costs one extra key
+ * derivation, once.
+ */
+async function setUpUsernameLogin(password: string, force = false) {
+  try {
+    const { data, error } = await supabase.rpc('my_login_salt');
+    if (error || !data) return;
+    const { salt, ready } = data as { salt: string; ready: boolean };
+    if (ready && !force) return;
+    const proof = await usernameLoginProof(salt, password);
+    await supabase.rpc('set_login_verifier', { p_proof: proof });
+  } catch {
+    /* username login just stays off until the next email login */
+  }
+}
+
+/** Log in with a username: prove the password, get the account's email back. */
+export async function emailForUsername(username: string, password: string): Promise<{ email: string; banned: boolean; username: string } | null> {
+  if (!password) throw new Error('Enter your password to continue.');
+  const { data: salt, error: saltError } = await supabase.rpc('login_salt', { p_username: username });
+  if (saltError) throw saltError;
+  const proof = await usernameLoginProof(String(salt), password);
+  const { data, error } = await supabase.rpc('resolve_login', { p_identifier: username, p_proof: proof });
+  if (error) throw error;
+  const hit = (data as { email: string | null; username: string | null; banned: boolean }[] | null)?.[0];
+  return hit?.email ? { email: hit.email, banned: hit.banned, username: hit.username ?? username } : null;
+}
+
+/** The login key Supabase Auth checks for this password (for re-confirming it's you). */
+export async function loginKeyFor(password: string): Promise<string> {
+  const email = sessionStore.get().session?.user.email;
+  if (!email) throw new Error('Not signed in');
+  return (await deriveMasterKeys(email, password)).authPassword;
+}
+
 export async function signIn(email: string, password: string, remember: boolean) {
   if (!password) throw new Error('Enter your password to continue.');
   const master = await argonMaster(email.trim(), password);
@@ -328,6 +365,7 @@ export async function signIn(email: string, password: string, remember: boolean)
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: authPassword });
     if (error) throw error;
+    void setUpUsernameLogin(password);
     if (await needsMfa()) {
       sessionStore.set({ status: 'mfa', session: data.session, pendingMfa: { vaultKey, remember } });
       return;
@@ -517,6 +555,7 @@ export async function completePasswordReset(newPassword: string) {
   const { authPassword, vaultKey } = await deriveKeysFromMaster(master);
   const { error } = await supabase.auth.updateUser({ password: authPassword });
   if (error) throw error;
+  void setUpUsernameLogin(newPassword, true);
   recovering = false;
   window.history.replaceState(null, '', window.location.pathname);
   await unlockWith(session, vaultKey, false);
@@ -580,4 +619,5 @@ export async function changePassword(currentPassword: string, newPassword: strin
   const { error } = await supabase.auth.updateUser({ password: newKeys.authPassword });
   if (error) throw error;
   await resealed.commit();
+  void setUpUsernameLogin(newPassword, true);
 }
