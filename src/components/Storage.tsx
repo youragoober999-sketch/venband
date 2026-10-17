@@ -6,6 +6,7 @@ import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore, isTopStaff } from '../lib/session';
 import { go } from '../lib/router';
 import { Icon, Field } from './ui';
+import { vdlListUsers } from '../lib/vdl';
 
 function decodePayload(p: string): string {
   try {
@@ -216,7 +217,35 @@ function TableTab() {
           ))}
         </tbody>
       </table>
+
+      <h3>VDL users (new on-site data layer)</h3>
+      <VdlUsersBlock />
     </div>
+  );
+}
+
+function VdlUsersBlock() {
+  const [rows, setRows] = useState<any[]>([]);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    vdlListUsers().then(setRows).catch((e) => setErr(String(e.message || e)));
+  }, []);
+  if (err) return <p className="error small">{err}</p>;
+  return (
+    <table className="storage-table">
+      <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th></tr></thead>
+      <tbody>
+        {rows.map((u) => (
+          <tr key={u.id}>
+            <td>{u.username}</td>
+            <td>{u.email}</td>
+            <td>{u.platform_role}</td>
+            <td>{u.account_status}</td>
+            <td>{u.created_at ? new Date(u.created_at).toLocaleString() : '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
