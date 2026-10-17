@@ -21,18 +21,84 @@ export interface VbbUploadResult {
   dedup?: boolean;
 }
 
-export async function vbbUpload(file: File, isPublic = false): Promise<VbbUploadResult> {
-  const buf = await file.arrayBuffer();
-  const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-  const r = await fetch(`/api/vbb?action=upload`, {
+export async function vbbUpload(file: File, isPublic = false, onProgress?: (loaded: number, total: number) => void): Promise<VbbUploadResult> {
+  // small files: single-shot
+  if (file.size <= 3 * 1024 * 1024) {
+    const buf = await file.arrayBuffer();
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    const r = await fetch(`/api/vbb?action=upload`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ name: file.name, data: b64, contentType: file.type, public: isPublic }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'upload failed');
+    return j as VbbUploadResult;
+  }
+  // large files: chunked
+  return vbbUploadChunked(file, isPublic, onProgress);
+}
+
+export async function vbbUploadChunked(
+  file: File,
+  isPublic = false,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<VbbUploadResult> {
+  // 1. init
+  const initRes = await fetch(`/api/vbb?action=init-chunked`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ name: file.name, data: b64, contentType: file.type, public: isPublic }),
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type, public: isPublic }),
   });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || 'upload failed');
-  return j as VbbUploadResult;
+  const init = await initRes.json();
+  if (!initRes.ok) throw new Error(init.error || 'init failed');
+  const { uploadId, chunkSize, totalChunks } = init;
+
+  // 2. upload chunks in parallel (concurrency 4)
+  const CONC = 4;
+  let loaded = 0;
+  const runChunk = async (i: number) => {
+    const start = i * chunkSize;
+    const end = Math.min(start + chunkSize, file.size);
+    const blob = file.slice(start, end);
+    const buf = await blob.arrayBuffer();
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    const r = await fetch(`/api/vbb?action=upload-chunk`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ uploadId, chunkIndex: i, data: b64 }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `chunk ${i} failed`);
+    loaded += (end - start);
+    onProgress?.(loaded, file.size);
+  };
+  // queue
+  let next = 0;
+  const workers: Promise<void>[] = [];
+  for (let w = 0; w < CONC; w++) {
+    workers.push((async () => {
+      while (next < totalChunks) {
+        const i = next++;
+        await runChunk(i);
+      }
+    })());
+  }
+  await Promise.all(workers);
+
+  // 3. complete
+  const compRes = await fetch(`/api/vbb?action=complete-chunked`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ uploadId }),
+  });
+  const comp = await compRes.json();
+  if (!compRes.ok) throw new Error(comp.error || 'complete failed');
+  return comp as VbbUploadResult;
 }
 
 export async function vbbList(prefix = ''): Promise<VbbObject[]> {

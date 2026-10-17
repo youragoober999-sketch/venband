@@ -26,10 +26,29 @@ create table if not exists vbb_chunks (
   id uuid primary key default uuid_generate_v4(),
   object_id uuid references vbb_objects(id) on delete cascade,
   chunk_index integer not null,
-  bytes bytea not null,
+  bytes bytea,
+  blob_url text,
   size integer not null,
   unique (object_id, chunk_index)
 );
+
+-- upload sessions for chunked / resumable uploads
+create table if not exists vbb_uploads (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  content_type text not null default 'application/octet-stream',
+  size bigint not null,
+  chunk_size integer not null default 3145728,
+  total_chunks integer not null,
+  public boolean not null default false,
+  owner_id uuid,
+  status text not null default 'uploading', -- 'uploading' | 'complete' | 'aborted'
+  sha256 text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table vbb_objects add column if not exists status text not null default 'complete';
 create index if not exists vbb_chunks_obj_idx on vbb_chunks(object_id, chunk_index);
 
 create table if not exists vbb_shards (

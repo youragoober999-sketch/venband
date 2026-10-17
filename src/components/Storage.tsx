@@ -513,9 +513,15 @@ function VbbTab() {
     finally { setBusy(false); }
   };
   useEffect(() => { load(); }, []);
+  const [progress, setProgress] = useState(0);
   const upload = async (file: File) => {
-    setErr('');
-    try { await vbbUpload(file, false); load(); } catch (e) { setErr(String((e as Error).message)); }
+    setErr(''); setProgress(0);
+    try {
+      await vbbUpload(file, false, (loaded, total) => setProgress(Math.round((loaded / total) * 100)));
+      setProgress(100);
+      load();
+    } catch (e) { setErr(String((e as Error).message)); }
+    finally { setTimeout(() => setProgress(0), 1000); }
   };
   const remove = async (id: string) => {
     if (!confirm('Delete this object?')) return;
@@ -529,9 +535,10 @@ function VbbTab() {
       <div className="storage-toolbar">
         <button className="btn ghost small" onClick={load} disabled={busy}>Refresh</button>
         <label className="btn ghost small" style={{ cursor: 'pointer' }}>
-          Upload
+          Upload (up to 5 GB)
           <input type="file" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
         </label>
+        {progress > 0 && progress < 100 && <span className="small">Uploading… {progress}%</span>}
       </div>
       {err && <p className="error small">{err}</p>}
       <p className="muted small">Venband Blob (VBB): custom object storage. Small files live in Postgres (content-addressed, deduped by SHA-256); large files are chunked. Served from your own domain.</p>
