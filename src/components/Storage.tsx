@@ -414,13 +414,33 @@ function EmailTab() {
       setTo(''); setSubject(''); setBody('');
     } catch (e) { setMsg(errorMessage(e)); }
   };
+  const sendQueued = async () => {
+    setMsg('');
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Not signed in');
+      const res = await fetch('/api/storage-email', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ all: true }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'send failed');
+      setMsg(`Sent ${j.sent}/${j.total}.`);
+    } catch (e) { setMsg(errorMessage(e)); }
+  };
   return (
     <div className="storage-email">
       <Field label="To"><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="user@example.com" /></Field>
       <Field label="Subject"><input value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
       <Field label="Body"><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} /></Field>
-      <button className="btn" onClick={send}>Queue email</button>
+      <div className="storage-toolbar">
+        <button className="btn" onClick={send}>Queue email</button>
+        <button className="btn ghost" onClick={sendQueued}>Send queued</button>
+      </div>
       {msg && <p className="small">{msg}</p>}
+      <p className="muted small">Sending uses Resend on the server (RESEND_API_KEY + STORAGE_EMAIL_FROM). From-address should be a subdomain of venband.com.</p>
     </div>
   );
 }
