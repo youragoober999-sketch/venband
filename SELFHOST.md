@@ -16,6 +16,17 @@ See `deploy/pocketbase/README.md` for one-command deploy.
 ## 3. (Optional) Keep Supabase self-hosted
 If you prefer, self-host the Supabase stack with Docker (Option in README). The app works unchanged — only env vars change.
 
+## 3. Venband Data Layer (VDL) — fastest, fully on-site
+The newest option: a custom backend built on Vercel Postgres + Vercel KV (Redis), with cookie JWT auth, server-side password hashing (bcrypt), and a KV hot-cache for messages.
+- Free tiers: Vercel Postgres 256 MB, Vercel KV 256 MB.
+- Setup:
+  1. Vercel dashboard → Storage → Create Postgres + Create KV.
+  2. Run `vdl/schema.sql` in the Vercel Postgres query runner.
+  3. Set `VDL_JWT_SECRET` (long random string) in Vercel env.
+  4. Redeploy. Endpoints live at `/api/vdl/*`.
+- Client adapter: `src/lib/vdl.ts` (signup/signin/users/servers/messages).
+- The `/storage` console now shows a "VDL users" block as proof of the new layer.
+
 ## Security notes
 - Never expose `BLOB_READ_WRITE_TOKEN` or service keys to the browser; they live only in Vercel env (server-side).
 - `/storage` remains gated to owners/founders via `is_top_staff()`; the Blob API re-checks the caller's Supabase session on every request.
