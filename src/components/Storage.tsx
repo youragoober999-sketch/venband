@@ -279,22 +279,43 @@ function StorageTab() {
       } catch (e) { setErr(errorMessage(e)); }
     })();
   }, [bucket]);
+  const upload = async (file: File) => {
+    if (!bucket) return;
+    setErr('');
+    const { error } = await supabase.storage.from(bucket).upload(file.name, file, { upsert: true });
+    if (error) setErr(errorMessage(error));
+    else {
+      const { data } = await supabase.storage.from(bucket).list('', { limit: 100 });
+      setFiles(data ?? []);
+    }
+  };
+  const remove = async (name: string) => {
+    if (!bucket || !confirm('Delete this file?')) return;
+    const { error } = await supabase.storage.from(bucket).remove([name]);
+    if (error) setErr(errorMessage(error));
+    else setFiles((prev) => prev.filter((f) => f.name !== name));
+  };
   return (
     <div>
       <div className="storage-toolbar">
         <select value={bucket} onChange={(e) => setBucket(e.target.value)}>
           {buckets.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}
         </select>
+        <label className="btn ghost small" style={{ cursor: 'pointer' }}>
+          Upload
+          <input type="file" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
+        </label>
       </div>
       {err && <p className="error small">{err}</p>}
       <table className="storage-table">
-        <thead><tr><th>Name</th><th>Size</th><th>Updated</th></tr></thead>
+        <thead><tr><th>Name</th><th>Size</th><th>Updated</th><th></th></tr></thead>
         <tbody>
           {files.map((f) => (
             <tr key={f.name}>
               <td>{f.name}</td>
               <td>{f.metadata?.size ?? '—'}</td>
               <td>{f.updated_at ? new Date(f.updated_at).toLocaleString() : '—'}</td>
+              <td><button className="btn ghost small danger" onClick={() => remove(f.name)}>Delete</button></td>
             </tr>
           ))}
         </tbody>
