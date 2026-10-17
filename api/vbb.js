@@ -10,6 +10,7 @@ import { put, del } from '@vercel/blob';
 const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
 
 const CHUNK_SIZE = 3 * 1024 * 1024; // 3 MB (safe under Vercel's 4.5 MB body limit)
+const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB
 
 async function currentUser(request) {
   const cookie = request.headers.get('cookie') || '';
@@ -42,7 +43,12 @@ export async function GET(request) {
     const me = await currentUser(request);
     if (!me) return json(401, { error: 'not signed in' });
     const prefix = u.searchParams.get('prefix') || '';
+    // KV cache for list (5s TTL) for speed
+    let cached = null;
+    try { const { kv } = await import('@vercel/kv'); cached = await kv.get(`vbb:list:${prefix}`); } catch {}
+    if (cached) return json(200, { objects: cached, cached: true });
     const r = await sql`select id, name, content_type, size, sha256, storage, public, status, created_at from vbb_objects where name like ${prefix + '%'} order by created_at desc limit 200`;
+    try { const { kv } = await import('@vercel/kv'); await kv.set(`vbb:list:${prefix}`, r.rows, { ex: 5 }); } catch {}
     return json(200, { objects: r.rows });
   }
   if (action === 'meta' && id) {
@@ -60,23 +66,36 @@ export async function GET(request) {
     // stream chunks
     const r = await sql`select chunk_index, bytes, blob_url, size from vbb_chunks where object_id = ${id} order by chunk_index asc`;
     if (r.rows.length) {
-      // fetch all chunk bytes (parallel)
-      const parts = await Promise.all(r.rows.map(async (row) => {
-        if (row.blob_url) {
-          const res = await fetch(row.blob_url);
-          return Buffer.from(await res.arrayBuffer());
-        }
-        return toBuffer(row.bytes);
-      }));
-      const buf = Buffer.concat(parts);
-      return new Response(buf, {
+      const rows = r.rows;
+      const totalSize = rows.reduce((a, c) => a + (c.size || 0), 0);
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            for (const row of rows) {
+              let buf;
+              if (row.blob_url) {
+                const res = await fetch(row.blob_url);
+                buf = Buffer.from(await res.arrayBuffer());
+              } else {
+                buf = toBuffer(row.bytes);
+              }
+              controller.enqueue(new Uint8Array(buf));
+            }
+            controller.close();
+          } catch (e) {
+            controller.error(e);
+          }
+        },
+      });
+      return new Response(stream, {
         status: 200,
         headers: {
           'content-type': obj.content_type,
-          'content-length': String(buf.length),
+          'content-length': String(totalSize),
           'content-disposition': `inline; filename="${obj.name}"`,
           'cache-control': obj.public ? 'public, max-age=31536000, immutable' : 'private, no-store',
           'x-vbb-id': id,
+          'transfer-encoding': 'chunked',
         },
       });
     }
@@ -133,6 +152,7 @@ export async function POST(request) {
         idx++;
       }
     }
+    try { const { kv } = await import('@vercel/kv'); await kv.del('vbb:list:'); } catch {}
     return json(200, { id, name, size: buf.length, sha256: sha, storage, public: !!isPublic, url: `/api/vbb?action=download&id=${id}` });
   }
 
@@ -142,6 +162,7 @@ export async function POST(request) {
     try { body = await readJson(request); } catch (e) { return json(400, { error: e.message }); }
     const { name, size, contentType, public: isPublic } = body;
     if (!name || !size) return json(400, { error: 'name and size required' });
+    if (size > MAX_FILE_SIZE) return json(413, { error: 'file too large (max 5 GB)' });
     const totalChunks = Math.ceil(size / CHUNK_SIZE);
     const r = await sql`insert into vbb_uploads (name, content_type, size, chunk_size, total_chunks, public, owner_id) values (${name}, ${contentType || 'application/octet-stream'}, ${size}, ${CHUNK_SIZE}, ${totalChunks}, ${!!isPublic}, ${me.sub}) returning id`;
     return json(200, { uploadId: r.rows[0].id, chunkSize: CHUNK_SIZE, totalChunks });
@@ -153,6 +174,7 @@ export async function POST(request) {
     try { body = await readJson(request); } catch (e) { return json(400, { error: e.message }); }
     const { uploadId, chunkIndex, data } = body;
     if (!uploadId || chunkIndex == null || !data) return json(400, { error: 'uploadId, chunkIndex, data required' });
+    if (chunkIndex < 0) return json(400, { error: 'invalid chunkIndex' });
     const up = await sql`select * from vbb_uploads where id = ${uploadId}`;
     if (!up.rows.length) return json(404, { error: 'upload not found' });
     const u = up.rows[0];
@@ -186,6 +208,9 @@ export async function POST(request) {
     if (!up.rows.length) return json(404, { error: 'upload not found' });
     const u = up.rows[0];
     if (u.owner_id !== me.sub && !isTopStaff(me)) return json(403, { error: 'not owner' });
+    if (u.status === 'complete') {
+      return json(200, { id: uploadId, name: u.name, size: u.size, sha256: u.sha256, storage: 'chunked', public: u.public, url: `/api/vbb?action=download&id=${uploadId}`, dedup: true });
+    }
     const chunks = await sql`select count(*)::int as c from vbb_chunks where object_id = ${uploadId}`;
     if (chunks.rows[0].c < u.total_chunks) return json(409, { error: `missing chunks: ${chunks.rows[0].c}/${u.total_chunks}` });
     // compute sha256 over all chunks
@@ -204,6 +229,7 @@ export async function POST(request) {
     const obj = await sql`insert into vbb_objects (id, name, content_type, size, sha256, storage, public, owner_id, status) values (${uploadId}, ${u.name}, ${u.content_type}, ${u.size}, ${sha}, 'chunked', ${u.public}, ${u.owner_id}, 'complete') returning id`;
     // point chunks at the object (they already reference uploadId as object_id)
     await sql`update vbb_uploads set status = 'complete', sha256 = ${sha}, updated_at = now() where id = ${uploadId}`;
+    try { const { kv } = await import('@vercel/kv'); await kv.del('vbb:list:'); } catch {}
     return json(200, { id: uploadId, name: u.name, size: u.size, sha256: sha, storage: 'chunked', public: u.public, url: `/api/vbb?action=download&id=${uploadId}` });
   }
 
@@ -240,6 +266,7 @@ export async function POST(request) {
     const chunks = await sql`select blob_url from vbb_chunks where object_id = ${id}`;
     for (const row of chunks.rows) { if (row.blob_url) { try { await del(row.blob_url); } catch {} } }
     await sql`delete from vbb_objects where id = ${id}`;
+    try { const { kv } = await import('@vercel/kv'); await kv.del('vbb:list:'); } catch {}
     return json(200, { ok: true });
   }
 
