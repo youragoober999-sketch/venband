@@ -68,6 +68,11 @@
   ],
   "rewrites": [
     {
+      "source": "/o/:id",
+      "has": [{ "type": "host", "value": "cdn.venband.com" }],
+      "destination": "/api/vbb?action=download&id=:id"
+    },
+    {
       "source": "/((?!api/|assets/|download/|download\\.json|favicon|icon-|apple-touch-icon|robots\\.txt|sitemap\\.xml|site\\.webmanifest).*)",
       "destination": "/index.html"
     }
