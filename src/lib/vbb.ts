@@ -75,6 +75,33 @@ export function vbbDownloadUrl(id: string): string {
   return `/api/vbb?action=download&id=${encodeURIComponent(id)}`;
 }
 
+export interface VbbShard {
+  id: number;
+  subdomain: string;
+  base_url: string;
+  capacity_bytes: number;
+  used_bytes: number;
+  active: boolean;
+}
+
+export async function vbbListShards(): Promise<VbbShard[]> {
+  const r = await fetch('/api/vbb-shards', { credentials: 'include' });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'list failed');
+  return j.shards as VbbShard[];
+}
+
+export async function vbbRegisterShard(subdomain: string, baseUrl: string, capacityBytes = 0): Promise<void> {
+  const r = await fetch('/api/vbb-shards', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ action: 'register', subdomain, base_url: baseUrl, capacity_bytes: capacityBytes }),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'register failed');
+}
+
 // Content-addressable helper: hash a file client-side (for dedup checks)
 export async function vbbHash(file: File): Promise<string> {
   const buf = await file.arrayBuffer();

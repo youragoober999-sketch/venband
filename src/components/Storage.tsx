@@ -7,7 +7,7 @@ import { sessionStore, isTopStaff } from '../lib/session';
 import { go } from '../lib/router';
 import { Icon, Field } from './ui';
 import { vdlListUsers } from '../lib/vdl';
-import { vbbList, vbbUpload, vbbDelete, vbbPublish, vbbDownloadUrl } from '../lib/vbb';
+import { vbbList, vbbUpload, vbbDelete, vbbPublish, vbbDownloadUrl, vbbListShards } from '../lib/vbb';
 
 function decodePayload(p: string): string {
   try {
@@ -554,7 +554,36 @@ function VbbTab() {
         </tbody>
       </table>
       {files.length === 0 && !busy && <p className="muted small">No objects yet.</p>}
+
+      <h3>Registered shards</h3>
+      <ShardsBlock />
     </div>
+  );
+}
+
+function ShardsBlock() {
+  const [shards, setShards] = useState<any[]>([]);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    vbbListShards().then(setShards).catch((e) => setErr(String((e as Error).message)));
+  }, []);
+  if (err) return <p className="error small">{err}</p>;
+  if (shards.length === 0) return <p className="muted small">No shards registered yet. Use storage.venband.com, cdn.venband.com, shard-1.venband.com, …</p>;
+  return (
+    <table className="storage-table">
+      <thead><tr><th>Subdomain</th><th>Base URL</th><th>Used</th><th>Capacity</th><th>Active</th></tr></thead>
+      <tbody>
+        {shards.map((s) => (
+          <tr key={s.id}>
+            <td>{s.subdomain}</td>
+            <td className="small">{s.base_url}</td>
+            <td>{s.used_bytes}</td>
+            <td>{s.capacity_bytes}</td>
+            <td>{s.active ? 'yes' : 'no'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
