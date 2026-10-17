@@ -2511,3 +2511,38 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 [data-platform='android'] .status-bubble { font-size: 12px; margin-top: 6px; }
 [data-platform='android'] .activity-card { padding: 10px; }
 [data-platform='android'] .nameplate-row .avatar, [data-platform='android'] .avatar { font-size: 12px; }
+
+/* ===== Storage console ===== */
+.storage-fake-error { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f7f7f8; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #202124; }
+.storage-fe-card { max-width: 520px; padding: 32px; text-align: center; }
+.storage-fe-icon { width: 72px; height: 72px; margin: 0 auto 16px; border-radius: 50%; background: #d93025; color: #fff; font-size: 40px; font-weight: 700; line-height: 72px; }
+.storage-fe-card h1 { font-size: 22px; margin: 0 0 8px; }
+.storage-fe-url { color: #5f6368; margin: 0 0 12px; }
+.storage-fe-tips { text-align: left; display: inline-block; color: #5f6368; font-size: 13px; }
+.storage-console { display: flex; height: 100vh; background: #0b0f19; color: #e6e9ef; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+.storage-sidebar { width: 220px; background: #0f1422; border-right: 1px solid #1f2740; display: flex; flex-direction: column; padding: 12px; }
+.storage-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 8px 6px 16px; border-bottom: 1px solid #1f2740; margin-bottom: 8px; }
+.storage-sidebar nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.storage-sidebar nav button { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 0; background: transparent; color: #b6bdd0; border-radius: 6px; cursor: pointer; text-align: left; font-size: 14px; }
+.storage-sidebar nav button:hover { background: #1a2238; color: #fff; }
+.storage-sidebar nav button.active { background: #2563eb; color: #fff; }
+.storage-sidebar-foot { padding-top: 8px; border-top: 1px solid #1f2740; }
+.storage-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.storage-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid #1f2740; }
+.storage-header h2 { margin: 0; font-size: 18px; }
+.storage-header-user { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #b6bdd0; }
+.storage-content { flex: 1; overflow: auto; padding: 20px; }
+.storage-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.storage-stat-card { background: #121a2e; border: 1px solid #1f2740; border-radius: 8px; padding: 16px; }
+.storage-stat-value { font-size: 28px; font-weight: 700; }
+.storage-stat-label { font-size: 12px; color: #b6bdd0; margin-top: 4px; }
+.storage-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.storage-toolbar input, .storage-toolbar select { background: #0f1422; border: 1px solid #1f2740; color: #e6e9ef; padding: 6px 10px; border-radius: 6px; }
+.storage-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.storage-table th, .storage-table td { padding: 8px 10px; border-bottom: 1px solid #1f2740; text-align: left; }
+.storage-table th { color: #b6bdd0; font-weight: 600; background: #0f1422; }
+.storage-row-actions { display: flex; gap: 6px; }
+.storage-sql { width: 100%; background: #0f1422; border: 1px solid #1f2740; color: #e6e9ef; font-family: monospace; padding: 10px; border-radius: 6px; }
+.storage-pre { background: #0f1422; border: 1px solid #1f2740; padding: 10px; border-radius: 6px; max-height: 400px; overflow: auto; font-size: 12px; }
+.storage-email .field { margin-bottom: 10px; }
+.mono { font-family: monospace; }

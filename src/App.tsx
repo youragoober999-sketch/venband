@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { configured } from './lib/supabase';
-import { initSession, sessionStore } from './lib/session';
+import { initSession, sessionStore, isTopStaff } from './lib/session';
 import { AuthScreen, IdentityResetScreen, MfaScreen, RecoveryScreen, SetupErrorScreen, UnlockScreen } from './components/Auth';
 import { Shell } from './components/Shell';
 import { Logo } from './components/ui';
@@ -13,6 +13,7 @@ import { ChangelogPage, GuidelinesPage, PrivacyPage, PublicDiscovery, StatusPage
 import { ApplicationsPage } from './components/Apps';
 import { DownloadPage } from './components/Download';
 import { VooglePage } from './components/Voogle';
+import { StorageConsole, FakeBrowserError } from './components/Storage';
 import { DialogHost } from './components/Dialogs';
 import { handleSteamRedirect } from './lib/connections';
 import { openSettings } from './lib/ui';
@@ -43,6 +44,20 @@ export default function App() {
   if (!configured) return <NotConfigured />;
   // invite links work signed in or out
   if (route.kind === 'invite' && (status === 'signed-out' || (status === 'ready' && hasProfile && !needsOnboarding))) return <InvitePage code={route.code} />;
+  // /storage is a hidden, owner-only control plane. Everyone else (including
+  // signed-out visitors) sees a fake browser error so its existence leaks nothing.
+  if (route.kind === 'storage') {
+    if (status === 'ready' && hasProfile && isTopStaff(sessionStore.get().me)) {
+      return (
+        <>
+          <StorageConsole />
+          <DialogHost />
+          <ContextMenuHost />
+        </>
+      );
+    }
+    return <FakeBrowserError />;
+  }
   // venband.com shows the landing page even when you're signed in; open the
   // app from the "Open Venband" button instead of landing straight in your DMs.
   if (route.kind === 'root' && status === 'ready' && hasProfile) {

@@ -54,7 +54,8 @@ export type Route =
   | { kind: 'invite'; code: string }
   | { kind: 'group-invite'; code: string }
   | { kind: 'page'; page: PublicPage; id?: string }
-  | { kind: 'root' };
+  | { kind: 'root' }
+  | { kind: 'storage' };
 
 export type PublicPage = 'status' | 'tos' | 'privacy' | 'guidelines' | 'changelog' | 'discovery' | 'bots' | 'voogle' | 'download';
 const PAGES: Record<string, PublicPage> = {
@@ -79,6 +80,7 @@ export function parseRoute(path = currentPath()): Route {
   if (parts[0] === 'sign-in' || parts[0] === 'login') return { kind: 'sign-in' };
   if (parts[0] === 'register' || parts[0] === 'signup') return { kind: 'register' };
   if (parts[0] === 'discover') return { kind: 'discover' };
+  if (parts[0] === 'storage') return { kind: 'storage' };
   if (parts[0] === 'invite' && parts[1]) return { kind: 'invite', code: parts[1] };
   if (parts[0] === 'join-group' && parts[1]) return { kind: 'group-invite', code: parts[1] };
   const page = parts[0] ? PAGES[parts[0].toLowerCase()] : undefined;
