@@ -21,12 +21,27 @@ export interface VbbUploadResult {
   dedup?: boolean;
 }
 
+async function authToken(): Promise<string | null> {
+  try {
+    const { supabase } = await import('./supabase');
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch { return null; }
+}
+
+async function vbbFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await authToken();
+  const headers = new Headers(init.headers);
+  if (token) headers.set('authorization', `Bearer ${token}`);
+  return fetch(path, { ...init, headers, credentials: 'include' });
+}
+
 export async function vbbUpload(file: File, isPublic = false, onProgress?: (loaded: number, total: number) => void): Promise<VbbUploadResult> {
   // small files: single-shot
   if (file.size <= 3 * 1024 * 1024) {
     const buf = await file.arrayBuffer();
     const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    const r = await fetch(`/api/vbb?action=upload`, {
+    const r = await vbbFetch(`/api/vbb?action=upload`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'include',
@@ -46,7 +61,7 @@ export async function vbbUploadChunked(
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<VbbUploadResult> {
   // 1. init
-  const initRes = await fetch(`/api/vbb?action=init-chunked`, {
+  const initRes = await vbbFetch(`/api/vbb?action=init-chunked`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -65,7 +80,7 @@ export async function vbbUploadChunked(
     const blob = file.slice(start, end);
     const buf = await blob.arrayBuffer();
     const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    const r = await fetch(`/api/vbb?action=upload-chunk`, {
+    const r = await vbbFetch(`/api/vbb?action=upload-chunk`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'include',
@@ -90,7 +105,7 @@ export async function vbbUploadChunked(
   await Promise.all(workers);
 
   // 3. complete
-  const compRes = await fetch(`/api/vbb?action=complete-chunked`, {
+  const compRes = await vbbFetch(`/api/vbb?action=complete-chunked`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -102,21 +117,21 @@ export async function vbbUploadChunked(
 }
 
 export async function vbbList(prefix = ''): Promise<VbbObject[]> {
-  const r = await fetch(`/api/vbb?action=list&prefix=${encodeURIComponent(prefix)}`, { credentials: 'include' });
+  const r = await vbbFetch(`/api/vbb?action=list&prefix=${encodeURIComponent(prefix)}`, { credentials: 'include' });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || 'list failed');
   return j.objects as VbbObject[];
 }
 
 export async function vbbMeta(id: string): Promise<VbbObject> {
-  const r = await fetch(`/api/vbb?action=meta&id=${encodeURIComponent(id)}`, { credentials: 'include' });
+  const r = await vbbFetch(`/api/vbb?action=meta&id=${encodeURIComponent(id)}`, { credentials: 'include' });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || 'meta failed');
   return j.object as VbbObject;
 }
 
 export async function vbbDelete(id: string): Promise<void> {
-  const r = await fetch(`/api/vbb?action=delete`, {
+  const r = await vbbFetch(`/api/vbb?action=delete`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -127,7 +142,7 @@ export async function vbbDelete(id: string): Promise<void> {
 }
 
 export async function vbbPublish(id: string, isPublic: boolean): Promise<void> {
-  const r = await fetch(`/api/vbb?action=publish`, {
+  const r = await vbbFetch(`/api/vbb?action=publish`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -151,14 +166,14 @@ export interface VbbShard {
 }
 
 export async function vbbListShards(): Promise<VbbShard[]> {
-  const r = await fetch('/api/vbb-shards', { credentials: 'include' });
+  const r = await vbbFetch('/api/vbb-shards', { credentials: 'include' });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || 'list failed');
   return j.shards as VbbShard[];
 }
 
 export async function vbbRegisterShard(subdomain: string, baseUrl: string, capacityBytes = 0): Promise<void> {
-  const r = await fetch('/api/vbb-shards', {
+  const r = await vbbFetch('/api/vbb-shards', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -174,3 +189,5 @@ export async function vbbHash(file: File): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', buf);
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+

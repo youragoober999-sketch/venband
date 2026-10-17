@@ -19,7 +19,17 @@ async function currentUser(request) {
   const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   const token = m ? m[1] : bearer;
   if (!token) return null;
-  try { const { payload } = await jwtVerify(token, SECRET); return payload; } catch { return null; }
+  // 1. try VDL JWT
+  try { const { payload } = await jwtVerify(token, SECRET); return payload; } catch {}
+  // 2. fall back to Supabase session (verify via Supabase Auth)
+  try {
+    const URL_ = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+    const ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+    const r = await fetch(`${URL_}/auth/v1/user`, { headers: { apikey: ANON, authorization: `Bearer ${token}` } });
+    if (!r.ok) return null;
+    const u = await r.json();
+    return { sub: u.id, email: u.email, role: 'user', badges: [], platform_role: 'user' };
+  } catch { return null; }
 }
 function isTopStaff(u) { return u && (u.role === 'owner' || (Array.isArray(u.badges) && (u.badges.includes('owner') || u.badges.includes('founder')))); }
 
