@@ -7,6 +7,7 @@ import { sessionStore, isTopStaff } from '../lib/session';
 import { go } from '../lib/router';
 import { Icon, Field } from './ui';
 import { vdlListUsers } from '../lib/vdl';
+import { vbbList, vbbUpload, vbbDelete, vbbPublish, vbbDownloadUrl } from '../lib/vbb';
 
 function decodePayload(p: string): string {
   try {
@@ -46,7 +47,8 @@ const TABS: Tab[] = [
   { id: 'overview', label: 'Overview', icon: 'home' },
   { id: 'table', label: 'Table Editor', icon: 'file' },
   { id: 'auth', label: 'Authentication', icon: 'users' },
-  { id: 'storage', label: 'Storage', icon: 'folder' },
+  { id: 'storage', label: 'Vercel Blob', icon: 'folder' },
+  { id: 'vbb', label: 'Venband Blob', icon: 'file' },
   { id: 'sql', label: 'SQL Editor', icon: 'code' },
   { id: 'logs', label: 'Logs', icon: 'history' },
   { id: 'blockchain', label: 'Blockchain', icon: 'shield' },
@@ -94,6 +96,7 @@ export function StorageConsole() {
           {tab === 'table' && <TableTab />}
           {tab === 'auth' && <AuthTab />}
           {tab === 'storage' && <StorageTab />}
+          {tab === 'vbb' && <VbbTab />}
           {tab === 'sql' && <SqlTab />}
           {tab === 'logs' && <LogsTab />}
           {tab === 'blockchain' && <BlockchainTab />}
@@ -496,6 +499,61 @@ function EmailTab() {
       </div>
       {msg && <p className="small">{msg}</p>}
       <p className="muted small">Sending uses Resend on the server (RESEND_API_KEY + STORAGE_EMAIL_FROM). From-address should be a subdomain of venband.com.</p>
+    </div>
+  );
+}
+
+function VbbTab() {
+  const [files, setFiles] = useState<any[]>([]);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    setBusy(true); setErr('');
+    try { setFiles(await vbbList()); } catch (e) { setErr(String((e as Error).message)); }
+    finally { setBusy(false); }
+  };
+  useEffect(() => { load(); }, []);
+  const upload = async (file: File) => {
+    setErr('');
+    try { await vbbUpload(file, false); load(); } catch (e) { setErr(String((e as Error).message)); }
+  };
+  const remove = async (id: string) => {
+    if (!confirm('Delete this object?')) return;
+    try { await vbbDelete(id); setFiles((p) => p.filter((f) => f.id !== id)); } catch (e) { setErr(String((e as Error).message)); }
+  };
+  const togglePublic = async (id: string, pub: boolean) => {
+    try { await vbbPublish(id, !pub); load(); } catch (e) { setErr(String((e as Error).message)); }
+  };
+  return (
+    <div>
+      <div className="storage-toolbar">
+        <button className="btn ghost small" onClick={load} disabled={busy}>Refresh</button>
+        <label className="btn ghost small" style={{ cursor: 'pointer' }}>
+          Upload
+          <input type="file" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
+        </label>
+      </div>
+      {err && <p className="error small">{err}</p>}
+      <p className="muted small">Venband Blob (VBB): custom object storage. Small files live in Postgres (content-addressed, deduped by SHA-256); large files are chunked. Served from your own domain.</p>
+      <table className="storage-table">
+        <thead><tr><th>Name</th><th>Size</th><th>Storage</th><th>SHA-256</th><th>Public</th><th></th></tr></thead>
+        <tbody>
+          {files.map((f) => (
+            <tr key={f.id}>
+              <td>{f.name}</td>
+              <td>{f.size}</td>
+              <td>{f.storage}</td>
+              <td className="mono small">{String(f.sha256).slice(0, 12)}…</td>
+              <td><button className="btn ghost small" onClick={() => togglePublic(f.id, f.public)}>{f.public ? 'yes' : 'no'}</button></td>
+              <td className="storage-row-actions">
+                <a className="btn ghost small" href={vbbDownloadUrl(f.id)} target="_blank" rel="noreferrer">Open</a>
+                <button className="btn ghost small danger" onClick={() => remove(f.id)}>Delete</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {files.length === 0 && !busy && <p className="muted small">No objects yet.</p>}
     </div>
   );
 }

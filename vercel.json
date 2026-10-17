@@ -94,6 +94,17 @@
       ],
       "destination": "https://www.venband.com/",
       "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "storage.venband.com"
+        }
+      ],
+      "destination": "https://www.venband.com/storage",
+      "permanent": false
     }
   ]
 }
