@@ -8,6 +8,16 @@ const URL_ = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').r
 const ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 
 async function isTopStaff(jwt) {
+  // try VDL first
+  try {
+    const { jwtVerify } = await import('jose');
+    const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
+    const { payload } = await jwtVerify(jwt, SECRET);
+    const role = payload.role || payload.platform_role;
+    const badges = payload.badges || [];
+    return role === 'owner' || badges.includes('owner') || badges.includes('founder');
+  } catch {}
+  // fall back to Supabase
   const rpcRes = await fetch(`${URL_}/rest/v1/rpc/is_top_staff`, {
     method: 'POST',
     headers: { apikey: ANON, authorization: `Bearer ${jwt}`, 'content-type': 'application/json' },
@@ -23,8 +33,17 @@ export async function GET(request) {
   const auth = request.headers.get('authorization') || '';
   const jwt = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!jwt) return json(401, { error: 'missing session' });
-  const userRes = await fetch(`${URL_}/auth/v1/user`, { headers: { apikey: ANON, authorization: `Bearer ${jwt}` } });
-  if (!userRes.ok) return json(401, { error: 'invalid session' });
+  let ok = false;
+  try {
+    const { jwtVerify } = await import('jose');
+    const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
+    await jwtVerify(jwt, SECRET);
+    ok = true;
+  } catch {
+    const userRes = await fetch(`${URL_}/auth/v1/user`, { headers: { apikey: ANON, authorization: `Bearer ${jwt}` } });
+    ok = userRes.ok;
+  }
+  if (!ok) return json(401, { error: 'invalid session' });
   if (!(await isTopStaff(jwt))) return json(403, { error: 'top staff only' });
 
   const prefix = u.searchParams.get('prefix') || '';
@@ -40,8 +59,17 @@ export async function POST(request) {
   const auth = request.headers.get('authorization') || '';
   const jwt = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!jwt) return json(401, { error: 'missing session' });
-  const userRes = await fetch(`${URL_}/auth/v1/user`, { headers: { apikey: ANON, authorization: `Bearer ${jwt}` } });
-  if (!userRes.ok) return json(401, { error: 'invalid session' });
+  let ok = false;
+  try {
+    const { jwtVerify } = await import('jose');
+    const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
+    await jwtVerify(jwt, SECRET);
+    ok = true;
+  } catch {
+    const userRes = await fetch(`${URL_}/auth/v1/user`, { headers: { apikey: ANON, authorization: `Bearer ${jwt}` } });
+    ok = userRes.ok;
+  }
+  if (!ok) return json(401, { error: 'invalid session' });
   if (!(await isTopStaff(jwt))) return json(403, { error: 'top staff only' });
 
   let body;

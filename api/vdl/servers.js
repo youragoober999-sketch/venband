@@ -1,5 +1,5 @@
 // VDL servers: list + create.
-import { sql, json, preflight, readJson } from './_db.js';
+import { sql, json, preflight, readJson, ensureSchema } from './_db.js';
 import { jwtVerify } from 'jose';
 const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
 
@@ -13,6 +13,7 @@ async function currentUser(request) {
 export function OPTIONS() { return preflight(); }
 
 export async function GET(request) {
+  await ensureSchema();
   const me = await currentUser(request);
   if (!me) return json(401, { error: 'not signed in' });
   const r = await sql`select s.id, s.name, s.icon_color, s.status, s.verified, s.description, s.members, s.created_at, u.username as owner_username, s.owner_id from vdl_servers s left join vdl_users u on u.id = s.owner_id order by s.created_at desc limit 100`;
@@ -20,6 +21,7 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  await ensureSchema();
   const me = await currentUser(request);
   if (!me) return json(401, { error: 'not signed in' });
   let body;
@@ -33,3 +35,4 @@ export async function POST(request) {
   }
   return json(400, { error: 'unknown action' });
 }
+

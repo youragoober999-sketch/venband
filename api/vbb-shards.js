@@ -1,6 +1,6 @@
 // Venband Blob Shards — registry of storage subdomains (shard-1.venband.com, ...).
 // Top-staff only. Shards are registered here; uploads can be routed to them.
-import { sql, json, preflight, readJson } from './vdl/_db.js';
+import { sql, json, preflight, readJson, ensureSchema } from './vdl/_db.js';
 import { jwtVerify } from 'jose';
 const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
 
@@ -18,6 +18,7 @@ function isTopStaff(u) { return u && (u.role === 'owner' || (Array.isArray(u.bad
 export function OPTIONS() { return preflight(); }
 
 export async function GET(request) {
+  await ensureSchema();
   const me = await currentUser(request);
   if (!me || !isTopStaff(me)) return json(403, { error: 'top staff only' });
   const r = await sql`select * from vbb_shards order by id asc`;
@@ -25,6 +26,7 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  await ensureSchema();
   const me = await currentUser(request);
   if (!me || !isTopStaff(me)) return json(403, { error: 'top staff only' });
   let body;

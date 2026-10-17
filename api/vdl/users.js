@@ -1,5 +1,5 @@
 // VDL users: list/search profiles. Top-staff gated for full list.
-import { sql, json, preflight, readJson } from './_db.js';
+import { sql, json, preflight, readJson, ensureSchema } from './_db.js';
 import { SignJWT, jwtVerify } from 'jose';
 const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
 
@@ -17,6 +17,7 @@ function isTopStaff(u) {
 export function OPTIONS() { return preflight(); }
 
 export async function GET(request) {
+  await ensureSchema();
   const u = new URL(request.url);
   const q = (u.searchParams.get('q') || '').trim();
   const me = await currentUser(request);
@@ -39,6 +40,7 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  await ensureSchema();
   // admin actions: ban/erase require top staff
   const me = await currentUser(request);
   if (!me || !isTopStaff(me)) return json(403, { error: 'top staff only' });
@@ -46,11 +48,14 @@ export async function POST(request) {
   try { body = await readJson(request); } catch (e) { return json(400, { error: e.message }); }
   if (body.action === 'ban') {
     await sql`update vdl_users set account_status = 'banned' where id = ${body.id}`;
+    await sql`insert into vdl_audit_log (actor_id, action, target_user, reason) values (${me.sub}, 'ban', ${body.id}, ${body.reason || 'storage console'})`;
     return json(200, { ok: true });
   }
   if (body.action === 'erase') {
+    await sql`insert into vdl_audit_log (actor_id, action, target_user, reason) values (${me.sub}, 'erase', ${body.id}, 'storage console')`;
     await sql`delete from vdl_users where id = ${body.id}`;
     return json(200, { ok: true });
   }
   return json(400, { error: 'unknown action' });
 }
+

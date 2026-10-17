@@ -2,11 +2,11 @@
 // Anyone without the owner/founder badge sees a fake browser error page so the
 // existence of this console is never revealed.
 import { useEffect, useState } from 'react';
-import { supabase, errorMessage } from '../lib/supabase';
+
 import { sessionStore, isTopStaff } from '../lib/session';
 import { go } from '../lib/router';
 import { Icon, Field } from './ui';
-import { vdlListUsers } from '../lib/vdl';
+import { vdlListUsers, vdlListServers, vdlBanUser, vdlEraseUser, vdlListAudit, vdlListLedger, vdlRebuildLedger, vdlQueueEmail, vdlSendQueuedEmails, vdlStats } from '../lib/vdl';
 import { vbbList, vbbUpload, vbbDelete, vbbPublish, vbbDownloadUrl, vbbListShards } from '../lib/vbb';
 
 function decodePayload(p: string): string {
@@ -114,11 +114,9 @@ function OverviewTab() {
   useEffect(() => {
     (async () => {
       try {
-        const { data, error } = await supabase.rpc('storage_console_stats');
-        if (error) throw error;
-        setStats(data);
+        setStats(await vdlStats());
       } catch (e) {
-        setErr(errorMessage(e));
+        setErr(String((e as Error).message));
       }
     })();
   }, []);
@@ -132,7 +130,7 @@ function OverviewTab() {
       </div>
       {err && <p className="error small">{err}</p>}
       <p className="muted small">
-        This console is restricted to owners and founders. All actions are audited.
+        This console is restricted to owners and founders. All actions are audited. 100% local (Vercel Postgres + KV).
       </p>
     </div>
   );
@@ -156,12 +154,11 @@ function TableTab() {
   const load = async () => {
     setBusy(true);
     try {
-      const { data, error } = await supabase.rpc('mod_search', { p_query: q });
-      if (error) throw error;
-      setUsers(data?.users ?? []);
-      setServers(data?.servers ?? []);
+      const [u, s] = await Promise.all([vdlListUsers(q), vdlListServers()]);
+      setUsers(u);
+      setServers(s);
     } catch (e) {
-      setMsg(errorMessage(e));
+      setMsg(String((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -176,29 +173,23 @@ function TableTab() {
       {msg && <p className="error small">{msg}</p>}
       <h3>Users</h3>
       <table className="storage-table">
-        <thead><tr><th>Username</th><th>Display name</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr></thead>
+        <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr></thead>
         <tbody>
           {users.map((u) => (
             <tr key={u.id}>
               <td>{u.username}</td>
-              <td>{u.display_name}</td>
+              <td>{u.email}</td>
               <td>{u.platform_role}</td>
               <td>{u.account_status}</td>
               <td>{new Date(u.created_at).toLocaleString()}</td>
               <td className="storage-row-actions">
                 <button className="btn ghost small" onClick={async () => {
                   if (!confirm('Ban this account?')) return;
-                  try {
-                    await supabase.rpc('mod_set_account_status', { p_user: u.id, p_status: 'banned', p_reason: 'storage console' });
-                    load();
-                  } catch (e) { alert(errorMessage(e)); }
+                  try { await vdlBanUser(u.id, 'storage console'); load(); } catch (e) { alert(String((e as Error).message)); }
                 }}>Ban</button>
                 <button className="btn ghost small danger" onClick={async () => {
                   if (!confirm('Permanently erase this account?')) return;
-                  try {
-                    await supabase.rpc('delete_account', { p_user: u.id });
-                    load();
-                  } catch (e) { alert(errorMessage(e)); }
+                  try { await vdlEraseUser(u.id); load(); } catch (e) { alert(String((e as Error).message)); }
                 }}>Erase</button>
               </td>
             </tr>
@@ -212,7 +203,7 @@ function TableTab() {
           {servers.map((s) => (
             <tr key={s.id}>
               <td>{s.name}</td>
-              <td>{s.owner_username}</td>
+              <td>{s.owner_username ?? s.owner_id}</td>
               <td>{s.status}</td>
               <td>{s.members}</td>
               <td>{new Date(s.created_at).toLocaleString()}</td>
@@ -220,35 +211,7 @@ function TableTab() {
           ))}
         </tbody>
       </table>
-
-      <h3>VDL users (new on-site data layer)</h3>
-      <VdlUsersBlock />
     </div>
-  );
-}
-
-function VdlUsersBlock() {
-  const [rows, setRows] = useState<any[]>([]);
-  const [err, setErr] = useState('');
-  useEffect(() => {
-    vdlListUsers().then(setRows).catch((e) => setErr(String(e.message || e)));
-  }, []);
-  if (err) return <p className="error small">{err}</p>;
-  return (
-    <table className="storage-table">
-      <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th></tr></thead>
-      <tbody>
-        {rows.map((u) => (
-          <tr key={u.id}>
-            <td>{u.username}</td>
-            <td>{u.email}</td>
-            <td>{u.platform_role}</td>
-            <td>{u.account_status}</td>
-            <td>{u.created_at ? new Date(u.created_at).toLocaleString() : '—'}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 
@@ -258,18 +221,16 @@ function AuthTab() {
   useEffect(() => {
     (async () => {
       try {
-        const { data, error } = await supabase.rpc('storage_list_auth_users');
-        if (error) throw error;
-        setUsers(data ?? []);
-      } catch (e) { setErr(errorMessage(e)); }
+        setUsers(await vdlListUsers());
+      } catch (e) { setErr(String((e as Error).message)); }
     })();
   }, []);
   return (
     <div>
-      <p className="muted small">Authentication users (owner-only view).</p>
+      <p className="muted small">Authentication users (VDL — fully local).</p>
       {err && <p className="error small">{err}</p>}
       <table className="storage-table">
-        <thead><tr><th>Email</th><th>Username</th><th>User ID</th><th>Created</th><th>Last sign in</th></tr></thead>
+        <thead><tr><th>Email</th><th>Username</th><th>User ID</th><th>Created</th></tr></thead>
         <tbody>
           {users.map((u) => (
             <tr key={u.id}>
@@ -277,7 +238,6 @@ function AuthTab() {
               <td>{u.username}</td>
               <td className="mono small">{u.id}</td>
               <td>{u.created_at ? new Date(u.created_at).toLocaleString() : '—'}</td>
-              <td>{u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -294,25 +254,22 @@ function StorageTab() {
   const load = async () => {
     setBusy(true); setErr('');
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      const res = await fetch(`/api/storage-blob?prefix=${encodeURIComponent(prefix)}`, { headers: { authorization: `Bearer ${token}` } });
+      const res = await fetch(`/api/storage-blob?prefix=${encodeURIComponent(prefix)}`, { credentials: 'include' });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || 'load failed');
       setFiles(j.blobs ?? []);
-    } catch (e) { setErr(errorMessage(e)); }
+    } catch (e) { setErr(String((e as Error).message)); }
     finally { setBusy(false); }
   };
   useEffect(() => { load(); }, []);
   const upload = async (file: File) => {
     setErr('');
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
     const buf = await file.arrayBuffer();
     const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
     const res = await fetch('/api/storage-blob', {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ action: 'upload', pathname: file.name, data: b64, contentType: file.type }),
     });
     const j = await res.json();
@@ -321,11 +278,10 @@ function StorageTab() {
   };
   const remove = async (url: string, name: string) => {
     if (!confirm('Delete this file?')) return;
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
     const res = await fetch('/api/storage-blob', {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ action: 'delete', url }),
     });
     const j = await res.json();
@@ -370,7 +326,7 @@ function SqlTab() {
         Use the Table Editor, Authentication, Storage and Blockchain tabs instead.
       </p>
       <p className="muted small">
-        For ad-hoc queries, run them in the Supabase SQL editor with the service role.
+        For ad-hoc queries, use the Vercel Postgres query runner (no service role exposed to the browser).
       </p>
     </div>
   );
@@ -382,10 +338,8 @@ function LogsTab() {
   useEffect(() => {
     (async () => {
       try {
-        const { data, error } = await supabase.rpc('mod_log', { p_limit: 100 });
-        if (error) throw error;
-        setRows(data ?? []);
-      } catch (e) { setErr(errorMessage(e)); }
+        setRows(await vdlListAudit());
+      } catch (e) { setErr(String((e as Error).message)); }
     })();
   }, []);
   return (
@@ -415,20 +369,17 @@ function BlockchainTab() {
   const load = async () => {
     setBusy(true);
     try {
-      const { data, error } = await supabase.rpc('storage_ledger_list');
-      if (error) throw error;
-      setRows(data ?? []);
-    } catch (e) { setErr(errorMessage(e)); }
+      setRows(await vdlListLedger());
+    } catch (e) { setErr(String((e as Error).message)); }
     finally { setBusy(false); }
   };
   const rebuild = async () => {
     if (!confirm('Rebuild the ledger from current user stats?')) return;
     setBusy(true);
     try {
-      const { error } = await supabase.rpc('storage_ledger_rebuild');
-      if (error) throw error;
+      await vdlRebuildLedger();
       await load();
-    } catch (e) { setErr(errorMessage(e)); }
+    } catch (e) { setErr(String((e as Error).message)); }
     finally { setBusy(false); }
   };
   useEffect(() => { load(); }, []);
@@ -466,27 +417,17 @@ function EmailTab() {
   const send = async () => {
     setMsg('');
     try {
-      const { error } = await supabase.rpc('storage_queue_email', { p_to: to, p_subject: subject, p_body: body });
-      if (error) throw error;
+      await vdlQueueEmail(to, subject, body);
       setMsg('Queued.');
       setTo(''); setSubject(''); setBody('');
-    } catch (e) { setMsg(errorMessage(e)); }
+    } catch (e) { setMsg(String((e as Error).message)); }
   };
   const sendQueued = async () => {
     setMsg('');
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) throw new Error('Not signed in');
-      const res = await fetch('/api/storage-email', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ all: true }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || 'send failed');
-      setMsg(`Sent ${j.sent}/${j.total}.`);
-    } catch (e) { setMsg(errorMessage(e)); }
+      const r = await vdlSendQueuedEmails();
+      setMsg(`Sent ${r.sent}/${r.total}.`);
+    } catch (e) { setMsg(String((e as Error).message)); }
   };
   return (
     <div className="storage-email">
@@ -597,7 +538,7 @@ function ShardsBlock() {
 function SettingsTab() {
   return (
     <div>
-      <p className="muted small">Project settings, API keys and webhooks are managed in Supabase. This console never exposes service-role keys.</p>
+      <p className="muted small">All data is stored locally in your Vercel Postgres + KV. No external services required. Service keys never reach the browser.</p>
     </div>
   );
 }

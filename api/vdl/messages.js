@@ -1,5 +1,5 @@
 // VDL messages: list (poll) + send, with KV hot-cache for speed.
-import { sql, json, preflight, readJson } from './_db.js';
+import { sql, json, preflight, readJson, ensureSchema } from './_db.js';
 import { kv } from '@vercel/kv';
 import { jwtVerify } from 'jose';
 const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
@@ -14,6 +14,7 @@ async function currentUser(request) {
 export function OPTIONS() { return preflight(); }
 
 export async function GET(request) {
+  await ensureSchema();
   const me = await currentUser(request);
   if (!me) return json(401, { error: 'not signed in' });
   const u = new URL(request.url);
@@ -38,6 +39,7 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  await ensureSchema();
   const me = await currentUser(request);
   if (!me) return json(401, { error: 'not signed in' });
   let body;
@@ -49,3 +51,4 @@ export async function POST(request) {
   try { await kv.del(`vdl:msgs:${channel_id}`); } catch {}
   return json(200, { message: { ...r.rows[0], author_id: me.sub } });
 }
+

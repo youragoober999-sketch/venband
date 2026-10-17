@@ -1,7 +1,7 @@
 // VDL auth: signup / signin / signout / me, backed by Vercel Postgres.
 import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcryptjs';
-import { sql, json, preflight, readJson, cookieHeader, COOKIE } from './_db.js';
+import { sql, json, preflight, readJson, cookieHeader, COOKIE, ensureSchema } from './_db.js';
 
 const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
 
@@ -29,12 +29,14 @@ async function currentUser(request) {
 export function OPTIONS() { return preflight(); }
 
 export async function GET(request) {
+  await ensureSchema();
   const u = await currentUser(request);
   if (!u) return json(401, { error: 'not signed in' });
   return json(200, { user: u });
 }
 
 export async function POST(request) {
+  await ensureSchema();
   const u = new URL(request.url);
   const action = u.searchParams.get('action') || '';
   let body;
@@ -82,3 +84,4 @@ export async function POST(request) {
 
   return json(400, { error: 'unknown action' });
 }
+

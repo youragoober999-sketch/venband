@@ -3,7 +3,7 @@
 // Large objects: chunked (3 MB parts) uploaded in parallel, stored in Vercel Blob,
 //   with a manifest in Postgres. Supports files up to 5 GB+.
 // Gated to signed-in users for writes; reads honor the `public` flag.
-import { sql, json, preflight, readJson } from './vdl/_db.js';
+import { sql, json, preflight, readJson, ensureSchema } from './vdl/_db.js';
 import crypto from 'node:crypto';
 import { jwtVerify } from 'jose';
 import { put, del } from '@vercel/blob';
@@ -45,6 +45,7 @@ function toBuffer(bytes) {
 export function OPTIONS() { return preflight(); }
 
 export async function GET(request) {
+  await ensureSchema();
   const u = new URL(request.url);
   const id = u.searchParams.get('id');
   const action = u.searchParams.get('action') || 'list';
@@ -133,6 +134,7 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  await ensureSchema();
   const u = new URL(request.url);
   const action = u.searchParams.get('action') || '';
   const me = await currentUser(request);

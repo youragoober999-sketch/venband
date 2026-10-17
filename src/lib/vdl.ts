@@ -53,6 +53,74 @@ export async function vdlListServers(): Promise<any[]> {
   return j.servers;
 }
 
+export async function vdlBanUser(id: string, reason = ''): Promise<void> {
+  const r = await fetch(`${BASE}/users`, { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'ban', id, reason }) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'ban failed');
+}
+
+export async function vdlEraseUser(id: string): Promise<void> {
+  const r = await fetch(`${BASE}/users`, { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'erase', id }) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'erase failed');
+}
+
+export async function vdlListAudit(): Promise<any[]> {
+  const r = await fetch(`${BASE}/audit`, { credentials: 'include' });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'list failed');
+  return j.rows;
+}
+
+export async function vdlListLedger(): Promise<any[]> {
+  const r = await fetch(`${BASE}/ledger`, { credentials: 'include' });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'list failed');
+  return j.rows;
+}
+
+export async function vdlRebuildLedger(): Promise<void> {
+  const r = await fetch(`${BASE}/ledger`, { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'rebuild' }) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'rebuild failed');
+}
+
+export async function vdlQueueEmail(to: string, subject: string, body: string): Promise<void> {
+  const r = await fetch(`${BASE}/emails`, { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'queue', to, subject, body }) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'queue failed');
+}
+
+export async function vdlSendQueuedEmails(): Promise<{ sent: number; total: number }> {
+  const r = await fetch(`${BASE}/emails`, { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'send' }) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'send failed');
+  return j;
+}
+
+export async function vdlListEmails(): Promise<any[]> {
+  const r = await fetch(`${BASE}/emails`, { credentials: 'include' });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'list failed');
+  return j.rows;
+}
+
+export async function vdlStats(): Promise<{ users: number; servers: number; objects: number; blocks: number }> {
+  const r = await fetch(`${BASE}/stats`, { credentials: 'include' });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'stats failed');
+  return j;
+}
+
+export async function vdlToken(): Promise<string | null> {
+  try {
+    const r = await fetch(`${BASE}/auth`, { credentials: 'include' });
+    if (!r.ok) return null;
+    // VDL uses cookie auth; return null (cookie sent automatically)
+    return null;
+  } catch { return null; }
+}
+
 export async function vdlListMessages(channel: string, since?: string): Promise<any[]> {
   const qs = new URLSearchParams({ channel });
   if (since) qs.set('since', since);
