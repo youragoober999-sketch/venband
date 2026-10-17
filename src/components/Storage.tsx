@@ -7,6 +7,16 @@ import { sessionStore, isTopStaff } from '../lib/session';
 import { go } from '../lib/router';
 import { Icon, Field } from './ui';
 
+function decodePayload(p: string): string {
+  try {
+    const bin = atob(p);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return p;
+  }
+}
+
 /** Fake browser error shown to everyone who is not an owner/founder. */
 export function FakeBrowserError() {
   return (
@@ -295,24 +305,15 @@ function StorageTab() {
 }
 
 function SqlTab() {
-  const [sql, setSql] = useState('select count(*) from public.profiles;');
-  const [out, setOut] = useState('');
-  const [err, setErr] = useState('');
-  const run = async () => {
-    setErr(''); setOut('');
-    // Client-side SQL is not permitted; route through a guarded RPC instead.
-    try {
-      const { data, error } = await supabase.rpc('storage_run_sql', { p_sql: sql });
-      if (error) throw error;
-      setOut(JSON.stringify(data, null, 2));
-    } catch (e) { setErr(errorMessage(e)); }
-  };
   return (
     <div>
-      <textarea value={sql} onChange={(e) => setSql(e.target.value)} rows={6} className="storage-sql" />
-      <button className="btn" onClick={run}>Run</button>
-      {err && <p className="error small">{err}</p>}
-      <pre className="storage-pre">{out}</pre>
+      <p className="muted small">
+        Arbitrary SQL execution from the browser is disabled for security, even for owners.
+        Use the Table Editor, Authentication, Storage and Blockchain tabs instead.
+      </p>
+      <p className="muted small">
+        For ad-hoc queries, run them in the Supabase SQL editor with the service role.
+      </p>
     </div>
   );
 }
@@ -389,7 +390,7 @@ function BlockchainTab() {
               <td>{r.seq}</td>
               <td className="mono small">{String(r.hash).slice(0, 12)}…</td>
               <td className="mono small">{String(r.prev_hash).slice(0, 12)}…</td>
-              <td className="small">{r.payload}</td>
+              <td className="small">{decodePayload(r.payload)}</td>
               <td>{r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</td>
             </tr>
           ))}
