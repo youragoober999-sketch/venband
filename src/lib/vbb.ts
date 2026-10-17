@@ -166,14 +166,14 @@ export interface VbbShard {
 }
 
 export async function vbbListShards(): Promise<VbbShard[]> {
-  const r = await vbbFetch('/api/vbb-shards', { credentials: 'include' });
+  const r = await vbbFetch('/api/vbb?r=shards', { credentials: 'include' });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || 'list failed');
   return j.shards as VbbShard[];
 }
 
 export async function vbbRegisterShard(subdomain: string, baseUrl: string, capacityBytes = 0): Promise<void> {
-  const r = await vbbFetch('/api/vbb-shards', {
+  const r = await vbbFetch('/api/vbb?r=shards', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -189,5 +189,6 @@ export async function vbbHash(file: File): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', buf);
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+
 
 

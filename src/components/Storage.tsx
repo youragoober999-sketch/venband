@@ -47,8 +47,7 @@ const TABS: Tab[] = [
   { id: 'overview', label: 'Overview', icon: 'home' },
   { id: 'table', label: 'Table Editor', icon: 'file' },
   { id: 'auth', label: 'Authentication', icon: 'users' },
-  { id: 'storage', label: 'Vercel Blob', icon: 'folder' },
-  { id: 'vbb', label: 'Venband Blob', icon: 'file' },
+  { id: 'vbb', label: 'Storage', icon: 'folder' },
   { id: 'sql', label: 'SQL Editor', icon: 'code' },
   { id: 'logs', label: 'Logs', icon: 'history' },
   { id: 'blockchain', label: 'Blockchain', icon: 'shield' },
@@ -95,7 +94,6 @@ export function StorageConsole() {
           {tab === 'overview' && <OverviewTab />}
           {tab === 'table' && <TableTab />}
           {tab === 'auth' && <AuthTab />}
-          {tab === 'storage' && <StorageTab />}
           {tab === 'vbb' && <VbbTab />}
           {tab === 'sql' && <SqlTab />}
           {tab === 'logs' && <LogsTab />}
@@ -245,79 +243,6 @@ function AuthTab() {
     </div>
   );
 }
-
-function StorageTab() {
-  const [files, setFiles] = useState<any[]>([]);
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [prefix, setPrefix] = useState('');
-  const load = async () => {
-    setBusy(true); setErr('');
-    try {
-      const res = await fetch(`/api/storage-blob?prefix=${encodeURIComponent(prefix)}`, { credentials: 'include' });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || 'load failed');
-      setFiles(j.blobs ?? []);
-    } catch (e) { setErr(String((e as Error).message)); }
-    finally { setBusy(false); }
-  };
-  useEffect(() => { load(); }, []);
-  const upload = async (file: File) => {
-    setErr('');
-    const buf = await file.arrayBuffer();
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    const res = await fetch('/api/storage-blob', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ action: 'upload', pathname: file.name, data: b64, contentType: file.type }),
-    });
-    const j = await res.json();
-    if (!res.ok) { setErr(j.error || 'upload failed'); return; }
-    load();
-  };
-  const remove = async (url: string, name: string) => {
-    if (!confirm('Delete this file?')) return;
-    const res = await fetch('/api/storage-blob', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ action: 'delete', url }),
-    });
-    const j = await res.json();
-    if (!res.ok) { setErr(j.error || 'delete failed'); return; }
-    setFiles((prev) => prev.filter((f) => f.url !== url && f.pathname !== name));
-  };
-  return (
-    <div>
-      <div className="storage-toolbar">
-        <input value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="prefix (optional)" />
-        <button className="btn ghost small" onClick={load} disabled={busy}>Refresh</button>
-        <label className="btn ghost small" style={{ cursor: 'pointer' }}>
-          Upload
-          <input type="file" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
-        </label>
-      </div>
-      {err && <p className="error small">{err}</p>}
-      <p className="muted small">Free, on-site storage via Vercel Blob (requires BLOB_READ_WRITE_TOKEN). No Supabase needed for files.</p>
-      <table className="storage-table">
-        <thead><tr><th>Name</th><th>Size</th><th>URL</th><th></th></tr></thead>
-        <tbody>
-          {files.map((f) => (
-            <tr key={f.url}>
-              <td>{f.pathname}</td>
-              <td>{f.size ?? '—'}</td>
-              <td className="small"><a href={f.url} target="_blank" rel="noreferrer">open</a></td>
-              <td><button className="btn ghost small danger" onClick={() => remove(f.url, f.pathname)}>Delete</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {files.length === 0 && !busy && <p className="muted small">No files yet.</p>}
-    </div>
-  );
-}
-
 function SqlTab() {
   return (
     <div>

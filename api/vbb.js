@@ -47,6 +47,12 @@ export function OPTIONS() { return preflight(); }
 export async function GET(request) {
   await ensureSchema();
   const u = new URL(request.url);
+  if (u.searchParams.get('r') === 'shards') {
+    const me = await currentUser(request);
+    if (!me || !isTopStaff(me)) return json(403, { error: 'top staff only' });
+    const r = await sql`select * from vbb_shards order by id asc`;
+    return json(200, { shards: r.rows });
+  }
   const id = u.searchParams.get('id');
   const action = u.searchParams.get('action') || 'list';
 
@@ -136,6 +142,27 @@ export async function GET(request) {
 export async function POST(request) {
   await ensureSchema();
   const u = new URL(request.url);
+  if (u.searchParams.get('r') === 'shards') {
+    const me = await currentUser(request);
+    if (!me || !isTopStaff(me)) return json(403, { error: 'top staff only' });
+    let body;
+    try { body = await readJson(request); } catch (e) { return json(400, { error: e.message }); }
+    if (body.action === 'register') {
+      const { subdomain, base_url, capacity_bytes } = body;
+      if (!subdomain || !base_url) return json(400, { error: 'subdomain and base_url required' });
+      await sql`insert into vbb_shards (subdomain, base_url, capacity_bytes) values (${subdomain}, ${base_url}, ${capacity_bytes || 0}) on conflict (subdomain) do update set base_url = excluded.base_url, capacity_bytes = excluded.capacity_bytes, active = true`;
+      return json(200, { ok: true });
+    }
+    if (body.action === 'deactivate') {
+      await sql`update vbb_shards set active = false where subdomain = ${body.subdomain}`;
+      return json(200, { ok: true });
+    }
+    if (body.action === 'usage') {
+      await sql`update vbb_shards set used_bytes = ${body.used_bytes} where subdomain = ${body.subdomain}`;
+      return json(200, { ok: true });
+    }
+    return json(400, { error: 'unknown action' });
+  }
   const action = u.searchParams.get('action') || '';
   const me = await currentUser(request);
   if (!me) return json(401, { error: 'not signed in' });
