@@ -27,6 +27,15 @@ The newest option: a custom backend built on Vercel Postgres + Vercel KV (Redis)
 - Client adapter: `src/lib/vdl.ts` (signup/signin/users/servers/messages).
 - The `/storage` console now shows a "VDL users" block as proof of the new layer.
 
+## 4. Venband Blob (VBB) — custom, content-addressed object storage
+A fully custom blob store invented for Venband:
+- Small objects stored in Postgres (bytea), deduped by SHA-256 (content-addressable).
+- Large objects chunked into 1 MB pieces for streaming.
+- Served from your own domain via `cdn.venband.com/o/:id`.
+- Subdomains: `storage.venband.com` (console), `cdn.venband.com` (objects), `shard-N.venband.com` (scale-out shards).
+- Shard registry at `/api/vbb-shards` lets owners register and manage shards.
+- Schema: `vbb/schema.sql`.
+
 ## Security notes
 - Never expose `BLOB_READ_WRITE_TOKEN` or service keys to the browser; they live only in Vercel env (server-side).
 - `/storage` remains gated to owners/founders via `is_top_staff()`; the Blob API re-checks the caller's Supabase session on every request.
