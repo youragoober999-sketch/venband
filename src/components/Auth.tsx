@@ -415,7 +415,20 @@ function Signup({ email, setEmail, setMode }: FormProps) {
         <input type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
       </Field>
       <Field label="Date of birth">
-        <input type="date" required value={birthDate} onChange={(e) => setBirthDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+        <div className="row" style={{ gap: 8 }}>
+          <select value={birthDate.split('-')[1] || ''} onChange={(e) => setBirthDate((bd) => `${bd.split('-')[0] || new Date().getFullYear()}-${e.target.value}-${bd.split('-')[2] || '01'}`)} required>
+            <option value="">Month</option>
+            {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => <option key={m} value={m}>{new Date(2000, i).toLocaleString('en', { month: 'long' })}</option>)}
+          </select>
+          <select value={birthDate.split('-')[2] || ''} onChange={(e) => setBirthDate((bd) => `${bd.split('-')[0] || new Date().getFullYear()}-${bd.split('-')[1] || '01'}-${e.target.value.padStart(2, '0')}`)} required>
+            <option value="">Day</option>
+            {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select value={birthDate.split('-')[0] || ''} onChange={(e) => setBirthDate((bd) => `${e.target.value}-${bd.split('-')[1] || '01'}-${bd.split('-')[2] || '01'}`)} required>
+            <option value="">Year</option>
+            {Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i)).map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
       </Field>
       <label className="checkbox">
         <input type="checkbox" checked={tosAccepted} onChange={(e) => setTosAccepted(e.target.checked)} required />
