@@ -97,6 +97,9 @@ export function Composer({
   const chat = useSettings((s) => s.chat);
   const [text, setText] = useState('');
   const [files, setFiles] = useState<PendingFile[]>([]);
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const [upload, setUpload] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -651,6 +654,30 @@ export function Composer({
           <>
             <button type="button" className="icon-btn gif-btn" disabled={disabled} onClick={() => setGifs((g) => !g)} title="GIFs" aria-label="GIFs">
               <Icon name="gif" />
+            </button>
+            <button type="button" className={`icon-btn${recording ? ' recording' : ''}`} disabled={disabled} onClick={async () => {
+              if (recording) {
+                recorderRef.current?.stop();
+                setRecording(false);
+                return;
+              }
+              try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const mr = new MediaRecorder(stream);
+                chunksRef.current = [];
+                mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+                mr.onstop = () => {
+                  const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+                  const f = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+                  setFiles((prev) => [...prev, { id: crypto.randomUUID(), file: f, spoiler: false, alt: '' }]);
+                  stream.getTracks().forEach((t) => t.stop());
+                };
+                mr.start();
+                recorderRef.current = mr;
+                setRecording(true);
+              } catch { alert('Microphone access denied'); }
+            }} title={recording ? 'Stop recording' : 'Voice message'} aria-label="Voice message">
+              <Icon name={recording ? 'micOff' : 'mic'} />
             </button>
             <button ref={emojiBtn} type="button" className="icon-btn" disabled={disabled} onClick={() => setEmojiOpen((o) => !o)} title="Emoji" aria-label="Emoji">
               <Icon name="smile" />
