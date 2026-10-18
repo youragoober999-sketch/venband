@@ -3,93 +3,136 @@
 <head>
 <meta charset="UTF-8" />
 <title>Venband — Vertical Ad</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Inter', system-ui, sans-serif; color: #fff; }
-  #stage { position: relative; width: 1080px; height: 1920px; transform-origin: top left; }
-  .scene { position: absolute; inset: 0; opacity: 0; transition: opacity .5s ease; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px; text-align: center; }
+  html, body { width: 100%; height: 100%; background: #fff; overflow: hidden; font-family: 'Inter', system-ui, sans-serif; color: #0a0a0a; -webkit-font-smoothing: antialiased; }
+  #stage { position: relative; width: 1080px; height: 1920px; transform-origin: top left; background: #fff; }
+
+  .scene { position: absolute; inset: 0; opacity: 0; transition: opacity .6s cubic-bezier(.22,1,.36,1); pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 60px; text-align: center; }
   .scene.active { opacity: 1; pointer-events: auto; }
-  .logo { font-size: 96px; font-weight: 900; letter-spacing: -3px; background: linear-gradient(135deg, #5865f2, #a855f7, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; line-height: 1; }
-  .tag { font-size: 34px; color: #ccc; margin-top: 18px; font-weight: 500; }
-  .feature { font-size: 64px; font-weight: 800; line-height: 1.1; }
-  .feature sub { display: block; font-size: 26px; font-weight: 400; color: #999; margin-top: 14px; }
-  .device { width: 300px; height: 580px; border-radius: 40px; background: #111; box-shadow: 0 40px 80px #000a, 0 0 0 3px #333; overflow: hidden; margin-top: 40px; }
-  .device .screen { width: 100%; height: 100%; background: #0b0f19; padding: 14px; display: flex; flex-direction: column; }
-  .ui-bar { height: 36px; background: #1a1f2e; border-radius: 10px; margin-bottom: 10px; display: flex; align-items: center; padding: 0 12px; gap: 8px; }
+
+  .badge { display: inline-block; padding: 10px 22px; border-radius: 999px; background: #f0f0f5; border: 1px solid #e0e0e8; color: #5865f2; font-size: 20px; font-weight: 700; margin-bottom: 32px; }
+  .logo { font-size: 110px; font-weight: 900; letter-spacing: -4px; line-height: 1; background: linear-gradient(135deg, #5865f2, #a855f7, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tag { font-size: 34px; color: #555; margin-top: 20px; font-weight: 500; line-height: 1.3; }
+  .title { font-size: 72px; font-weight: 900; letter-spacing: -2px; line-height: 1.05; color: #0a0a0a; }
+  .title .accent { background: linear-gradient(135deg, #5865f2, #a855f7, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { font-size: 26px; color: #555; font-weight: 500; line-height: 1.4; margin-top: 16px; max-width: 800px; }
+  .small { font-size: 20px; color: #888; margin-top: 24px; }
+
+  .device { border-radius: 36px; background: #111; box-shadow: 0 40px 90px rgba(0,0,0,.18), 0 0 0 2px rgba(0,0,0,.08); overflow: hidden; }
+  .device .screen { width: 100%; height: 100%; background: #0b0f19; padding: 16px; display: flex; flex-direction: column; }
+  .device.phone { width: 300px; height: 600px; border-radius: 44px; }
+  .ui-bar { height: 38px; background: #1a1f2e; border-radius: 10px; margin-bottom: 10px; display: flex; align-items: center; padding: 0 12px; gap: 8px; }
   .ui-dot { width: 12px; height: 12px; border-radius: 50%; }
-  .ui-msg { height: 16px; background: #2a3147; border-radius: 8px; margin: 6px 0; }
-  .ui-avatar { width: 32px; height: 32px; border-radius: 50%; background: #5865f2; }
-  .pulse { animation: pulse 1.2s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
-  .float { animation: float 3s ease-in-out infinite; }
-  @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-  .cta { font-size: 80px; font-weight: 900; background: linear-gradient(135deg, #5865f2, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .small { font-size: 22px; color: #888; margin-top: 16px; }
-  #progress { position: fixed; bottom: 0; left: 0; height: 5px; background: linear-gradient(90deg, #5865f2, #ec4899); width: 0%; z-index: 999; }
-  #rec { position: fixed; top: 16px; right: 16px; background: #e5484d; color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: 700; z-index: 999; }
+  .ui-msg { height: 14px; background: #2a3147; border-radius: 7px; margin: 6px 0; }
+  .ui-msg.short { width: 40%; } .ui-msg.med { width: 70%; } .ui-msg.long { width: 92%; }
+  .ui-avatar { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg,#5865f2,#a855f7); }
+
+  .modal { width: 900px; background: #fff; border-radius: 32px; box-shadow: 0 50px 120px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.06); padding: 56px; text-align: center; }
+  .modal .shield { width: 80px; height: 80px; margin: 0 auto 24px; border-radius: 50%; background: linear-gradient(135deg,#5865f2,#a855f7); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 40px; box-shadow: 0 12px 30px rgba(88,101,242,.35); }
+  .modal h2 { font-size: 52px; font-weight: 900; letter-spacing: -2px; margin-bottom: 16px; line-height: 1.05; }
+  .modal p { font-size: 22px; color: #555; line-height: 1.5; max-width: 700px; margin: 0 auto; }
+
+  .speed-wrap { display: flex; align-items: center; gap: 30px; margin-top: 40px; }
+  .speed-device { width: 140px; height: 280px; border-radius: 28px; background: #111; box-shadow: 0 20px 50px rgba(0,0,0,.15); overflow: hidden; position: relative; }
+  .speed-device .screen { width: 100%; height: 100%; background: #0b0f19; padding: 8px; }
+  .speed-msg { position: absolute; width: 50px; height: 12px; background: #5865f2; border-radius: 6px; top: 50%; left: 8px; animation: sendMsg 1.5s cubic-bezier(.4,0,.2,1) infinite; }
+  @keyframes sendMsg { 0% { left: 8px; opacity: 1; } 40% { left: 80px; opacity: 1; } 48% { left: 140px; opacity: 0; } 52% { left: -50px; opacity: 0; } 58% { left: -50px; opacity: 1; } 100% { left: 8px; opacity: 1; } }
+  .speed-arrow { font-size: 44px; color: #5865f2; font-weight: 900; }
+  .speed-caption { font-size: 20px; color: #555; margin-top: 20px; font-weight: 600; }
+
+  .float { animation: float 3.5s ease-in-out infinite; }
+  @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-16px); } }
+  .slide-in-up { animation: slideInUp .9s cubic-bezier(.22,1,.36,1) both; }
+  .fadein { animation: fadein .9s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes slideInUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
+  @keyframes fadein { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+  .stagger > * { opacity: 0; animation: fadein .7s cubic-bezier(.22,1,.36,1) forwards; }
+  .stagger > *:nth-child(1){animation-delay:.1s} .stagger > *:nth-child(2){animation-delay:.25s} .stagger > *:nth-child(3){animation-delay:.4s}
+
+  #progress { position: fixed; bottom: 0; left: 0; height: 6px; background: linear-gradient(90deg, #5865f2, #a855f7, #ec4899); width: 0%; z-index: 999; }
+  #rec { position: fixed; top: 16px; right: 16px; background: #e5484d; color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; z-index: 999; display: flex; align-items: center; gap: 6px; }
+  #rec::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .cta { font-size: 90px; font-weight: 900; background: linear-gradient(135deg, #5865f2, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: -3px; line-height: 1; }
+  .cta-sub { font-size: 28px; color: #555; margin-top: 20px; font-weight: 500; }
+  .cta-url { font-size: 22px; color: #888; margin-top: 28px; }
 </style>
 </head>
 <body>
 <div id="stage">
+
   <div class="scene active" id="s0">
-    <div class="logo">Venband</div>
-    <div class="tag">Free. Encrypted. Yours.</div>
-    <div class="small">Open source chat — better than Discord.</div>
+    <div class="center fadein">
+      <div class="badge">Free &amp; open source</div>
+      <div class="logo">Venband</div>
+      <div class="tag">Talk with your people. Privately.</div>
+    </div>
   </div>
+
   <div class="scene" id="s1">
-    <div class="feature">Chat that stays private.<sub>End-to-end encrypted. Even we can't read it.</sub></div>
-    <div class="device float">
-      <div class="screen">
-        <div class="ui-bar"><span class="ui-dot" style="background:#5865f2"></span><span class="ui-dot" style="background:#30a46c"></span></div>
-        <div class="ui-avatar"></div>
-        <div class="ui-msg" style="width:90%"></div>
-        <div class="ui-msg" style="width:70%"></div>
-        <div class="ui-msg" style="width:40%"></div>
-        <div class="ui-msg" style="width:85%"></div>
-      </div>
+    <div class="modal slide-in-up">
+      <div class="shield">🛡</div>
+      <h2>We Protect Your Privacy Because It's Yours</h2>
+      <p>End-to-end encrypted. Your messages, files, and calls are yours alone — even we can't read them.</p>
     </div>
   </div>
+
   <div class="scene" id="s2">
-    <div class="feature">Servers & channels.<sub>Roles, permissions, moderation.</sub></div>
-    <div class="device float">
+    <div class="title">Messages.<br/><span class="accent">Instantly.</span></div>
+    <div class="sub">Direct, real-time communication between devices.</div>
+    <div class="speed-wrap">
+      <div class="speed-device"><div class="screen"></div><div class="speed-msg"></div></div>
+      <div class="speed-arrow">→</div>
+      <div class="speed-device"><div class="screen"></div><div class="speed-msg" style="animation-delay:.75s"></div></div>
+    </div>
+    <div class="speed-caption">Device to device in milliseconds.</div>
+  </div>
+
+  <div class="scene" id="s3">
+    <div class="title">Servers, channels, roles.<sub class="sub" style="margin-top:12px">Like Discord — but open source and yours.</sub></div>
+    <div class="device phone float" style="margin-top:40px">
       <div class="screen">
-        <div class="ui-bar"><span class="ui-dot" style="background:#5865f2"></span></div>
-        <div style="display:flex;gap:8px;flex:1">
-          <div style="width:90px;background:#121826;border-radius:8px;padding:8px">
-            <div class="ui-msg" style="width:80%"></div><div class="ui-msg" style="width:60%"></div><div class="ui-msg" style="width:70%"></div>
-          </div>
-          <div style="flex:1;background:#0b0f19;border-radius:8px;padding:8px">
-            <div class="ui-msg" style="width:90%"></div><div class="ui-msg" style="width:60%"></div><div class="ui-msg" style="width:80%"></div>
-          </div>
-        </div>
+        <div class="ui-bar"><span class="ui-dot" style="background:#5865f2"></span><span class="ui-dot" style="background:#30a46c"></span><span class="ui-dot" style="background:#e5484d"></span></div>
+        <div class="ui-avatar" style="margin-bottom:8px"></div>
+        <div class="ui-msg long"></div>
+        <div class="ui-msg med"></div>
+        <div class="ui-msg short"></div>
+        <div class="ui-msg long"></div>
       </div>
     </div>
   </div>
-  <div class="scene" id="s3">
-    <div class="feature">Voice, video & screen share.<sub>Peer-to-peer. No middleman.</sub></div>
-    <div class="device float">
+
+  <div class="scene" id="s4">
+    <div class="title">Voice, video &amp; screen share.<sub class="sub" style="margin-top:12px">Peer-to-peer. No middleman.</sub></div>
+    <div class="device phone float" style="margin-top:40px">
       <div class="screen">
         <div class="ui-bar"><span class="ui-dot" style="background:#e5484d"></span><span class="ui-dot" style="background:#30a46c"></span></div>
-        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:6px">
-          <div style="background:#1a1f2e;border-radius:8px"></div>
-          <div style="background:#1a1f2e;border-radius:8px"></div>
-          <div style="background:#1a1f2e;border-radius:8px"></div>
-          <div style="background:#1a1f2e;border-radius:8px"></div>
+        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px">
+          <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
+          <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
+          <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
+          <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
         </div>
       </div>
     </div>
   </div>
-  <div class="scene" id="s4">
-    <div class="feature">Files up to 5 GB.<sub>Stored on your site. Yours forever.</sub></div>
-  </div>
+
   <div class="scene" id="s5">
-    <div class="feature">Themes, GIFs, bots.<sub>Make it yours.</sub></div>
+    <div class="title">Files up to 5 GB.<sub class="sub" style="margin-top:12px">Stored on your site. Yours forever.</sub></div>
   </div>
+
   <div class="scene" id="s6">
+    <div class="title">Themes, GIFs, bots.<sub class="sub" style="margin-top:12px">Make it yours.</sub></div>
+  </div>
+
+  <div class="scene" id="s7">
     <div class="center">
       <div class="cta">Venband</div>
-      <div class="tag">Free &amp; open source.</div>
-      <div class="small" style="margin-top:24px">www.venband.com</div>
+      <div class="cta-sub">Free &amp; open source. Download now.</div>
+      <div class="cta-url">www.venband.com</div>
     </div>
   </div>
 </div>
@@ -106,11 +149,12 @@
     o.connect(g).connect(ctx.destination);
     o.start(); o.stop(ctx.currentTime + dur);
   }
-  const scenes = ['s0','s1','s2','s3','s4','s5','s6'];
-  const timings = [0, 2800, 5600, 8400, 11200, 14000, 16800];
+  const scenes = ['s0','s1','s2','s3','s4','s5','s6','s7'];
+  const timings = [0, 2400, 5200, 8000, 10800, 13600, 16400, 19200];
   const sounds = [
-    ()=>{ beep(440,.4,'sine',.12); setTimeout(()=>beep(660,.3,'sine',.1),150); },
-    ()=>{ for(let i=0;i<6;i++) setTimeout(()=>beep(200+i*90,.1,'sine',.07), i*35); },
+    ()=>{ beep(440,.5,'sine',.12); setTimeout(()=>beep(660,.4,'sine',.1),200); },
+    ()=>{ beep(523,.3,'sine',.1); },
+    ()=>{ for(let i=0;i<6;i++) setTimeout(()=>beep(180+i*80,.1,'sine',.07), i*30); },
     ()=>{ [523,659,784].forEach((f,i)=>setTimeout(()=>beep(f,.2,'sine',.1), i*100)); },
     ()=>{ beep(880,.08,'square',.09); setTimeout(()=>beep(440,.15,'sine',.08),80); },
     ()=>{ beep(330,.25,'triangle',.1); },
@@ -125,8 +169,8 @@
     for (let i=0;i<timings.length;i++) if (t >= timings[i]) idx = i;
     if (idx !== lastIdx) { lastIdx = idx; try { sounds[idx](); } catch(e){} }
     scenes.forEach((s,i) => document.getElementById(s).classList.toggle('active', i===idx));
-    document.getElementById('progress').style.width = (Math.min(1,t/19000)*100) + '%';
-    if (t < 19000) requestAnimationFrame(loop);
+    document.getElementById('progress').style.width = (Math.min(1,t/22000)*100) + '%';
+    if (t < 22000) requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 </script>
