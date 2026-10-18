@@ -16,7 +16,7 @@ import { DownloadPage } from './components/Download';
 import { VooglePage } from './components/Voogle';
 import { StorageConsole, FakeBrowserError } from './components/Storage';
 import { DialogHost } from './components/Dialogs';
-import { handleSteamRedirect } from './lib/connections';
+import { handleSteamRedirect, handleSpotifyRedirect } from './lib/connections';
 import { openSettings } from './lib/ui';
 
 export default function App() {
@@ -29,6 +29,11 @@ export default function App() {
     void handleSteamRedirect().then((msg) => {
       if (!msg) return;
       if (msg.startsWith('Steam link failed')) alert(msg);
+      else openSettings('connections');
+    });
+    void handleSpotifyRedirect().then((msg) => {
+      if (!msg) return;
+      if (msg.startsWith('Spotify link failed')) alert(msg);
       else openSettings('connections');
     });
   }, []);
@@ -47,6 +52,16 @@ export default function App() {
   if (!configured) return <NotConfigured />;
   // invite links work signed in or out
   if (route.kind === 'invite' && (status === 'signed-out' || (status === 'ready' && hasProfile && !needsOnboarding))) return <InvitePage code={route.code} />;
+  // /callback handles Spotify (and future) OAuth returns.
+  if (route.kind === 'callback') {
+    return (
+      <div className="splash">
+        <Logo size={56} />
+        <div className="spinner" />
+        <p className="muted small">Connecting…</p>
+      </div>
+    );
+  }
   // /storage is a hidden, owner-only control plane. Everyone else (including
   // signed-out visitors) sees a fake browser error so its existence leaks nothing.
   if (route.kind === 'storage') {

@@ -9,8 +9,10 @@ import { go } from '../lib/router';
 import { inviteUrl, sendToUser } from '../lib/dmSend';
 import { openServer } from '../hooks/data';
 import type { Server } from '../lib/types';
-import { Avatar, initials, Logo, Modal } from './ui';
+import { Avatar, initials, Modal } from './ui';
 import { VerifiedMark } from './Badges';
+
+
 
 interface Preview {
   server_id: string;
@@ -135,16 +137,7 @@ export function InvitePage({ code }: { code: string }) {
         {p?.banner_url ? <div className="invite-banner" style={{ backgroundImage: `url(${p.banner_url})` }} /> : <div className="invite-banner" style={{ background: p?.banner_color ?? p?.icon_color ?? 'var(--bg-3)' }} />}
         <div className="invite-card-body">
           {p === undefined && <div className="spinner" />}
-          {p === null && (
-            <>
-              <Logo size={48} />
-              <h1>This invite isn’t valid</h1>
-              <p className="muted">It may have expired, been paused, or the server may have turned off previews for people who aren’t signed in.</p>
-              <button className="btn primary" onClick={() => go(signedIn ? 'channels/@me' : 'sign-in')}>
-                {signedIn ? 'Back to Venband' : 'Sign in'}
-              </button>
-            </>
-          )}
+          {p === null && <WrongTurn signedIn={signedIn} />}
           {p && (
             <>
               <ServerBadge p={p} size={84} />
@@ -471,5 +464,30 @@ export function ServerPreviewModal({ serverId, onClose }: { serverId: string; on
         </div>
       )}
     </Modal>
+  );
+}
+
+const WRONG_TURN_MESSAGES = ['Wrong turn?', 'You look lost, stranger.', 'Oops, nothing to see here.', 'This invite took a wrong turn.', 'Lost? Happens to the best of us.'];
+const WRONG_TURN_TIPS = ['Status Page', '@Venband', 'Venband Support', 'Help Center', 'Community'];
+
+export function WrongTurn({ signedIn }: { signedIn: boolean }) {
+  const msg = WRONG_TURN_MESSAGES[Math.floor(Math.random() * WRONG_TURN_MESSAGES.length)];
+  return (
+    <div className="wrong-turn">
+      <div className="wrong-turn-bar">
+        <span>Download</span><span>Nitro</span><span>Discover</span><span>Quests</span><span>Safety</span><span>Support</span><span>Blog</span><span>Developers</span><span>Careers</span>
+      </div>
+      <div className="wrong-turn-body">
+        <div className="wrong-turn-noodle">🍜</div>
+        <h1>{msg}</h1>
+        <p className="muted">You look lost, stranger. You know what helps when you're lost? A piping hot bowl of noodles. Take a seat, we're frantically at work here cooking up something good. Oh, you need something to read? These might help you:</p>
+        <ul className="wrong-turn-tips">
+          {WRONG_TURN_TIPS.map((t) => <li key={t}>{t}</li>)}
+        </ul>
+        <button className="btn primary" onClick={() => go(signedIn ? 'channels/@me' : 'sign-in')}>
+          {signedIn ? 'Back to Venband' : 'Sign in'}
+        </button>
+      </div>
+    </div>
   );
 }

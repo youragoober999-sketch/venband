@@ -162,7 +162,22 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
     );
   return (
     <>
-      <img className="attachment-img" src={url} alt={a.alt || a.name} title={a.alt || undefined} onClick={() => setBig(true)} onError={() => setBroken(true)} />
+      <img className="attachment-img" src={url} alt={a.alt || a.name} title={a.alt || undefined} onClick={() => setBig(true)} onError={() => setBroken(true)} onContextMenu={(e) => openMenu(e, [
+        { label: 'Save image', icon: 'download', onClick: () => { const a2 = document.createElement('a'); a2.href = url; a2.download = a.name; a2.click(); } },
+        { label: 'Make as GIF', icon: 'sparkles', onClick: async () => {
+          try {
+            const caption = window.prompt('Caption (optional):', '') ?? '';
+            const res = await fetch(url);
+            const blob = await res.blob();
+            const file = new File([blob], a.name, { type: blob.type || 'image/png' });
+            const { imagesToGif } = await import('../lib/gifenc');
+            const gif = await imagesToGif([file], { delayMs: 500, caption });
+            const u = URL.createObjectURL(gif);
+            const a2 = document.createElement('a'); a2.href = u; a2.download = a.name.replace(/\\.[^.]+$/, '') + '.gif'; a2.click();
+            setTimeout(() => URL.revokeObjectURL(u), 1000);
+          } catch (e) { alert('Could not make GIF'); }
+        } },
+      ])} />
       {big && (
         <div className="lightbox" onClick={() => setBig(false)}>
           <img src={url} alt={a.name} onClick={(e) => e.stopPropagation()} />

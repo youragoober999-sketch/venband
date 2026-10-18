@@ -10,6 +10,9 @@
 //     can explain why instead of showing a dead button.
 import { supabase, errorMessage, appUrl } from './supabase';
 
+const SPOTIFY_CLIENT_ID = '05794dae8b7747a6879621caf10a9716';
+const SPOTIFY_SCOPES = 'user-read-currently-playing user-read-playback-state streaming';
+
 export type ConnectionProvider =
   | 'steam'
   | 'spotify'
@@ -197,4 +200,110 @@ export async function handleSteamRedirect(): Promise<string | null> {
   } catch (e) {
     return `Steam link failed: ${errorMessage(e)}`;
   }
+}
+
+// --------------------------------------------------------------- spotify -----
+// PKCE OAuth (no client secret needed in the browser).
+
+function base64url(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).split('+').join('-').split('/').join('_').replace(/=+$/, '');
+}
+
+export async function spotifyLogin(): Promise<void> {
+  const verifier = base64url(crypto.getRandomValues(new Uint8Array(64)).buffer);
+  const challenge = base64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  sessionStorage.setItem('spotify_verifier', verifier);
+  const redirectUri = new URL('/callback', window.location.origin).toString();
+  const params = new URLSearchParams({
+    client_id: SPOTIFY_CLIENT_ID,
+    response_type: 'code',
+    redirect_uri: redirectUri,
+    scope: SPOTIFY_SCOPES,
+    code_challenge_method: 'S256',
+    code_challenge: challenge,
+  });
+  window.location.href = `https://accounts.spotify.com/authorize?${params}`;
+}
+
+export async function acceptSpotifyReturn(href: string): Promise<{ name: string }> {
+  const u = new URL(href);
+  const code = u.searchParams.get('code');
+  if (!code) throw new Error('Spotify did not return a code.');
+  const verifier = sessionStorage.getItem('spotify_verifier');
+  if (!verifier) throw new Error('Missing PKCE verifier.');
+  const redirectUri = new URL('/callback', window.location.origin).toString();
+  const body = new URLSearchParams({
+    client_id: SPOTIFY_CLIENT_ID,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+    code_verifier: verifier,
+  });
+  const r = await fetch('https://accounts.spotify.com/api/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+  if (!r.ok) throw new Error('Spotify token exchange failed.');
+  const tok = await r.json();
+  localStorage.setItem('spotify_access_token', tok.access_token);
+  if (tok.refresh_token) localStorage.setItem('spotify_refresh_token', tok.refresh_token);
+  localStorage.setItem('spotify_expires_at', String(Date.now() + (tok.expires_in ?? 3600) * 1000));
+  sessionStorage.removeItem('spotify_verifier');
+  // fetch profile name
+  const pr = await fetch('https://api.spotify.com/v1/me', { headers: { authorization: `Bearer ${tok.access_token}` } });
+  const profile = pr.ok ? await pr.json() : null;
+  const name = profile?.display_name || profile?.id || 'Spotify';
+  await addConnection('spotify', profile?.id || 'spotify', name, profile?.images?.[0]?.url || null, { scopes: SPOTIFY_SCOPES });
+  return { name };
+}
+
+export async function handleSpotifyRedirect(): Promise<string | null> {
+  if (!new URLSearchParams(window.location.search).has('code')) return null;
+  // only handle on /callback
+  if (!window.location.pathname.endsWith('/callback')) return null;
+  try {
+    const { name } = await acceptSpotifyReturn(window.location.href);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('code');
+    url.searchParams.delete('state');
+    history.replaceState(null, '', url.toString());
+    return name;
+  } catch (e) {
+    return `Spotify link failed: ${errorMessage(e)}`;
+  }
+}
+
+/** Refresh the Spotify access token if expired. */
+export async function spotifyAccessToken(): Promise<string | null> {
+  const tok = localStorage.getItem('spotify_access_token');
+  const exp = Number(localStorage.getItem('spotify_expires_at') || 0);
+  if (tok && Date.now() < exp - 60_000) return tok;
+  const refresh = localStorage.getItem('spotify_refresh_token');
+  if (!refresh) return null;
+  const body = new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, grant_type: 'refresh_token', refresh_token: refresh });
+  const r = await fetch('https://accounts.spotify.com/api/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+  if (!r.ok) return null;
+  const t = await r.json();
+  localStorage.setItem('spotify_access_token', t.access_token);
+  if (t.refresh_token) localStorage.setItem('spotify_refresh_token', t.refresh_token);
+  localStorage.setItem('spotify_expires_at', String(Date.now() + (t.expires_in ?? 3600) * 1000));
+  return t.access_token;
+}
+
+/** Fetch the user's currently playing track. */
+export async function spotifyNowPlaying(): Promise<{ name: string; artist: string; albumArt: string | null; isPlaying: boolean } | null> {
+  const tok = await spotifyAccessToken();
+  if (!tok) return null;
+  const r = await fetch('https://api.spotify.com/v1/me/player/currently-playing', { headers: { authorization: `Bearer ${tok}` } });
+  if (r.status === 204) return null;
+  if (!r.ok) return null;
+  const d = await r.json();
+  const item = d?.item;
+  if (!item) return null;
+  return {
+    name: item.name,
+    artist: (item.artists || []).map((a: any) => a.name).join(', '),
+    albumArt: item.album?.images?.[0]?.url || null,
+    isPlaying: !!d.is_playing,
+  };
 }

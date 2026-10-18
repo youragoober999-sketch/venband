@@ -151,7 +151,7 @@ export function encodeGif(width: number, height: number, frames: GifFrame[], loo
 }
 
 /** Draw pictures onto a canvas (fit + centre) and encode them as one GIF. */
-export async function imagesToGif(files: File[], opts: { maxSize?: number; delayMs?: number } = {}): Promise<File> {
+export async function imagesToGif(files: File[], opts: { maxSize?: number; delayMs?: number; caption?: string } = {}): Promise<File> {
   const maxSize = opts.maxSize ?? 480;
   const bitmaps = await Promise.all(files.slice(0, 30).map((f) => createImageBitmap(f)));
   const ratio = Math.min(1, maxSize / Math.max(...bitmaps.map((b) => Math.max(b.width, b.height))));
@@ -161,11 +161,21 @@ export async function imagesToGif(files: File[], opts: { maxSize?: number; delay
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const caption = (opts.caption || '').trim();
   const frames: GifFrame[] = bitmaps.map((b) => {
     ctx.clearRect(0, 0, w, h);
     const s = Math.min(w / b.width, h / b.height);
     const dw = b.width * s, dh = b.height * s;
     ctx.drawImage(b, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    if (caption) {
+      ctx.font = `bold ${Math.max(12, Math.round(w * 0.05))}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      const tw = ctx.measureText(caption).width + 16;
+      ctx.fillRect((w - tw) / 2, h - 36, tw, 28);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(caption, w / 2, h - 16);
+    }
     return { data: ctx.getImageData(0, 0, w, h).data, delayMs: opts.delayMs ?? 500 };
   });
   bitmaps.forEach((b) => b.close());
