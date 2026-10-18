@@ -1,23 +1,23 @@
 {
-  "latest": "1.0.3",
-  "version": "1.0.3",
-  "url": "https://github.com/youragoober999-sketch/venband/releases/tag/v1.0.3",
+  "latest": "1.0.5",
+  "version": "1.0.5",
+  "url": "https://github.com/youragoober999-sketch/venband/releases/tag/v1.0.5",
   "updatedAt": "2026-10-17T00:00:00.000Z",
   "windows": [
     {
-      "name": "Venband-Setup-1.0.3.exe",
+      "name": "Venband-Setup-1.0.5.exe",
       "kind": "installer",
-      "url": "https://github.com/youragoober999-sketch/venband/releases/download/v1.0.3/Venband-Setup-1.0.3.exe"
+      "url": "https://github.com/youragoober999-sketch/venband/releases/download/v1.0.5/Venband-Setup-1.0.5.exe"
     },
     {
-      "name": "Venband-Portable-1.0.3.exe",
+      "name": "Venband-Portable-1.0.5.exe",
       "kind": "portable",
-      "url": "https://github.com/youragoober999-sketch/venband/releases/download/v1.0.3/Venband-Portable-1.0.3.exe"
+      "url": "https://github.com/youragoober999-sketch/venband/releases/download/v1.0.5/Venband-Portable-1.0.5.exe"
     }
   ],
   "android": {
-    "name": "Venband-1.0.3-debug.apk",
+    "name": "Venband-1.0.5-debug.apk",
     "kind": "apk",
-    "url": "/download/Venband-1.0.3-debug.apk"
+    "url": "/download/Venband-1.0.5-debug.apk"
   }
 }

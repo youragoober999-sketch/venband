@@ -1,7 +1,7 @@
 {
   "name": "venband-desktop",
   "productName": "Venband",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "Venband for Windows, macOS and Linux — end-to-end encrypted chat",
   "main": "src/main.js",
   "author": {
