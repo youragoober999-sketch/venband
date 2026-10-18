@@ -475,7 +475,7 @@ export function WrongTurn({ signedIn }: { signedIn: boolean }) {
   return (
     <div className="wrong-turn">
       <div className="wrong-turn-bar">
-        <span>Download</span><span>Nitro</span><span>Discover</span><span>Quests</span><span>Safety</span><span>Support</span><span>Blog</span><span>Developers</span><span>Careers</span>
+        <span>Home</span><span>Features</span><span>Discover</span><span>Download</span><span>Status</span><span>Terms</span><span>Privacy</span><span>Guidelines</span><span>Blog</span><span>Developers</span>
       </div>
       <div className="wrong-turn-body">
         <div className="wrong-turn-noodle">🍜</div>
