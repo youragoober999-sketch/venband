@@ -16,6 +16,26 @@ import { Resizer } from './Resizer';
 export function CallAudio() {
   const call = useActiveCall();
   const hidden = callUi.use((s) => s.hidden);
+  // push-to-talk
+  useEffect(() => {
+    if (!call) return;
+    const v = getSettings().voice;
+    if (!v.pushToTalk) return;
+    const key = v.pushToTalkKey || ' ';
+    const down = (e: KeyboardEvent) => {
+      if (e.key !== key || e.repeat) return;
+      if (call.muted) call.toggleMute();
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key !== key) return;
+      if (!call.muted) call.toggleMute();
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    // start muted
+    if (!call.muted) call.toggleMute();
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+  }, [call]);
   useEffect(() => {
     if (!call) {
       mixer.set([], false);

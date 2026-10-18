@@ -38,6 +38,8 @@ export interface Settings {
     autoGain: boolean;
     /** start calls muted, handy when you live on a noisy floor */
     joinMuted: boolean;
+    pushToTalk: boolean;
+    pushToTalkKey: string;
     inputVolume: number; // percent
     streamRes: 720 | 1080 | 1440;
     streamFps: 15 | 30 | 60;
@@ -102,6 +104,8 @@ export const DEFAULT_SETTINGS: Settings = {
     echoCancellation: true,
     autoGain: true,
     joinMuted: false,
+    pushToTalk: false,
+    pushToTalkKey: ' ',
     inputVolume: 100,
     streamRes: 1080,
     streamFps: 30,
