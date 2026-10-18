@@ -22,6 +22,7 @@ export function TopNav({ onLogin, onSignup, onHome, onOpenApp }: { onLogin: () =
             Source code
           </a>
         </nav>
+        <div className="topnav-actions">
           <button className="btn ghost small" onClick={() => go('download')}>
             Download
           </button>
