@@ -13,9 +13,8 @@
   .scene { position: absolute; inset: 0; opacity: 0; transition: opacity .7s cubic-bezier(.22,1,.36,1); pointer-events: none; }
   .scene.active { opacity: 1; pointer-events: auto; }
 
-  /* layout */
-  .leftcol { position: absolute; left: 120px; top: 50%; transform: translateY(-50%); width: 720px; }
-  .rightcol { position: absolute; right: 120px; top: 50%; transform: translateY(-50%); }
+  .leftcol { position: absolute; left: 100px; top: 50%; transform: translateY(-50%); width: 700px; }
+  .rightcol { position: absolute; right: 100px; top: 50%; transform: translateY(-50%); }
   .center { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); text-align: center; }
 
   .badge { display: inline-block; padding: 10px 20px; border-radius: 999px; background: #f0f0f5; border: 1px solid #e0e0e8; color: #5865f2; font-size: 18px; font-weight: 700; margin-bottom: 28px; letter-spacing: .3px; }
@@ -24,27 +23,18 @@
   .sub { font-size: 28px; color: #555; font-weight: 500; line-height: 1.4; margin-top: 20px; max-width: 640px; }
   .small { font-size: 22px; color: #888; margin-top: 24px; }
 
-  /* device */
-  .device { border-radius: 28px; background: #111; box-shadow: 0 40px 90px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.08); overflow: hidden; flex-shrink: 0; }
-  .device .screen { width: 100%; height: 100%; background: #0b0f19; padding: 16px; display: flex; flex-direction: column; }
-  .device.phone { width: 260px; height: 520px; border-radius: 38px; }
-  .device.desktop { width: 760px; height: 460px; border-radius: 16px; }
-  .device.tablet { width: 380px; height: 500px; border-radius: 26px; }
-  .ui-bar { height: 34px; background: #1a1f2e; border-radius: 9px; margin-bottom: 10px; display: flex; align-items: center; padding: 0 12px; gap: 8px; }
-  .ui-dot { width: 10px; height: 10px; border-radius: 50%; }
-  .ui-msg { height: 13px; background: #2a3147; border-radius: 7px; margin: 5px 0; }
-  .ui-msg.short { width: 38%; } .ui-msg.med { width: 68%; } .ui-msg.long { width: 94%; }
-  .ui-avatar { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg,#5865f2,#a855f7); }
-  .ui-sidebar { width: 150px; background: rgba(18,24,38,.95); border-radius: 8px; padding: 8px; }
-  .ui-main { flex: 1; background: rgba(11,15,25,.95); border-radius: 8px; padding: 10px; }
+  .device { border-radius: 24px; background: #111; box-shadow: 0 40px 90px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.08); overflow: hidden; flex-shrink: 0; }
+  .device .screen { width: 100%; height: 100%; background: #fff; }
+  .device.phone { width: 300px; height: 600px; border-radius: 40px; }
+  .device.desktop { width: 820px; height: 500px; border-radius: 16px; }
+  .device.tablet { width: 400px; height: 520px; border-radius: 28px; }
+  .device iframe { width: 100%; height: 100%; border: 0; display: block; }
 
-  /* modal */
-  .modal { width: 760px; background: #fff; border-radius: 32px; box-shadow: 0 50px 120px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.06); padding: 56px; text-align: center; }
-  .modal .shield { width: 80px; height: 80px; margin: 0 auto 24px; border-radius: 50%; background: linear-gradient(135deg,#5865f2,#a855f7); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 40px; box-shadow: 0 12px 30px rgba(88,101,242,.35); }
-  .modal h2 { font-size: 52px; font-weight: 900; letter-spacing: -2px; margin-bottom: 16px; line-height: 1.05; }
-  .modal p { font-size: 22px; color: #555; line-height: 1.5; max-width: 600px; margin: 0 auto; }
+  .modal { width: 780px; background: #fff; border-radius: 32px; box-shadow: 0 50px 120px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.06); padding: 60px; text-align: center; }
+  .modal .shield { width: 84px; height: 84px; margin: 0 auto 24px; border-radius: 50%; background: linear-gradient(135deg,#5865f2,#a855f7); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 42px; box-shadow: 0 12px 30px rgba(88,101,242,.35); }
+  .modal h2 { font-size: 56px; font-weight: 900; letter-spacing: -2px; margin-bottom: 16px; line-height: 1.05; }
+  .modal p { font-size: 24px; color: #555; line-height: 1.5; max-width: 640px; margin: 0 auto; }
 
-  /* message speed viz */
   .speed-wrap { display: flex; align-items: center; gap: 60px; margin-top: 40px; }
   .speed-device { width: 180px; height: 360px; border-radius: 32px; background: #111; box-shadow: 0 20px 50px rgba(0,0,0,.15); overflow: hidden; position: relative; }
   .speed-device .screen { width: 100%; height: 100%; background: #0b0f19; padding: 10px; }
@@ -53,7 +43,6 @@
   .speed-arrow { font-size: 56px; color: #5865f2; font-weight: 900; }
   .speed-caption { font-size: 22px; color: #555; margin-top: 20px; font-weight: 600; text-align: center; }
 
-  /* animations */
   .slide-in-left { animation: slideInLeft .9s cubic-bezier(.22,1,.36,1) both; }
   .slide-in-right { animation: slideInRight .9s cubic-bezier(.22,1,.36,1) both; }
   .slide-in-up { animation: slideInUp .9s cubic-bezier(.22,1,.36,1) both; }
@@ -64,31 +53,24 @@
   @keyframes fadein { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
   .float { animation: float 3.5s ease-in-out infinite; }
   @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-16px); } }
-  .stagger > * { opacity: 0; animation: fadein .7s cubic-bezier(.22,1,.36,1) forwards; }
-  .stagger > *:nth-child(1){animation-delay:.1s} .stagger > *:nth-child(2){animation-delay:.25s} .stagger > *:nth-child(3){animation-delay:.4s} .stagger > *:nth-child(4){animation-delay:.55s}
 
-  #progress { position: fixed; bottom: 0; left: 0; height: 5px; background: linear-gradient(90deg, #5865f2, #a855f7, #ec4899); width: 0%; z-index: 999; }
-  #rec { position: fixed; top: 20px; right: 24px; background: #e5484d; color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 700; z-index: 999; display: flex; align-items: center; gap: 8px; }
-  #rec::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: blink 1s ease-in-out infinite; }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
-  .cta { font-size: 120px; font-weight: 900; background: linear-gradient(135deg, #5865f2, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: -4px; line-height: 1; }
-  .cta-sub { font-size: 32px; color: #555; margin-top: 20px; font-weight: 500; }
-  .cta-url { font-size: 24px; color: #888; margin-top: 32px; }
+  #progress { position: fixed; bottom: 0; left: 0; height: 6px; background: linear-gradient(90deg, #5865f2, #a855f7, #ec4899); width: 0%; z-index: 999; }
+  .cta { font-size: 130px; font-weight: 900; background: linear-gradient(135deg, #5865f2, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: -5px; line-height: 1; }
+  .cta-sub { font-size: 34px; color: #555; margin-top: 24px; font-weight: 500; }
+  .cta-url { font-size: 26px; color: #888; margin-top: 36px; }
 </style>
 </head>
 <body>
 <div id="stage">
 
-  <!-- Scene 0: Intro -->
   <div class="scene active" id="s0">
     <div class="center fadein">
       <div class="badge">Free &amp; open source</div>
-      <div class="logo" style="font-size:160px;font-weight:900;letter-spacing:-6px;background:linear-gradient(135deg,#5865f2,#a855f7,#ec4899);-webkit-background-clip:text;background-clip:text;color:transparent">Venband</div>
-      <div class="tag">Talk with your people. Privately.</div>
+      <div class="title" style="font-size:160px">Venband</div>
+      <div class="sub" style="text-align:center;max-width:none">Talk with your people. Privately.</div>
     </div>
   </div>
 
-  <!-- Scene 1: Privacy modal -->
   <div class="scene" id="s1">
     <div class="modal slide-in-up center">
       <div class="shield">🛡</div>
@@ -97,7 +79,6 @@
     </div>
   </div>
 
-  <!-- Scene 2: Message speed -->
   <div class="scene" id="s2">
     <div class="row">
       <div class="leftcol slide-in-left">
@@ -115,7 +96,6 @@
     </div>
   </div>
 
-  <!-- Scene 3: Servers -->
   <div class="scene" id="s3">
     <div class="row">
       <div class="leftcol slide-in-left">
@@ -124,18 +104,13 @@
       <div class="rightcol slide-in-right">
         <div class="device desktop float">
           <div class="screen">
-            <div class="ui-bar"><span class="ui-dot" style="background:#5865f2"></span><span class="ui-dot" style="background:#30a46c"></span><span class="ui-dot" style="background:#e5484d"></span></div>
-            <div style="display:flex;gap:10px;flex:1">
-              <div class="ui-sidebar"><div class="ui-msg short"></div><div class="ui-msg short"></div><div class="ui-msg short"></div><div class="ui-msg short"></div><div class="ui-msg short"></div></div>
-              <div class="ui-main"><div class="ui-msg long"></div><div class="ui-msg med"></div><div class="ui-msg long"></div><div class="ui-msg short"></div><div class="ui-msg long"></div></div>
-            </div>
+            <iframe src="https://www.venband.com/" loading="lazy"></iframe>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Scene 4: Voice/video -->
   <div class="scene" id="s4">
     <div class="row">
       <div class="leftcol slide-in-left">
@@ -144,34 +119,25 @@
       <div class="rightcol slide-in-right">
         <div class="device tablet float">
           <div class="screen">
-            <div class="ui-bar"><span class="ui-dot" style="background:#e5484d"></span><span class="ui-dot" style="background:#30a46c"></span></div>
-            <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px">
-              <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
-              <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
-              <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
-              <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
-            </div>
+            <iframe src="https://www.venband.com/" loading="lazy"></iframe>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Scene 5: Files -->
   <div class="scene" id="s5">
     <div class="center fadein">
       <div class="title">Files up to 5 GB.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Stored on your site. Yours forever.</sub></div>
     </div>
   </div>
 
-  <!-- Scene 6: Customization -->
   <div class="scene" id="s6">
     <div class="center fadein">
       <div class="title">Themes, GIFs, bots.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Make it yours.</sub></div>
     </div>
   </div>
 
-  <!-- Scene 7: CTA -->
   <div class="scene" id="s7">
     <div class="center">
       <div class="cta">Venband</div>
@@ -181,7 +147,6 @@
   </div>
 </div>
 <div id="progress"></div>
-<div id="rec">● REC</div>
 
 <script>
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
