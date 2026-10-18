@@ -2546,3 +2546,14 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .storage-pre { background: #0f1422; border: 1px solid #1f2740; padding: 10px; border-radius: 6px; max-height: 400px; overflow: auto; font-size: 12px; }
 .storage-email .field { margin-bottom: 10px; }
 .mono { font-family: monospace; }
+
+/* mobile call overlay (iphone-style) */
+.mobile-call-overlay { position: fixed; inset: 0; z-index: 9999; background: linear-gradient(180deg, #1a1a2e, #0f0f1a); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 60px 24px 40px; text-align: center; }
+.mobile-call-avatar { width: 120px; height: 120px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 48px; color: #fff; margin-bottom: 16px; }
+.mobile-call-name { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+.mobile-call-status { font-size: 16px; color: #aaa; margin-bottom: 40px; }
+.mobile-call-actions { display: flex; gap: 40px; }
+.mobile-call-btn { width: 72px; height: 72px; border-radius: 50%; border: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.mobile-call-btn.answer { background: #34c759; }
+.mobile-call-btn.hangup { background: #ff3b30; }
+.mobile-call-btn svg { width: 32px; height: 32px; fill: #fff; }
