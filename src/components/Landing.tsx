@@ -23,6 +23,9 @@ export function TopNav({ onLogin, onSignup, onHome, onOpenApp }: { onLogin: () =
           </a>
         </nav>
         <div className="topnav-actions">
+          <a className="btn ghost small" href="/ad/" target="_blank" rel="noopener noreferrer">
+            Watch ad
+          </a>
           <button className="btn ghost small" onClick={() => go('download')}>
             Download
           </button>
