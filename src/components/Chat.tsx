@@ -195,6 +195,10 @@ export function ChatView({
   const pinnedIds = useMemo(() => new Set(extras.pins.map((p) => p.message_id)), [extras.pins]);
   const [, bumpSaved] = useState(0);
 
+  // always start stuck to the bottom when switching channels
+  useEffect(() => {
+    stick.current = true;
+  }, [channel.id]);
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;

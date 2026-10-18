@@ -430,7 +430,10 @@ export function useMessages(channel: Channel | null, threadRoot: string | null =
     let cancelled = false;
     (async () => {
       try {
-        await keyring.ensure(channelId, channel?.key_rotation_needed);
+        await Promise.race([
+          keyring.ensure(channelId, channel?.key_rotation_needed),
+          new Promise((resolve) => setTimeout(resolve, 3000)),
+        ]);
       } catch (e) {
         console.warn(e);
       }

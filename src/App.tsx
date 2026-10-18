@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { configured } from './lib/supabase';
 import { initSession, sessionStore, isTopStaff } from './lib/session';
+import { startIdleDetection } from './lib/idle';
 import { AuthScreen, IdentityResetScreen, MfaScreen, RecoveryScreen, SetupErrorScreen, UnlockScreen } from './components/Auth';
 import { Shell } from './components/Shell';
 import { Logo } from './components/ui';
@@ -31,7 +32,9 @@ export default function App() {
       else openSettings('connections');
     });
   }, []);
-
+  useEffect(() => {
+    if (status === 'ready' && hasProfile) startIdleDetection();
+  }, [status, hasProfile]);
   const route = parseRoute(useRoute());
   if (route.kind === 'page')
     return (
