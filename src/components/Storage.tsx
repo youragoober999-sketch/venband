@@ -3,7 +3,7 @@
 // existence of this console is never revealed.
 import { useEffect, useState } from 'react';
 
-import { sessionStore, isTopStaff } from '../lib/session';
+import { isTopStaff } from '../lib/session';
 import { go } from '../lib/router';
 import { Icon, Field } from './ui';
 import { vdlListUsers, vdlListServers, vdlBanUser, vdlEraseUser, vdlListAudit, vdlListLedger, vdlRebuildLedger, vdlQueueEmail, vdlSendQueuedEmails, vdlStats } from '../lib/vdl';
@@ -56,9 +56,52 @@ const TABS: Tab[] = [
 ];
 
 export function StorageConsole() {
-  const me = sessionStore.use((s) => s.me);
+  const [me, setMe] = useState<any>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authErr, setAuthErr] = useState('');
+  const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('overview');
-  if (!me || !isTopStaff(me)) return <FakeBrowserError />;
+
+  const checkAuth = async () => {
+    try {
+      const r = await fetch('/api/vdl?r=auth', { credentials: 'include' });
+      if (r.ok) { const j = await r.json(); setMe(j.user); }
+      else setMe(null);
+    } catch { setMe(null); }
+    setAuthChecked(true);
+  };
+  useEffect(() => { checkAuth(); }, []);
+
+  const signIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setAuthErr('');
+    try {
+      const r = await fetch('/api/vdl?r=auth&action=signin', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ email, password }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'sign in failed');
+      setMe(j.user);
+    } catch (e) { setAuthErr(String((e as Error).message)); }
+    finally { setBusy(false); }
+  };
+
+  if (!authChecked) return <div className="storage-console"><div className="storage-content"><div className="spinner" /></div></div>;
+  if (!me) return (
+    <div className="storage-console">
+      <div className="storage-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <form onSubmit={signIn} className="storage-auth-form">
+          <h2>Venband Storage</h2>
+          <p className="muted small">Sign in with a VDL account (owner/founder).</p>
+          <Field label="Email"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
+          <Field label="Password"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
+          {authErr && <p className="error small">{authErr}</p>}
+          <button className="btn" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        </form>
+      </div>
+    </div>
+  );
+  if (!isTopStaff(me)) return <FakeBrowserError />;
   return (
     <div className="storage-console">
       <aside className="storage-sidebar">
