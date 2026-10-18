@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Venband — Vertical Ad</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Inter', system-ui, sans-serif; color: #fff; }
+  #stage { position: relative; width: 1080px; height: 1920px; transform-origin: top left; }
+  .scene { position: absolute; inset: 0; opacity: 0; transition: opacity .5s ease; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px; text-align: center; }
+  .scene.active { opacity: 1; pointer-events: auto; }
+  .logo { font-size: 96px; font-weight: 900; letter-spacing: -3px; background: linear-gradient(135deg, #5865f2, #a855f7, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; line-height: 1; }
+  .tag { font-size: 34px; color: #ccc; margin-top: 18px; font-weight: 500; }
+  .feature { font-size: 64px; font-weight: 800; line-height: 1.1; }
+  .feature sub { display: block; font-size: 26px; font-weight: 400; color: #999; margin-top: 14px; }
+  .device { width: 300px; height: 580px; border-radius: 40px; background: #111; box-shadow: 0 40px 80px #000a, 0 0 0 3px #333; overflow: hidden; margin-top: 40px; }
+  .device .screen { width: 100%; height: 100%; background: #0b0f19; padding: 14px; display: flex; flex-direction: column; }
+  .ui-bar { height: 36px; background: #1a1f2e; border-radius: 10px; margin-bottom: 10px; display: flex; align-items: center; padding: 0 12px; gap: 8px; }
+  .ui-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .ui-msg { height: 16px; background: #2a3147; border-radius: 8px; margin: 6px 0; }
+  .ui-avatar { width: 32px; height: 32px; border-radius: 50%; background: #5865f2; }
+  .pulse { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+  .float { animation: float 3s ease-in-out infinite; }
+  @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
+  .cta { font-size: 80px; font-weight: 900; background: linear-gradient(135deg, #5865f2, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .small { font-size: 22px; color: #888; margin-top: 16px; }
+  #progress { position: fixed; bottom: 0; left: 0; height: 5px; background: linear-gradient(90deg, #5865f2, #ec4899); width: 0%; z-index: 999; }
+  #rec { position: fixed; top: 16px; right: 16px; background: #e5484d; color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: 700; z-index: 999; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="scene active" id="s0">
+    <div class="logo">Venband</div>
+    <div class="tag">Free. Encrypted. Yours.</div>
+    <div class="small">Open source chat — better than Discord.</div>
+  </div>
+  <div class="scene" id="s1">
+    <div class="feature">Chat that stays private.<sub>End-to-end encrypted. Even we can't read it.</sub></div>
+    <div class="device float">
+      <div class="screen">
+        <div class="ui-bar"><span class="ui-dot" style="background:#5865f2"></span><span class="ui-dot" style="background:#30a46c"></span></div>
+        <div class="ui-avatar"></div>
+        <div class="ui-msg" style="width:90%"></div>
+        <div class="ui-msg" style="width:70%"></div>
+        <div class="ui-msg" style="width:40%"></div>
+        <div class="ui-msg" style="width:85%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="scene" id="s2">
+    <div class="feature">Servers & channels.<sub>Roles, permissions, moderation.</sub></div>
+    <div class="device float">
+      <div class="screen">
+        <div class="ui-bar"><span class="ui-dot" style="background:#5865f2"></span></div>
+        <div style="display:flex;gap:8px;flex:1">
+          <div style="width:90px;background:#121826;border-radius:8px;padding:8px">
+            <div class="ui-msg" style="width:80%"></div><div class="ui-msg" style="width:60%"></div><div class="ui-msg" style="width:70%"></div>
+          </div>
+          <div style="flex:1;background:#0b0f19;border-radius:8px;padding:8px">
+            <div class="ui-msg" style="width:90%"></div><div class="ui-msg" style="width:60%"></div><div class="ui-msg" style="width:80%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="scene" id="s3">
+    <div class="feature">Voice, video & screen share.<sub>Peer-to-peer. No middleman.</sub></div>
+    <div class="device float">
+      <div class="screen">
+        <div class="ui-bar"><span class="ui-dot" style="background:#e5484d"></span><span class="ui-dot" style="background:#30a46c"></span></div>
+        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:6px">
+          <div style="background:#1a1f2e;border-radius:8px"></div>
+          <div style="background:#1a1f2e;border-radius:8px"></div>
+          <div style="background:#1a1f2e;border-radius:8px"></div>
+          <div style="background:#1a1f2e;border-radius:8px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="scene" id="s4">
+    <div class="feature">Files up to 5 GB.<sub>Stored on your site. Yours forever.</sub></div>
+  </div>
+  <div class="scene" id="s5">
+    <div class="feature">Themes, GIFs, bots.<sub>Make it yours.</sub></div>
+  </div>
+  <div class="scene" id="s6">
+    <div class="center">
+      <div class="cta">Venband</div>
+      <div class="tag">Free &amp; open source.</div>
+      <div class="small" style="margin-top:24px">www.venband.com</div>
+    </div>
+  </div>
+</div>
+<div id="progress"></div>
+<div id="rec">● REC</div>
+
+<script>
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  function beep(freq, dur, type='sine', vol=0.12) {
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    o.connect(g).connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + dur);
+  }
+  const scenes = ['s0','s1','s2','s3','s4','s5','s6'];
+  const timings = [0, 2800, 5600, 8400, 11200, 14000, 16800];
+  const sounds = [
+    ()=>{ beep(440,.4,'sine',.12); setTimeout(()=>beep(660,.3,'sine',.1),150); },
+    ()=>{ for(let i=0;i<6;i++) setTimeout(()=>beep(200+i*90,.1,'sine',.07), i*35); },
+    ()=>{ [523,659,784].forEach((f,i)=>setTimeout(()=>beep(f,.2,'sine',.1), i*100)); },
+    ()=>{ beep(880,.08,'square',.09); setTimeout(()=>beep(440,.15,'sine',.08),80); },
+    ()=>{ beep(330,.25,'triangle',.1); },
+    ()=>{ [392,523,659].forEach((f,i)=>setTimeout(()=>beep(f,.18,'sine',.1), i*90)); },
+    ()=>{ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.3,'sine',.12), i*120)); },
+  ];
+  const start = Date.now();
+  let lastIdx = -1;
+  function loop() {
+    const t = Date.now() - start;
+    let idx = 0;
+    for (let i=0;i<timings.length;i++) if (t >= timings[i]) idx = i;
+    if (idx !== lastIdx) { lastIdx = idx; try { sounds[idx](); } catch(e){} }
+    scenes.forEach((s,i) => document.getElementById(s).classList.toggle('active', i===idx));
+    document.getElementById('progress').style.width = (Math.min(1,t/19000)*100) + '%';
+    if (t < 19000) requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+</script>
+</body>
+</html>
+EOF
