@@ -44,6 +44,7 @@ export interface Settings {
     streamRes: 720 | 1080 | 1440;
     streamFps: 15 | 30 | 60;
   };
+  screenTime: { dailyMinutes: number };
   chat: {
     autoEmbeds: boolean;
     gifAutoplay: boolean;
@@ -110,6 +111,7 @@ export const DEFAULT_SETTINGS: Settings = {
     streamRes: 1080,
     streamFps: 30,
   },
+  screenTime: { dailyMinutes: 0 },
   chat: {
     autoEmbeds: false,
     gifAutoplay: true,
@@ -159,6 +161,7 @@ function merge(raw: unknown): Settings {
     installedThemes: installed,
     voice: { ...DEFAULT_SETTINGS.voice, ...(r.voice ?? {}) },
     chat: { ...DEFAULT_SETTINGS.chat, ...(r.chat ?? {}) },
+    screenTime: { ...DEFAULT_SETTINGS.screenTime, ...(r.screenTime ?? {}) },
     layout: { ...DEFAULT_SETTINGS.layout, ...(r.layout ?? {}) },
     gifFavorites: Array.isArray(r.gifFavorites) ? r.gifFavorites.slice(0, 200) : [],
     volumes: r.volumes && typeof r.volumes === 'object' ? r.volumes : {},
