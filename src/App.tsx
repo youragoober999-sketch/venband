@@ -17,7 +17,7 @@ import { VooglePage } from './components/Voogle';
 import { StorageConsole, FakeBrowserError } from './components/Storage';
 import { DialogHost } from './components/Dialogs';
 import { handleSteamRedirect, handleSpotifyRedirect } from './lib/connections';
-import { openSettings } from './lib/ui';
+import { openSettings, isAndroid } from './lib/ui';
 
 export default function App() {
   const status = sessionStore.use((s) => s.status);
@@ -40,6 +40,24 @@ export default function App() {
   useEffect(() => {
     if (status === 'ready' && hasProfile) startIdleDetection();
   }, [status, hasProfile]);
+  // Android auto-update check
+  useEffect(() => {
+    if (!isAndroid()) return;
+    (async () => {
+      try {
+        const r = await fetch('/api/app-version', { cache: 'no-store' });
+        const j = await r.json();
+        const latest = j?.android?.version;
+        const current = '1.0.3';
+        if (latest && latest !== current) {
+          // eslint-disable-next-line no-alert
+          if (confirm(`A new version (${latest}) is available. Download now?`)) {
+            window.location.href = j.android.url;
+          }
+        }
+      } catch {}
+    })();
+  }, []);
   const route = parseRoute(useRoute());
   if (route.kind === 'page')
     return (
