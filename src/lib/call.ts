@@ -222,6 +222,8 @@ export class Call {
       echoCancellation: v.echoCancellation,
       noiseSuppression: v.noiseSuppression,
       autoGainControl: v.autoGain,
+      channelCount: 1,
+      sampleRate: 48000,
       ...(v.inputId ? { deviceId: { ideal: v.inputId } } : {}),
     };
     const raw = await navigator.mediaDevices.getUserMedia({ audio });

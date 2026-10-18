@@ -187,8 +187,11 @@ function VideoTile({ tile, name, onClick, big }: { tile: Tile; name: string; onC
   };
   useEffect(() => {
     if (ref.current && tile.video && !hidden && !ownScreenHidden) {
-      ref.current.srcObject = tile.video;
+      if (ref.current.srcObject !== tile.video) ref.current.srcObject = tile.video;
+      ref.current.muted = true;
       ref.current.play().catch(() => {});
+    } else if (ref.current && (hidden || ownScreenHidden)) {
+      ref.current.srcObject = null;
     }
   }, [tile.video, hidden, ownScreenHidden]);
 
