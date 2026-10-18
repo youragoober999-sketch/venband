@@ -17,7 +17,7 @@ import { askText } from './Dialogs';
 import { Avatar, Field, Icon, Modal } from './ui';
 import { Select } from './Select';
 
-export const MAX_TEXT = 2000;
+export const MAX_TEXT = 3000;
 const HARD_MAX = 200_000; // longer messages go out as a .txt file
 
 export interface Mentionables {
@@ -326,7 +326,6 @@ export function Composer({
     if ((!t && !all.length && !opts.poll) || busy) return;
     // long messages go out as a text file instead of a wall of text
     if (t.length > MAX_TEXT) {
-      if (!chat.longTextAsFile) return setError(`Messages can be up to ${MAX_TEXT.toLocaleString()} characters. Turn on “Send long messages as a file” in Settings → Chat, or shorten it.`);
       all = [{ id: crypto.randomUUID(), file: new File([t], 'message.txt', { type: 'text/plain' }), spoiler: false, alt: '' }, ...all];
       t = '';
     }
