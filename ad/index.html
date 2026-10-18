@@ -3,111 +3,131 @@
 <head>
 <meta charset="UTF-8" />
 <title>Venband — Ad</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Inter', system-ui, sans-serif; color: #fff; }
+  html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Inter', system-ui, sans-serif; color: #fff; -webkit-font-smoothing: antialiased; }
   #stage { position: relative; width: 1920px; height: 1080px; transform-origin: top left; }
-  .scene { position: absolute; inset: 0; opacity: 0; transition: opacity .6s ease; pointer-events: none; }
+  .scene { position: absolute; inset: 0; opacity: 0; transition: opacity .7s cubic-bezier(.2,.8,.2,1); pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .scene.active { opacity: 1; pointer-events: auto; }
-  .center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
-  .logo { font-size: 120px; font-weight: 800; letter-spacing: -4px; background: linear-gradient(135deg, #5865f2, #a855f7, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .tag { font-size: 36px; color: #aaa; margin-top: 16px; }
-  .device { position: absolute; border-radius: 24px; background: #111; box-shadow: 0 40px 80px #000a, 0 0 0 2px #333; overflow: hidden; }
-  .device .screen { width: 100%; height: 100%; background: #0b0f19; padding: 12px; display: flex; flex-direction: column; }
-  .device.phone { width: 260px; height: 520px; border-radius: 36px; }
-  .device.desktop { width: 720px; height: 440px; }
-  .device.tablet { width: 400px; height: 520px; border-radius: 28px; }
-  .ui-bar { height: 32px; background: #1a1f2e; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; padding: 0 10px; gap: 8px; }
-  .ui-dot { width: 10px; height: 10px; border-radius: 50%; }
-  .ui-msg { height: 14px; background: #2a3147; border-radius: 7px; margin: 4px 0; }
-  .ui-msg.short { width: 40%; } .ui-msg.med { width: 70%; } .ui-msg.long { width: 90%; }
-  .ui-avatar { width: 24px; height: 24px; border-radius: 50%; background: #5865f2; }
-  .feature { font-size: 48px; font-weight: 700; text-align: center; }
-  .feature sub { display: block; font-size: 22px; font-weight: 400; color: #888; margin-top: 8px; }
-  .pulse { animation: pulse 1.2s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
-  .float { animation: float 3s ease-in-out infinite; }
-  @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-18px); } }
-  .spin { animation: spin 8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .fadein { animation: fadein .8s ease both; }
-  @keyframes fadein { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
-  #progress { position: fixed; bottom: 0; left: 0; height: 4px; background: linear-gradient(90deg, #5865f2, #ec4899); width: 0%; transition: width .1s linear; z-index: 999; }
-  #rec { position: fixed; top: 16px; right: 16px; background: #e5484d; color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: 700; z-index: 999; }
-  #timer { position: fixed; bottom: 12px; right: 16px; color: #666; font-size: 13px; z-index: 999; }
-  .cta { font-size: 56px; font-weight: 800; background: linear-gradient(135deg, #5865f2, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .center { text-align: center; }
+  .logo { font-size: 150px; font-weight: 900; letter-spacing: -6px; line-height: 1; background: linear-gradient(135deg, #5865f2 0%, #a855f7 50%, #ec4899 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tag { font-size: 40px; color: #b0b0b0; margin-top: 20px; font-weight: 500; letter-spacing: -0.5px; }
+  .feature { font-size: 72px; font-weight: 800; line-height: 1.05; letter-spacing: -2px; }
+  .feature sub { display: block; font-size: 28px; font-weight: 400; color: #888; margin-top: 16px; letter-spacing: 0; }
+  .device { border-radius: 24px; background: #0a0a0f; box-shadow: 0 60px 120px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08); overflow: hidden; }
+  .device .screen { width: 100%; height: 100%; background: linear-gradient(180deg, #0b0f19, #070a12); padding: 16px; display: flex; flex-direction: column; }
+  .device.phone { width: 280px; height: 560px; border-radius: 40px; }
+  .device.desktop { width: 780px; height: 480px; }
+  .device.tablet { width: 420px; height: 540px; border-radius: 32px; }
+  .ui-bar { height: 36px; background: rgba(26,31,46,.9); border-radius: 10px; margin-bottom: 10px; display: flex; align-items: center; padding: 0 12px; gap: 8px; border: 1px solid rgba(255,255,255,.05); }
+  .ui-dot { width: 11px; height: 11px; border-radius: 50%; }
+  .ui-msg { height: 14px; background: rgba(42,49,71,.8); border-radius: 7px; margin: 5px 0; }
+  .ui-msg.short { width: 35%; } .ui-msg.med { width: 65%; } .ui-msg.long { width: 92%; }
+  .ui-avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #5865f2, #a855f7); }
+  .ui-sidebar { width: 160px; background: rgba(18,24,38,.9); border-radius: 8px; padding: 8px; }
+  .ui-main { flex: 1; background: rgba(11,15,25,.9); border-radius: 8px; padding: 10px; }
+  .float { animation: float 3.5s ease-in-out infinite; }
+  @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-22px); } }
+  .pulse { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  .fadein { animation: fadein .9s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+  .stagger > * { opacity: 0; animation: fadein .7s cubic-bezier(.2,.8,.2,1) forwards; }
+  .stagger > *:nth-child(1){animation-delay:.1s} .stagger > *:nth-child(2){animation-delay:.25s} .stagger > *:nth-child(3){animation-delay:.4s} .stagger > *:nth-child(4){animation-delay:.55s}
+  #progress { position: fixed; bottom: 0; left: 0; height: 5px; background: linear-gradient(90deg, #5865f2, #a855f7, #ec4899); width: 0%; z-index: 999; box-shadow: 0 0 20px #5865f2; }
+  #rec { position: fixed; top: 20px; right: 24px; background: #e5484d; color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 700; z-index: 999; display: flex; align-items: center; gap: 8px; }
+  #rec::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .cta { font-size: 90px; font-weight: 900; background: linear-gradient(135deg, #5865f2, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: -3px; }
+  .small { font-size: 24px; color: #777; margin-top: 20px; }
+  .badge { display: inline-block; padding: 6px 14px; border-radius: 20px; background: rgba(88,101,242,.15); border: 1px solid rgba(88,101,242,.3); color: #a5b4fc; font-size: 16px; font-weight: 600; margin-bottom: 20px; }
 </style>
 </head>
 <body>
 <div id="stage">
   <div class="scene active" id="s0">
-    <div class="center">
+    <div class="center fadein">
+      <div class="badge">Free &amp; open source</div>
       <div class="logo">Venband</div>
-      <div class="tag">Free. Encrypted. Yours.</div>
+      <div class="tag">Talk with your people. Privately.</div>
     </div>
   </div>
   <div class="scene" id="s1">
-    <div class="center feature">Chat that stays private.<sub>End-to-end encrypted. Even we can't read it.</sub></div>
-    <div class="device phone float" style="left: 60%; top: 25%;">
+    <div class="center fadein">
+      <div class="feature">Chat that stays private.<sub>End-to-end encrypted. Even we can't read it.</sub></div>
+    </div>
+    <div class="device phone float" style="position:absolute; right:8%; top:22%;">
       <div class="screen">
-        <div class="ui-bar"><span class="ui-dot" style="background:#5865f2"></span><span class="ui-dot" style="background:#30a46c"></span></div>
-        <div class="ui-avatar"></div>
+        <div class="ui-bar"><span class="ui-dot" style="background:#5865f2"></span><span class="ui-dot" style="background:#30a46c"></span><span class="ui-dot" style="background:#e5484d"></span></div>
+        <div class="ui-avatar" style="margin-bottom:8px"></div>
         <div class="ui-msg long"></div>
         <div class="ui-msg med"></div>
         <div class="ui-msg short"></div>
         <div class="ui-msg long"></div>
+        <div class="ui-msg med"></div>
       </div>
     </div>
   </div>
   <div class="scene" id="s2">
-    <div class="center feature">Servers, channels, roles.<sub>Like Discord — but open source.</sub></div>
-    <div class="device desktop float" style="left: 55%; top: 30%;">
+    <div class="center fadein">
+      <div class="feature">Servers, channels, roles.<sub>Like Discord — but open source and yours.</sub></div>
+    </div>
+    <div class="device desktop float" style="position:absolute; right:6%; top:26%;">
       <div class="screen">
         <div class="ui-bar"><span class="ui-dot" style="background:#5865f2"></span></div>
-        <div style="display:flex;gap:8px;flex:1">
-          <div style="width:180px;background:#121826;border-radius:8px;padding:8px">
-            <div class="ui-msg short"></div><div class="ui-msg short"></div><div class="ui-msg short"></div>
+        <div style="display:flex;gap:10px;flex:1">
+          <div class="ui-sidebar">
+            <div class="ui-msg short"></div><div class="ui-msg short"></div><div class="ui-msg short"></div><div class="ui-msg short"></div>
           </div>
-          <div style="flex:1;background:#0b0f19;border-radius:8px;padding:8px">
-            <div class="ui-msg long"></div><div class="ui-msg med"></div><div class="ui-msg long"></div>
+          <div class="ui-main">
+            <div class="ui-msg long"></div><div class="ui-msg med"></div><div class="ui-msg long"></div><div class="ui-msg short"></div>
           </div>
         </div>
       </div>
     </div>
   </div>
   <div class="scene" id="s3">
-    <div class="center feature">Voice, video & screen share.<sub>Peer-to-peer. No middleman.</sub></div>
-    <div class="device tablet float" style="left: 62%; top: 22%;">
+    <div class="center fadein">
+      <div class="feature">Voice, video &amp; screen share.<sub>Peer-to-peer. No middleman.</sub></div>
+    </div>
+    <div class="device tablet float" style="position:absolute; right:7%; top:20%;">
       <div class="screen">
         <div class="ui-bar"><span class="ui-dot" style="background:#e5484d"></span><span class="ui-dot" style="background:#30a46c"></span></div>
-        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:6px">
-          <div style="background:#1a1f2e;border-radius:8px"></div>
-          <div style="background:#1a1f2e;border-radius:8px"></div>
-          <div style="background:#1a1f2e;border-radius:8px"></div>
-          <div style="background:#1a1f2e;border-radius:8px"></div>
+        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px">
+          <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
+          <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
+          <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
+          <div style="background:linear-gradient(135deg,#1a1f2e,#2a3147);border-radius:12px"></div>
         </div>
       </div>
     </div>
   </div>
   <div class="scene" id="s4">
-    <div class="center feature">Free storage, on your site.<sub>Files, images, themes — all yours.</sub></div>
+    <div class="center fadein">
+      <div class="feature">Files up to 5 GB.<sub>Stored on your site. Yours forever.</sub></div>
+    </div>
   </div>
   <div class="scene" id="s5">
+    <div class="center fadein">
+      <div class="feature">Themes, GIFs, bots.<sub>Make it yours.</sub></div>
+    </div>
+  </div>
+  <div class="scene" id="s6">
     <div class="center">
       <div class="cta">Venband</div>
       <div class="tag">Free &amp; open source. Download now.</div>
-      <div class="tag" style="font-size:20px;margin-top:24px">www.venband.com</div>
+      <div class="small">www.venband.com</div>
     </div>
   </div>
 </div>
 <div id="progress"></div>
 <div id="rec">● REC</div>
-<div id="timer">00:00</div>
 
 <script>
-  // Web Audio sound effects
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  function beep(freq, dur, type='sine', vol=0.15) {
+  function beep(freq, dur, type='sine', vol=0.12) {
     const o = ctx.createOscillator(); const g = ctx.createGain();
     o.type = type; o.frequency.value = freq;
     g.gain.setValueAtTime(vol, ctx.currentTime);
@@ -115,37 +135,29 @@
     o.connect(g).connect(ctx.destination);
     o.start(); o.stop(ctx.currentTime + dur);
   }
-  function whoosh() { for (let i=0;i<8;i++) setTimeout(()=>beep(200+i*80, .12, 'sine', .08), i*40); }
-  function chime() { [523,659,784].forEach((f,i)=>setTimeout(()=>beep(f,.25,'sine',.12), i*120)); }
-  function pop() { beep(880,.08,'square',.1); }
-
-  const scenes = ['s0','s1','s2','s3','s4','s5'];
-  const timings = [0, 2500, 5500, 8500, 11500, 14500];
-  const sounds = [()=>beep(440,.4,'sine',.12), whoosh, chime, pop, ()=>beep(330,.3,'triangle',.1), chime];
+  const scenes = ['s0','s1','s2','s3','s4','s5','s6'];
+  const timings = [0, 2400, 5200, 8000, 10800, 13600, 16400];
+  const sounds = [
+    ()=>{ beep(440,.5,'sine',.12); setTimeout(()=>beep(660,.4,'sine',.1),200); },
+    ()=>{ for(let i=0;i<6;i++) setTimeout(()=>beep(180+i*80,.1,'sine',.07), i*30); },
+    ()=>{ [523,659,784].forEach((f,i)=>setTimeout(()=>beep(f,.2,'sine',.1), i*100)); },
+    ()=>{ beep(880,.08,'square',.09); setTimeout(()=>beep(440,.15,'sine',.08),80); },
+    ()=>{ beep(330,.25,'triangle',.1); },
+    ()=>{ [392,523,659].forEach((f,i)=>setTimeout(()=>beep(f,.18,'sine',.1), i*90)); },
+    ()=>{ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.3,'sine',.12), i*120)); },
+  ];
   const start = Date.now();
-  function tick() {
-    const t = Date.now() - start;
-    let idx = 0;
-    for (let i=0;i<timings.length;i++) if (t >= timings[i]) idx = i;
-    scenes.forEach((s,i) => document.getElementById(s).classList.toggle('active', i===idx));
-    document.getElementById('progress').style.width = (t/16000*100) + '%';
-    const sec = Math.floor(t/1000); const ms = Math.floor((t%1000)/10);
-    document.getElementById('timer').textContent = `00:${String(sec).padStart(2,'0')}:${String(ms).padStart(2,'0')}`;
-    if (t < 16000) requestAnimationFrame(tick);
-    else { document.getElementById('progress').style.width = '100%'; }
-  }
-  // fire sounds on scene change
   let lastIdx = -1;
-  const origTick = tick;
-  function tick2() {
+  function loop() {
     const t = Date.now() - start;
     let idx = 0;
     for (let i=0;i<timings.length;i++) if (t >= timings[i]) idx = i;
     if (idx !== lastIdx) { lastIdx = idx; try { sounds[idx](); } catch(e){} }
-    origTick();
+    scenes.forEach((s,i) => document.getElementById(s).classList.toggle('active', i===idx));
+    document.getElementById('progress').style.width = (Math.min(1,t/19000)*100) + '%';
+    if (t < 19000) requestAnimationFrame(loop);
   }
-  // replace
-  requestAnimationFrame(function loop(){ tick2(); if (Date.now()-start < 16000) requestAnimationFrame(loop); });
+  requestAnimationFrame(loop);
 </script>
 </body>
 </html>
