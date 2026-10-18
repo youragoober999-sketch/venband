@@ -2,13 +2,13 @@
   "latest": "1.0.1",
   "versions": {
     "1.0.1": {
-      "date": "2026-10-10",
+      "date": "2026-10-17",
       "win": {
         "x64": {
-          "installer": "",
-          "portable": "",
+          "installer": "Venband-Setup-1.0.1.exe",
+          "portable": "Venband-Portable-1.0.1.exe",
           "sha256": "",
-          "size": 0
+          "size": 82089478
         },
         "arm64": {
           "installer": "",
