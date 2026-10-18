@@ -1779,7 +1779,7 @@ button.edited:hover { text-decoration: underline; color: var(--text-2); }
 .cropper-controls input[type=range] { flex: 1; }
 
 /* ------------------------------------------------------ create server -- */
-.template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 8px 0 14px; }
+.template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin: 8px 0 14px; }
 .template-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg-2); text-align: left; transition: border-color .12s, transform .12s var(--spring); }
 .template-card:hover { border-color: var(--line-2); transform: translateY(-1px); }
 .template-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
