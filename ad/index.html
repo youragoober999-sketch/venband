@@ -23,14 +23,35 @@
   .sub { font-size: 28px; color: #555; font-weight: 500; line-height: 1.4; margin-top: 20px; max-width: 640px; }
   .small { font-size: 22px; color: #888; margin-top: 24px; }
 
-  .device { border-radius: 24px; background: #111; box-shadow: 0 40px 90px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.08); overflow: hidden; flex-shrink: 0; }
-  .device .screen { width: 100%; height: 100%; background: #fff; }
+  .device { border-radius: 24px; background: #111; box-shadow: 0 40px 90px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.08); overflow: hidden; flex-shrink: 0; position: relative; }
+  .device .screen { width: 100%; height: 100%; background: #0b0f19; padding: 16px; display: flex; flex-direction: column; overflow: hidden; }
   .device.phone { width: 300px; height: 600px; border-radius: 40px; }
   .device.desktop { width: 820px; height: 500px; border-radius: 16px; }
   .device.tablet { width: 400px; height: 520px; border-radius: 28px; }
-  .device iframe { width: 100%; height: 100%; border: 0; display: block; }
 
-  .modal { width: 780px; background: #fff; border-radius: 32px; box-shadow: 0 50px 120px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.06); padding: 60px; text-align: center; }
+  /* chat UI inside device */
+  .chat-ui { flex: 1; display: flex; flex-direction: column; padding: 12px; gap: 8px; overflow: hidden; }
+  .chat-header { height: 32px; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid #1f2740; padding-bottom: 8px; }
+  .chat-avatar { width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg,#5865f2,#a855f7); }
+  .chat-name { font-size: 12px; color: #fff; font-weight: 600; }
+  .bubble { max-width: 80%; padding: 8px 12px; border-radius: 14px; font-size: 12px; color: #fff; margin: 4px 0; opacity: 0; animation: bubbleIn .4s cubic-bezier(.22,1,.36,1) forwards; }
+  .bubble.them { background: #2a3147; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .bubble.me { background: #5865f2; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .bubble-row { display: flex; gap: 6px; align-items: flex-end; margin: 4px 0; opacity: 0; animation: bubbleIn .4s cubic-bezier(.22,1,.36,1) forwards; }
+  .bubble-row .mini-avatar { width: 20px; height: 20px; border-radius: 50%; background: #5865f2; flex-shrink: 0; }
+  @keyframes bubbleIn { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+
+  /* friend request popup */
+  .friend-popup { position: absolute; bottom: 16px; left: 16px; right: 16px; background: #1a1f2e; border-radius: 12px; padding: 10px; display: flex; align-items: center; gap: 10px; border: 1px solid #2a3147; opacity: 0; animation: popIn .5s cubic-bezier(.22,1,.36,1) .3s forwards; }
+  .friend-popup .fp-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg,#ec4899,#a855f7); }
+  .friend-popup .fp-text { flex: 1; font-size: 11px; color: #fff; }
+  .friend-popup .fp-btns { display: flex; gap: 6px; }
+  .friend-popup button { padding: 4px 10px; border-radius: 6px; border: 0; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .friend-popup .accept { background: #30a46c; color: #fff; }
+  .friend-popup .decline { background: #2a3147; color: #aaa; }
+  @keyframes popIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+
+  .modal { width: 760px; background: #fff; border-radius: 32px; box-shadow: 0 50px 120px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.06); padding: 60px; text-align: center; }
   .modal .shield { width: 84px; height: 84px; margin: 0 auto 24px; border-radius: 50%; background: linear-gradient(135deg,#5865f2,#a855f7); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 42px; box-shadow: 0 12px 30px rgba(88,101,242,.35); }
   .modal h2 { font-size: 56px; font-weight: 900; letter-spacing: -2px; margin-bottom: 16px; line-height: 1.05; }
   .modal p { font-size: 24px; color: #555; line-height: 1.5; max-width: 640px; margin: 0 auto; }
@@ -99,12 +120,28 @@
   <div class="scene" id="s3">
     <div class="row">
       <div class="leftcol slide-in-left">
-        <div class="title">Servers, channels, roles.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Like Discord — but open source and yours.</sub></div>
+        <div class="title">Chat on phone &amp; PC.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Same app, every device.</sub></div>
       </div>
-      <div class="rightcol slide-in-right">
-        <div class="device desktop float">
+      <div class="rightcol slide-in-right" style="display:flex;gap:40px;align-items:center">
+        <div class="device phone float">
           <div class="screen">
-            <iframe src="https://www.venband.com/" loading="lazy"></iframe>
+            <div class="chat-header"><div class="chat-avatar"></div><div class="chat-name">Jules</div></div>
+            <div class="chat-ui">
+              <div class="bubble-row" style="animation-delay:.2s"><div class="mini-avatar"></div><div class="bubble them">hey! 👋</div></div>
+              <div class="bubble me" style="animation-delay:.6s">hi! how's it going?</div>
+              <div class="bubble-row" style="animation-delay:1s"><div class="mini-avatar"></div><div class="bubble them">great, just shipped a thing</div></div>
+              <div class="bubble me" style="animation-delay:1.4s">nice! 🔥</div>
+            </div>
+          </div>
+        </div>
+        <div class="device desktop float" style="animation-delay:.3s">
+          <div class="screen">
+            <div class="chat-header"><div class="chat-avatar"></div><div class="chat-name">#general</div></div>
+            <div class="chat-ui">
+              <div class="bubble-row" style="animation-delay:.4s"><div class="mini-avatar"></div><div class="bubble them">welcome!</div></div>
+              <div class="bubble me" style="animation-delay:.8s">thanks 🎉</div>
+              <div class="bubble-row" style="animation-delay:1.2s"><div class="mini-avatar"></div><div class="bubble them">glad you're here</div></div>
+            </div>
           </div>
         </div>
       </div>
@@ -114,12 +151,15 @@
   <div class="scene" id="s4">
     <div class="row">
       <div class="leftcol slide-in-left">
-        <div class="title">Voice, video &amp; screen share.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Peer-to-peer. No middleman.</sub></div>
+        <div class="title">Add friends.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Connect across devices.</sub></div>
       </div>
-      <div class="rightcol slide-in-right">
-        <div class="device tablet float">
-          <div class="screen">
-            <iframe src="https://www.venband.com/" loading="lazy"></iframe>
+      <div class="rightcol slide-in-right" style="position:relative;width:360px;height:400px">
+        <div class="friend-popup">
+          <div class="fp-avatar"></div>
+          <div class="fp-text"><b>Jules</b><br/><span style="color:#888;font-size:10px">wants to be your friend</span></div>
+          <div class="fp-btns">
+            <button class="accept">Accept</button>
+            <button class="decline">Ignore</button>
           </div>
         </div>
       </div>
@@ -128,17 +168,29 @@
 
   <div class="scene" id="s5">
     <div class="center fadein">
-      <div class="title">Files up to 5 GB.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Stored on your site. Yours forever.</sub></div>
+      <div class="title">Servers, channels, roles.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Like Discord — but open source and yours.</sub></div>
     </div>
   </div>
 
   <div class="scene" id="s6">
     <div class="center fadein">
-      <div class="title">Themes, GIFs, bots.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Make it yours.</sub></div>
+      <div class="title">Voice, video &amp; screen share.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Peer-to-peer. No middleman.</sub></div>
     </div>
   </div>
 
   <div class="scene" id="s7">
+    <div class="center fadein">
+      <div class="title">Files up to 5 GB.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Stored on your site. Yours forever.</sub></div>
+    </div>
+  </div>
+
+  <div class="scene" id="s8">
+    <div class="center fadein">
+      <div class="title">Themes, GIFs, bots.<sub style="font-size:28px;color:#555;font-weight:400;display:block;margin-top:16px">Make it yours.</sub></div>
+    </div>
+  </div>
+
+  <div class="scene" id="s9">
     <div class="center">
       <div class="cta">Venband</div>
       <div class="cta-sub">Free &amp; open source. Download now.</div>
@@ -158,8 +210,8 @@
     o.connect(g).connect(ctx.destination);
     o.start(); o.stop(ctx.currentTime + dur);
   }
-  const scenes = ['s0','s1','s2','s3','s4','s5','s6','s7'];
-  const timings = [0, 2400, 5400, 8400, 11400, 14400, 17400, 20400];
+  const scenes = ['s0','s1','s2','s3','s4','s5','s6','s7','s8','s9'];
+  const timings = [0, 2200, 5000, 8000, 11000, 14000, 17000, 20000, 23000, 26000];
   const sounds = [
     ()=>{ beep(440,.5,'sine',.12); setTimeout(()=>beep(660,.4,'sine',.1),200); },
     ()=>{ beep(523,.3,'sine',.1); },
@@ -168,6 +220,8 @@
     ()=>{ beep(880,.08,'square',.09); setTimeout(()=>beep(440,.15,'sine',.08),80); },
     ()=>{ beep(330,.25,'triangle',.1); },
     ()=>{ [392,523,659].forEach((f,i)=>setTimeout(()=>beep(f,.18,'sine',.1), i*90)); },
+    ()=>{ beep(440,.2,'sine',.1); },
+    ()=>{ [392,523].forEach((f,i)=>setTimeout(()=>beep(f,.18,'sine',.1), i*90)); },
     ()=>{ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.3,'sine',.12), i*120)); },
   ];
   const start = Date.now();
@@ -178,8 +232,8 @@
     for (let i=0;i<timings.length;i++) if (t >= timings[i]) idx = i;
     if (idx !== lastIdx) { lastIdx = idx; try { sounds[idx](); } catch(e){} }
     scenes.forEach((s,i) => document.getElementById(s).classList.toggle('active', i===idx));
-    document.getElementById('progress').style.width = (Math.min(1,t/23000)*100) + '%';
-    if (t < 23000) requestAnimationFrame(loop);
+    document.getElementById('progress').style.width = (Math.min(1,t/29000)*100) + '%';
+    if (t < 29000) requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 </script>
