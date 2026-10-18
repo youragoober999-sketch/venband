@@ -1,6 +1,6 @@
 {
   "name": "venband-mobile",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "private": true,
   "description": "Venband for Android and iOS (Capacitor shell around the web app)",
   "scripts": {
