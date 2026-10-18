@@ -2276,10 +2276,23 @@ a.bot-embed-title { color: var(--link); }
 .styled-name.fx-glow.gradient { text-shadow: none; filter: drop-shadow(0 0 5px var(--glow)); }
 .styled-name.fx-rainbow { animation: name-rainbow 4s linear infinite; }
 .styled-name.fx-pulse { display: inline-block; animation: name-pulse 2s ease-in-out infinite; }
+.styled-name.fx-wave { display: inline-block; animation: name-wave 2.5s ease-in-out infinite; }
+.styled-name.fx-aurora { background-image: linear-gradient(120deg, #ff6ec7, #7873f5, #4ade80, #facc15, #ff6ec7); -webkit-background-clip: text; background-clip: text; color: transparent; background-size: 300% 100%; animation: name-aurora 6s linear infinite; }
+.styled-name.fx-fire { background-image: linear-gradient(120deg, #ff4500, #ff8c00, #ffd700, #ff4500); -webkit-background-clip: text; background-clip: text; color: transparent; background-size: 200% 100%; animation: name-fire 2s linear infinite; text-shadow: 0 0 8px #ff450080; }
+.styled-name.fx-ice { background-image: linear-gradient(120deg, #7dd3fc, #38bdf8, #e0f2fe, #7dd3fc); -webkit-background-clip: text; background-clip: text; color: transparent; background-size: 200% 100%; animation: name-ice 3s linear infinite; text-shadow: 0 0 8px #38bdf880; }
+.styled-name.fx-holographic { background-image: linear-gradient(120deg, #ff0080, #7928ca, #0070f3, #00dfd8, #ff0080); -webkit-background-clip: text; background-clip: text; color: transparent; background-size: 300% 100%; animation: name-holo 4s linear infinite; filter: drop-shadow(0 0 4px #7928ca80); }
+.styled-name.fx-sparkle { display: inline-block; animation: name-sparkle 1.8s ease-in-out infinite; }
+.styled-name.fx-glow.gradient { text-shadow: none; filter: drop-shadow(0 0 5px var(--glow)); }
 .styled-name.font-pixel { text-transform: uppercase; letter-spacing: 0.04em; font-weight: 800; }
 @keyframes name-shimmer { to { background-position: -200% 0; } }
 @keyframes name-rainbow { to { filter: hue-rotate(360deg); } }
 @keyframes name-pulse { 50% { transform: scale(1.06); } }
+@keyframes name-wave { 0%,100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-3px) rotate(1deg); } }
+@keyframes name-aurora { to { background-position: -300% 0; } }
+@keyframes name-fire { to { background-position: -200% 0; } }
+@keyframes name-ice { to { background-position: -200% 0; } }
+@keyframes name-holo { to { background-position: -300% 0; } }
+@keyframes name-sparkle { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.6) drop-shadow(0 0 6px #fff8); } }
 @media (prefers-reduced-motion: reduce) { .styled-name { animation: none !important; } }
 
 .nameplate-custom::before, .nameplate-option.nameplate-custom { background-image: var(--np); }

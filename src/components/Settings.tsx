@@ -853,6 +853,12 @@ const NAME_EFFECTS: { id: NameEffect; label: string }[] = [
   { id: 'glow', label: 'Glow' },
   { id: 'rainbow', label: 'Rainbow' },
   { id: 'pulse', label: 'Pulse' },
+  { id: 'wave', label: 'Wave' },
+  { id: 'aurora', label: 'Aurora' },
+  { id: 'fire', label: 'Fire' },
+  { id: 'ice', label: 'Ice' },
+  { id: 'holographic', label: 'Holographic' },
+  { id: 'sparkle', label: 'Sparkle' },
 ];
 
 // --------------------------------------------------------------- privacy --

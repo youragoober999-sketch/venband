@@ -32,7 +32,7 @@ export interface Profile {
 
 export type AvatarFrame = 'none' | 'neon' | 'flame' | 'frost' | 'rainbow' | 'gold' | 'sakura' | 'pixel' | 'orbit' | 'hearts' | 'glitch';
 export type NameFont = 'default' | 'serif' | 'mono' | 'rounded' | 'handwritten' | 'display' | 'pixel';
-export type NameEffect = 'none' | 'shimmer' | 'glow' | 'rainbow' | 'pulse';
+export type NameEffect = 'none' | 'shimmer' | 'glow' | 'rainbow' | 'pulse' | 'wave' | 'aurora' | 'fire' | 'ice' | 'holographic' | 'sparkle';
 export interface NameStyle {
   font?: NameFont;
   /** 1–3 colours; two or more make a gradient */
@@ -41,7 +41,7 @@ export interface NameStyle {
 }
 export interface NameplateStyle {
   colors?: string[];
-  pattern?: 'sweep' | 'stripes' | 'dots' | 'waves';
+  pattern?: 'sweep' | 'stripes' | 'dots' | 'waves' | 'aurora' | 'fire' | 'ocean' | 'sakura' | 'plasma';
 }
 
 /** Columns other people may read (keep in sync with directory.loadProfiles). */
