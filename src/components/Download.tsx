@@ -25,8 +25,8 @@ const FALLBACK: DownloadManifest = {
   url: DOWNLOAD_URL,
   updatedAt: new Date().toISOString(),
   windows: [
-    { name: `Venband-Setup-${VERSION}.exe`, kind: 'installer', url: `${DOWNLOAD_URL}Venband-Setup-${VERSION}.exe` },
-    { name: `Venband-Portable-${VERSION}.exe`, kind: 'portable', url: `${DOWNLOAD_URL}Venband-Portable-${VERSION}.exe` },
+    { name: `Venband-Setup-${VERSION}.exe`, kind: 'installer', url: `https://github.com/youragoober999-sketch/venband/releases/download/v${VERSION}/Venband-Setup-${VERSION}.exe` },
+    { name: `Venband-Portable-${VERSION}.exe`, kind: 'portable', url: `https://github.com/youragoober999-sketch/venband/releases/download/v${VERSION}/Venband-Portable-${VERSION}.exe` },
   ],
   android: { name: `Venband-${VERSION}-debug.apk`, kind: 'apk', url: `${DOWNLOAD_URL}Venband-${VERSION}-debug.apk` },
 };
