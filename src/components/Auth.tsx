@@ -333,6 +333,8 @@ function Signup({ email, setEmail, setMode }: FormProps) {
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [tosAccepted, setTosAccepted] = useState(false);
   const [understood, setUnderstood] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -357,6 +359,11 @@ function Signup({ email, setEmail, setMode }: FormProps) {
     if (available === false) return setError('Someone already has that username.');
     if (!strength.ok) return setError('Pick a longer password — at least 10 characters. A short sentence works well.');
     if (password !== confirm) return setError('The two passwords don’t match.');
+    if (!birthDate) return setError('Please enter your date of birth.');
+    const bd = new Date(birthDate);
+    const age = (Date.now() - bd.getTime()) / (365.25 * 24 * 3600 * 1000);
+    if (age < 13) return setError('You must be at least 13 years old to use Venband.');
+    if (!tosAccepted) return setError('You must accept the Terms of Service to create an account.');
     setBusy(true);
     try {
       await signUp({ email, password, username, displayName });
@@ -407,6 +414,16 @@ function Signup({ email, setEmail, setMode }: FormProps) {
       <Field label="Password again">
         <input type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
       </Field>
+      <Field label="Date of birth">
+        <input type="date" required value={birthDate} onChange={(e) => setBirthDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+      </Field>
+      <label className="checkbox">
+        <input type="checkbox" checked={tosAccepted} onChange={(e) => setTosAccepted(e.target.checked)} required />
+        <span>
+          I accept the <a href="/tos" target="_blank" rel="noreferrer">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
+          <small>This is a binding agreement. By creating an account you take responsibility for your use of Venband.</small>
+        </span>
+      </label>
       <label className="checkbox">
         <input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} required />
         <span>
@@ -415,7 +432,7 @@ function Signup({ email, setEmail, setMode }: FormProps) {
         </span>
       </label>
       {error && <div className="form-error">{error}</div>}
-      <button className="btn primary full" disabled={busy || !understood}>
+      <button className="btn primary full" disabled={busy || !understood || !tosAccepted || !birthDate}>
         {busy ? 'Setting things up…' : 'Create account'}
       </button>
       <p className="switch">
