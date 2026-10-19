@@ -1505,6 +1505,9 @@ function VoiceTab() {
         <Field label={`Input volume — ${v.inputVolume}%`}>
           <input type="range" min={0} max={200} step={5} value={v.inputVolume} onChange={(e) => updateVoice({ inputVolume: Number(e.target.value) })} />
         </Field>
+        <Field label={`Output volume (booster) - ${v.outputVolume ?? 100}%`}>
+          <input type="range" min={0} max={200} step={5} value={v.outputVolume ?? 100} onChange={(e) => updateVoice({ outputVolume: Number(e.target.value) })} />
+        </Field>
         <div className="mic-test">
           <button className="btn secondary small" onClick={() => setTesting((t) => !t)}>
             {testing ? 'Stop test' : 'Let’s check'}

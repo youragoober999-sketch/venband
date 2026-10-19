@@ -44,6 +44,7 @@ export interface Settings {
     pushToTalk: boolean;
     pushToTalkKey: string;
     inputVolume: number; // percent
+    outputVolume: number; // percent, up to 200
     streamRes: 720 | 1080 | 1440;
     streamFps: 15 | 30 | 60;
   };
@@ -114,6 +115,7 @@ export const DEFAULT_SETTINGS: Settings = {
     pushToTalk: false,
     pushToTalkKey: ' ',
     inputVolume: 100,
+    outputVolume: 100,
     streamRes: 1080,
     streamFps: 30,
   },

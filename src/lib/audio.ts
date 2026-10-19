@@ -120,7 +120,8 @@ class Mixer {
     const { muted } = callUi.get();
     for (const n of this.nodes.values()) {
       const off = this.deafened || muted[n.input.key];
-      let v = off ? 0 : volumeOf(n.input.key) / 100;
+      const boost = (getSettings().voice.outputVolume ?? 100) / 100;
+      let v = off ? 0 : (volumeOf(n.input.key) / 100) * boost;
       if (n.input.kind === 'stream' && talking) v *= 1 - attenuationOf(n.input.key) / 100;
       if (n.gain && this.ctx) n.gain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.08);
       else n.el.volume = Math.min(1, v);
