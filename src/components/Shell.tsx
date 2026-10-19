@@ -382,16 +382,16 @@ export function Shell() {
       <SettingsPage />
       <ContextMenuHost />
       <DialogHost />
-      {useSettings((s) => s.dockStyle) === 'macos' && <MacDock servers={servers} dms={dms} current={serverId} onAdd={() => setModal('create-join')} discover={discover} onDiscover={() => nav.set({ serverId: null, discover: !discover })} />}
+      {useSettings((s) => s.dockStyle) === 'macos' && <MacDock servers={servers} dms={dms} current={serverId} onAdd={() => setModal('create-join')} discover={discover} onDiscover={() => nav.set({ serverId: null, discover: !discover })} position={useSettings((s) => s.dockPosition)} />}
     </div>
   );
 }
 
-function MacDock({ servers, dms, current, onAdd, discover, onDiscover }: { servers: Server[]; dms: DmChannel[]; current: string | null; onAdd: () => void; discover: boolean; onDiscover: () => void }) {
+function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position }: { servers: Server[]; dms: DmChannel[]; current: string | null; onAdd: () => void; discover: boolean; onDiscover: () => void; position: 'top' | 'left' | 'right' | 'bottom' | 'custom' }) {
   const unreadState = unreadStore.use((s) => s);
   const dmUnread = dms.reduce((n, d) => n + (unreadState.counts[d.channel.id] ?? 0), 0);
   return (
-    <div className="mac-dock">
+    <div className={`mac-dock mac-dock-${position}`}>
       <button className="mac-dock-item" onClick={() => openServer(null)} title="Home / DMs">
         <Icon name="message" size={20} />
         {dmUnread > 0 && <span className="mac-dock-badge">{dmUnread}</span>}

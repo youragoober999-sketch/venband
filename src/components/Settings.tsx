@@ -1190,6 +1190,9 @@ function AppearanceTab() {
       <Section title="Dock style">
         <Select value={useSettings((s) => s.dockStyle)} onChange={(v) => updateSettings({ dockStyle: v as 'default' | 'macos' })} options={[{ value: 'default', label: 'Default taskbar' }, { value: 'macos', label: 'macOS dock (hover magnification)' }]} />
       </Section>
+      <Section title="Dock position">
+        <Select value={useSettings((s) => s.dockPosition)} onChange={(v) => updateSettings({ dockPosition: v as any })} options={[{ value: 'bottom', label: 'Bottom' }, { value: 'top', label: 'Top' }, { value: 'left', label: 'Left' }, { value: 'right', label: 'Right' }]} />
+      </Section>
       <div className="tabs">
         <button className={view === 'themes' ? 'active' : ''} onClick={() => setView('themes')}>
           My Themes

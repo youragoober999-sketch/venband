@@ -30,6 +30,7 @@ export interface Settings {
   translateMode: 'auto' | 'manual' | 'off';
   language: string;
   dockStyle: 'default' | 'macos';
+  dockPosition: 'top' | 'left' | 'right' | 'bottom' | 'custom';
   mutedServers: string[];
   mutedChannels: string[];
   voice: {
@@ -102,6 +103,7 @@ export const DEFAULT_SETTINGS: Settings = {
   translateMode: 'manual',
   language: '',
   dockStyle: 'default',
+  dockPosition: 'bottom',
   mutedServers: [],
   mutedChannels: [],
   voice: {
@@ -171,6 +173,7 @@ function merge(raw: unknown): Settings {
     chat: { ...DEFAULT_SETTINGS.chat, ...(r.chat ?? {}) },
     screenTime: { ...DEFAULT_SETTINGS.screenTime, ...(r.screenTime ?? {}) },
     dockStyle: r.dockStyle ?? DEFAULT_SETTINGS.dockStyle,
+    dockPosition: r.dockPosition ?? DEFAULT_SETTINGS.dockPosition,
     mutedServers: Array.isArray(r.mutedServers) ? r.mutedServers : [],
     mutedChannels: Array.isArray(r.mutedChannels) ? r.mutedChannels : [],
     layout: { ...DEFAULT_SETTINGS.layout, ...(r.layout ?? {}) },

@@ -2613,3 +2613,8 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 
 .mac-dock-label { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); background: var(--bg-2); color: var(--text); padding: 4px 8px; border-radius: 6px; font-size: 11px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; transform: translateX(-50%) translateY(4px); }
 .mac-dock-item:hover .mac-dock-label { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+.mac-dock-top { top: 8px; bottom: auto; left: 50%; transform: translateX(-50%); flex-direction: row; }
+.mac-dock-left { left: 8px; right: auto; top: 50%; transform: translateY(-50%); flex-direction: column; }
+.mac-dock-right { right: 8px; left: auto; top: 50%; transform: translateY(-50%); flex-direction: column; }
+.mac-dock-bottom { bottom: 8px; top: auto; left: 50%; transform: translateX(-50%); }
