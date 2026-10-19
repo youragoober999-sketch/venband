@@ -5,7 +5,7 @@ import { applyCustomCss, safeMode, setSafeMode } from '../lib/customCss';
 import { startBackground } from '../lib/background';
 import { useApps, useServerBots } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
-import { isTopStaff, sessionStore, updateMyProfile } from '../lib/session';
+import { isTopStaff, sessionStore, signOut, updateMyProfile } from '../lib/session';
 import { ActivityMini } from './ActivityCard';
 import { supabase, errorMessage } from '../lib/supabase';
 import { activeCallVersion, getActiveCall, joinCall, leaveCall, leftRecently, subscribeActiveCall } from '../lib/call';
@@ -1715,6 +1715,19 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
         },
       },
       { label: 'View Profile', icon: 'user', onClick: () => openProfile(me.id) },
+      { label: 'Switch account', icon: 'users', onClick: () => {
+        const saved = JSON.parse(localStorage.getItem('venband:accounts') || '[]') as string[];
+        const choice = window.prompt('Switch to which account?\\n' + saved.map((e, i) => `${i + 1}. ${e}`).join('\\n') + '\\n\\nType an email to add, or "new" to sign in fresh.');
+        if (!choice) return;
+        if (choice === 'new' || !saved.includes(choice)) {
+          // save current email first
+          const cur = sessionStore.get().me?.username;
+          if (cur && !saved.includes(cur)) { saved.push(cur); if (saved.length > 2) saved.shift(); localStorage.setItem('venband:accounts', JSON.stringify(saved)); }
+          signOut().then(() => go('sign-in'));
+        } else {
+          signOut().then(() => go('sign-in'));
+        }
+      } },
       { label: 'Settings', icon: 'settings', onClick: () => openSettings('account') },
       { label: 'Copy User ID', icon: 'copy', onClick: () => copyText(me.id) },
     ]);

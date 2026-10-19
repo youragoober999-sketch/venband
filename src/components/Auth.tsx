@@ -169,6 +169,12 @@ function Login({ email, setEmail, setMode }: FormProps) {
       if (!hit?.email) throw new Error('No account with that username or email.');
       if (hit.banned) return setBanned({ username: (hit.username as string) || raw.replace(/@.*$/, '') });
       await signIn(hit.email as string, password, remember);
+      // save up to 2 accounts for the switcher
+      try {
+        const saved = JSON.parse(localStorage.getItem('venband:accounts') || '[]') as string[];
+        if (!saved.includes(hit.email as string)) { saved.push(hit.email as string); if (saved.length > 2) saved.shift(); }
+        localStorage.setItem('venband:accounts', JSON.stringify(saved));
+      } catch {}
     } catch (err) {
       if (/not confirmed/i.test(String((err as Error)?.message))) {
         setMode('verify');
