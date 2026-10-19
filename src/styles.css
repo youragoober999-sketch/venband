@@ -2585,3 +2585,5 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .settings-search-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .settings-search-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); cursor: pointer; text-align: left; color: var(--text); }
 .settings-search-item:hover { background: var(--bg-3); border-color: var(--line-2); }
+
+.qr-popup { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--line); }

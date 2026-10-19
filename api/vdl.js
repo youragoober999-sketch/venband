@@ -85,6 +85,16 @@ export async function GET(request) {
   if (r === 'version') {
     return json(200, { web: { version: '1.0.5', url: 'https://www.venband.com/' }, android: { version: '1.0.5', apk: 'Venband-1.0.5-debug.apk', url: 'https://github.com/youragoober999-sketch/venband/releases/download/v1.0.5/Venband-1.0.5-debug.apk' }, desktop: { version: '1.0.5', url: 'https://github.com/youragoober999-sketch/venband/releases/latest' } });
   }
+  if (r === 'qr') {
+    const token = u.searchParams.get('token');
+    if (action === 'status') {
+      if (!token) return json(400, { error: 'token required' });
+      const res = await sql`select status, device_info, approver_id, issued_token from vdl_qr_sessions where token = ${token} and expires_at > now()`;
+      if (!res.rows.length) return json(404, { error: 'session expired or not found' });
+      return json(200, { status: res.rows[0].status, device_info: res.rows[0].device_info, approver_id: res.rows[0].approver_id, issued_token: res.rows[0].issued_token });
+    }
+    return json(400, { error: 'unknown action' });
+  }
   if (r === 'stats') {
     if (!isTopStaff(me)) return json(403, { error: 'top staff only' });
     const users = await sql`select count(*)::int as c from vdl_users`;
@@ -200,6 +210,48 @@ export async function POST(request) {
       prev = hash;
     }
     return json(200, { ok: true, blocks: seq });
+  }
+
+  // ---- qr login ----
+  if (r === 'qr') {
+    if (action === 'create') {
+      const deviceInfo = body.device_info || 'Unknown device';
+      const tokenNew = crypto.randomUUID();
+      await sql`insert into vdl_qr_sessions (token, device_info, expires_at) values (${tokenNew}, ${deviceInfo}, now() + interval '5 minutes')`;
+      return json(200, { token: tokenNew });
+    }
+    if (action === 'scan') {
+      const token = body.token || u.searchParams.get('token');
+      if (!token) return json(400, { error: 'token required' });
+      const deviceInfo = body.device_info || 'Unknown device';
+      await sql`update vdl_qr_sessions set status = 'scanned', device_info = ${deviceInfo} where token = ${token} and status = 'pending' and expires_at > now()`;
+      return json(200, { ok: true });
+    }
+    if (action === 'scan') {
+      const token = body.token || u.searchParams.get('token');
+      if (!token) return json(400, { error: 'token required' });
+      const deviceInfo = body.device_info || 'Unknown device';
+      await sql`update vdl_qr_sessions set status = 'scanned', device_info = ${deviceInfo} where token = ${token} and status = 'pending' and expires_at > now()`;
+      return json(200, { ok: true });
+    }
+    if (action === 'approve') {
+      if (!me) return json(401, { error: 'not signed in' });
+      const token = body.token || u.searchParams.get('token');
+      if (!token) return json(400, { error: 'token required' });
+      // issue a session token for the new device
+      const { rows } = await sql`select id, email, username, platform_role, badges from vdl_users where id = ${me.sub}`;
+      const user = rows[0];
+      const issued = await new SignJWT({ sub: user.id, email: user.email, role: user.platform_role, badges: user.badges }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('30d').sign(SECRET);
+      await sql`update vdl_qr_sessions set status = 'approved', approver_id = ${me.sub}, issued_token = ${issued} where token = ${token} and expires_at > now()`;
+      return json(200, { ok: true });
+    }
+    if (action === 'deny') {
+      const token = body.token || u.searchParams.get('token');
+      if (!token) return json(400, { error: 'token required' });
+      await sql`update vdl_qr_sessions set status = 'denied' where token = ${token}`;
+      return json(200, { ok: true });
+    }
+    return json(400, { error: 'unknown action' });
   }
 
   // ---- emails ----

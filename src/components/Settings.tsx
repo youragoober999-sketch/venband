@@ -383,6 +383,51 @@ function AccountTab() {
     fingerprint(identity.encPublic, identity.signPublic).then(setFp);
   }, [identity]);
   const email = session?.user.email ?? '';
+  const [qrToken, setQrToken] = useState<string | null>(null);
+  const [qrStatus, setQrStatus] = useState<string>('pending');
+  const [qrDevice, setQrDevice] = useState<string>('');
+  const [qrBusy, setQrBusy] = useState(false);
+
+  async function startQrLogin() {
+    setQrBusy(true);
+    try {
+      const deviceInfo = navigator.userAgent.slice(0, 80);
+      const r = await fetch('/api/vdl?r=qr&action=create', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ device_info: deviceInfo }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error);
+      setQrToken(j.token);
+      setQrStatus('pending');
+      // poll for scan
+      const poll = setInterval(async () => {
+        const r2 = await fetch(`/api/vdl?r=qr&action=status&token=${encodeURIComponent(j.token)}`, { credentials: 'include' });
+        const j2 = await r2.json();
+        if (j2.status === 'scanned') {
+          setQrStatus('scanned');
+          setQrDevice(j2.device_info || 'Unknown device');
+          clearInterval(poll);
+        } else if (j2.status === 'approved' || j2.status === 'denied') {
+          clearInterval(poll);
+          setQrStatus(j2.status);
+        }
+      }, 2000);
+      // stop polling after 5 min
+      setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
+    } catch (e) { alert(String((e as Error).message)); }
+    finally { setQrBusy(false); }
+  }
+
+  async function approveQr() {
+    if (!qrToken) return;
+    await fetch('/api/vdl?r=qr&action=approve', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ token: qrToken }) });
+    setQrStatus('approved');
+    setQrToken(null);
+  }
+  async function denyQr() {
+    if (!qrToken) return;
+    await fetch('/api/vdl?r=qr&action=deny', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ token: qrToken }) });
+    setQrStatus('denied');
+    setQrToken(null);
+  }
   const deletePhrase = 'I want to delete my account';
   async function deleteAccount() {
     if (!(await askConfirm({ title: 'Delete your account?', body: 'Your DMs, files, messages, username and email are erased right now, and this device signs out. This cannot be undone.', confirm: 'Delete my account', danger: true }))) return;
@@ -457,6 +502,29 @@ function AccountTab() {
           )}
         </div>
       </div>
+      <Section title="Login on another device" desc="Show a QR code to sign in on a phone or computer without typing your password.">
+        {!qrToken && qrStatus === 'pending' && (
+          <button className="btn" onClick={startQrLogin} disabled={qrBusy}>{qrBusy ? 'Starting…' : 'Show QR code'}</button>
+        )}
+        {qrToken && (
+          <div style={{ textAlign: 'center' }}>
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrToken)}`} alt="QR code" style={{ borderRadius: 8 }} />
+            <p className="small muted" style={{ marginTop: 8 }}>Scan with Venband on another device. Expires in 5 minutes.</p>
+            {qrStatus === 'scanned' && (
+              <div className="qr-popup">
+                <p><b>{qrDevice}</b> is trying to log in.</p>
+                <p className="small muted">Allow if this is you.</p>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
+                  <button className="btn primary small" onClick={approveQr}>Allow</button>
+                  <button className="btn ghost small" onClick={denyQr}>Deny</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {qrStatus === 'approved' && <p className="small good">Approved. The other device is now signed in.</p>}
+        {qrStatus === 'denied' && <p className="small danger-text">Denied.</p>}
+      </Section>
       {msg && <div className="notice">{msg}</div>}
       <Section title="Password" desc="Changing it re-encrypts your keys on this device. Your messages stay readable.">
         <form
