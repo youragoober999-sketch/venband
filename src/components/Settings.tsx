@@ -59,6 +59,7 @@ const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff
 
 export function SettingsPage() {
   const tab = uiStore.use((s) => s.settings);
+  const [search, setSearch] = useState('');
   const me = sessionStore.use((s) => s.me)!;
   const staff = (me.platform_role ?? 'user') !== 'user';
   const admin = me.platform_role === 'admin' || me.platform_role === 'owner';
@@ -75,8 +76,12 @@ export function SettingsPage() {
     <div className="settings-page" role="dialog" aria-modal aria-label="Settings">
       <nav className="sp-nav">
         <div className="sp-nav-inner">
+          <div className="sp-search">
+            <Icon name="search" size={14} />
+            <input placeholder="Search settings…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
           {groups.map((g) => {
-            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer));
+            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer) && (!search || t.label.toLowerCase().includes(search.toLowerCase())));
             if (!items.length) return null;
             return (
               <div key={g}>

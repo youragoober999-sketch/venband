@@ -2570,3 +2570,6 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .mobile-call-btn.answer { background: #34c759; }
 .mobile-call-btn.hangup { background: #ff3b30; }
 .mobile-call-btn svg { width: 32px; height: 32px; fill: #fff; }
+
+.sp-search { display: flex; align-items: center; gap: 6px; padding: 6px 10px; margin: 8px 8px 4px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); }
+.sp-search input { background: none; border: 0; color: var(--text); font-size: 13px; width: 100%; outline: none; }
