@@ -446,12 +446,12 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
   return (
     <div className={`mac-dock mac-dock-${position}`} ref={dockRef}>
       {items.map((it, i) => {
-        const base = 52;
+        const base = 40;
         let scale = 1;
         if (mouseX !== null && dockRef.current) {
           const itemCenter = (i * (base + 10)) + base / 2 + 12;
           const dist = Math.abs(mouseX - itemCenter);
-          scale = 1 + 0.7 * Math.max(0, 1 - dist / 140);
+          scale = 1 + 0.45 * Math.max(0, 1 - dist / 120);
         }
         return (
           <div key={it.key} className="mac-dock-slot" style={{ transform: `scale(${scale})`, transition: 'transform .1s ease-out' }}>
