@@ -28,4 +28,6 @@ window.venbandUpdate.onError((msg) => {
   // never lock anyone out because of a bad connection
   if (failures >= 2) $('later').style.display = 'block';
 });
+// always allow skipping so nobody is locked out
+$('later').style.display = 'block';
 $('later').addEventListener('click', () => window.venbandUpdate.later());

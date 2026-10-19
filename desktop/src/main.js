@@ -32,7 +32,7 @@ const BASE = appBase();
 const SAFE_MODE = process.argv.includes('--safe-mode') || process.env.VENBAND_SAFE_MODE === '1';
 const ICON = path.join(__dirname, '..', 'build', 'icon.png');
 const TRAY_ICON = path.join(__dirname, '..', 'build', 'tray.png');
-const UPDATE_CHECK_MS = 4 * 60 * 60 * 1000;
+const UPDATE_CHECK_MS = 1 * 60 * 60 * 1000;
 
 if (SAFE_MODE) app.disableHardwareAcceleration();
 // every renderer is sandboxed; --no-sandbox is only for running as root in a
