@@ -391,36 +391,13 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
   const unreadState = unreadStore.use((s) => s);
   const dmUnread = dms.reduce((n, d) => n + (unreadState.counts[d.channel.id] ?? 0), 0);
   const dockRef = useRef<HTMLDivElement>(null);
-  const [mouseX, setMouseX] = useState<number | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const pendingX = useRef<number | null>(null);
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!dockRef.current) return;
-      const rect = dockRef.current.getBoundingClientRect();
-      // proximity: track mouse relative to dock even when not directly over it
-      const dy = e.clientY - (rect.top + rect.height / 2);
-      if (Math.abs(dy) > 120) { setMouseX(null); return; } // too far vertically
-      pendingX.current = e.clientX - rect.left;
-      if (rafRef.current === null) {
-        rafRef.current = requestAnimationFrame(() => {
-          setMouseX(pendingX.current);
-          rafRef.current = null;
-        });
-      }
-    };
-    const onLeave = () => setMouseX(null);
-    window.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseleave', onLeave);
-    return () => { window.removeEventListener('mousemove', onMove); document.removeEventListener('mouseleave', onLeave); if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, []);
   const railOrder = useSettings((s) => s.rail.order);
   const sortedServers = [...servers].sort((a, b) => {
     const ra = railOrder.indexOf(a.id); const rb = railOrder.indexOf(b.id);
     return (ra === -1 ? 9999 : ra) - (rb === -1 ? 9999 : rb);
   });
-  const items = [
+  const leftItems = [
     { key: 'home', node: (
       <button className="mac-dock-item" onClick={() => openServer(null)} title="Home / DMs">
         <Icon name="message" size={20} />
@@ -428,19 +405,21 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
         <span className="mac-dock-label">Home / DMs</span>
       </button>
     ) },
-    ...sortedServers.map((s) => ({ key: s.id, node: (
-      <button key={s.id} className={`mac-dock-item${s.id === current ? ' active' : ''}`} draggable onDragStart={() => setDragKey(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => {
-        if (!dragKey || dragKey === s.id) return;
-        const newOrder = railOrder.includes(dragKey) ? railOrder.filter((x) => x !== dragKey) : [...railOrder];
-        const targetIdx = newOrder.indexOf(s.id);
-        if (targetIdx === -1) newOrder.push(dragKey); else newOrder.splice(targetIdx, 0, dragKey);
-        updateSettings({ rail: { ...useSettings((st) => st.rail), order: newOrder } });
-        setDragKey(null);
-      }} onClick={() => openServer(s.id)} title={s.name}>
-        {s.icon_url ? <img src={s.icon_url} alt="" className="mac-dock-img" /> : <span className="mac-dock-icon" style={{ background: s.icon_color }}>{s.name.slice(0, 1).toUpperCase()}</span>}
-        <span className="mac-dock-label">{s.name}</span>
-      </button>
-    ) })),
+  ];
+  const middleItems = sortedServers.map((s) => ({ key: s.id, node: (
+    <button key={s.id} className={`mac-dock-item${s.id === current ? ' active' : ''}`} draggable onDragStart={() => setDragKey(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => {
+      if (!dragKey || dragKey === s.id) return;
+      const newOrder = railOrder.includes(dragKey) ? railOrder.filter((x) => x !== dragKey) : [...railOrder];
+      const targetIdx = newOrder.indexOf(s.id);
+      if (targetIdx === -1) newOrder.push(dragKey); else newOrder.splice(targetIdx, 0, dragKey);
+      updateSettings({ rail: { ...useSettings((st) => st.rail), order: newOrder } });
+      setDragKey(null);
+    }} onClick={() => openServer(s.id)} title={s.name}>
+      {s.icon_url ? <img src={s.icon_url} alt="" className="mac-dock-img" /> : <span className="mac-dock-icon" style={{ background: s.icon_color }}>{s.name.slice(0, 1).toUpperCase()}</span>}
+      <span className="mac-dock-label">{s.name}</span>
+    </button>
+  ) }));
+  const rightItems = [
     { key: 'discover', node: (
       <button className={`mac-dock-item${discover ? ' active' : ''}`} onClick={onDiscover} title="Discover">
         <Icon name="compass" size={20} />
@@ -454,30 +433,17 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
       </button>
     ) },
   ];
-  const base = 40;
-  const gap = 10;
-  // compute magnification + push neighbors (macOS-style: items grow and push others aside)
-  const scales = items.map((_, i) => {
-    if (mouseX === null) return 1;
-    const itemCenter = i * (base + gap) + base / 2 + 12;
-    const dist = Math.abs(mouseX - itemCenter);
-    return 1 + 0.6 * Math.max(0, 1 - dist / 160);
-  });
-  // push: each item's width = base * scale, neighbors shift to accommodate
-  const widths = scales.map((sc) => base * sc);
-  const totalW = widths.reduce((a, w) => a + w, 0) + gap * (items.length - 1) + 24;
   return (
-    <div className={`mac-dock mac-dock-${position}`} ref={dockRef} style={position === 'left' || position === 'right' ? { transition: 'height .35s cubic-bezier(.25,.8,.25,1)' } : { width: totalW, transition: 'width .35s cubic-bezier(.25,.8,.25,1)' }}>
-      {items.map((it, i) => {
-        const sc = scales[i];
-        return (
-          <div key={it.key} className="mac-dock-slot" style={{ width: widths[i], height: base * sc, transition: 'width .35s cubic-bezier(.25,.8,.25,1), height .35s cubic-bezier(.25,.8,.25,1)', zIndex: sc > 1.05 ? 2 : 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-            <div style={{ transform: `scale(${sc})`, transformOrigin: 'bottom center', transition: 'transform .35s cubic-bezier(.25,.8,.25,1)' }}>
-              {it.node}
-            </div>
-          </div>
-        );
-      })}
+    <div className={`mac-dock mac-dock-${position}`} ref={dockRef}>
+      <div className="mac-dock-section mac-dock-left-section">
+        {leftItems.map((it) => <div key={it.key} className="mac-dock-slot">{it.node}</div>)}
+      </div>
+      <div className="mac-dock-section mac-dock-middle-section">
+        {middleItems.map((it) => <div key={it.key} className="mac-dock-slot">{it.node}</div>)}
+      </div>
+      <div className="mac-dock-section mac-dock-right-section">
+        {rightItems.map((it) => <div key={it.key} className="mac-dock-slot">{it.node}</div>)}
+      </div>
     </div>
   );
 }
