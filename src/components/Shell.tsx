@@ -467,7 +467,7 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
   const widths = scales.map((sc) => base * sc);
   const totalW = widths.reduce((a, w) => a + w, 0) + gap * (items.length - 1) + 24;
   return (
-    <div className={`mac-dock mac-dock-${position}`} ref={dockRef} style={{ width: totalW, transition: 'width .35s cubic-bezier(.25,.8,.25,1)' }}>
+    <div className={`mac-dock mac-dock-${position}`} ref={dockRef} style={position === 'left' || position === 'right' ? { transition: 'height .35s cubic-bezier(.25,.8,.25,1)' } : { width: totalW, transition: 'width .35s cubic-bezier(.25,.8,.25,1)' }}>
       {items.map((it, i) => {
         const sc = scales[i];
         return (
@@ -513,11 +513,10 @@ function ServerRail({
       { label: 'Copy Link', icon: 'link', onClick: () => copyText(linkTo(`channels/${s.id}`)) },
       { type: 'sep' },
       {
-        label: useSettings((st) => st.mutedServers.includes(s.id)) ? 'Unmute Server' : 'Mute Server',
+        label: mutedServers.includes(s.id) ? 'Unmute Server' : 'Mute Server',
         icon: 'bellOff',
         onClick: () => {
-          const cur = useSettings((st) => st.mutedServers);
-          const next = cur.includes(s.id) ? cur.filter((x) => x !== s.id) : [...cur, s.id];
+          const next = mutedServers.includes(s.id) ? mutedServers.filter((x) => x !== s.id) : [...mutedServers, s.id];
           updateSettings({ mutedServers: next });
         },
       },
@@ -544,6 +543,7 @@ function ServerRail({
 
   // ---- order + folders (saved in your synced settings)
   const rail = useSettings((s) => s.rail);
+  const mutedServers = useSettings((s) => s.mutedServers);
   const railFolders = rail.folders;
   const [openFolder, setOpenFolder] = useState<string | null>(null);
   const [railDnd, setRailDnd] = useState<{ drag: string | null; over: string | null; where: 'before' | 'after' | 'into' }>({ drag: null, over: null, where: 'into' });
