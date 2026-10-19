@@ -399,6 +399,9 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
     const onMove = (e: MouseEvent) => {
       if (!dockRef.current) return;
       const rect = dockRef.current.getBoundingClientRect();
+      // proximity: track mouse relative to dock even when not directly over it
+      const dy = e.clientY - (rect.top + rect.height / 2);
+      if (Math.abs(dy) > 120) { setMouseX(null); return; } // too far vertically
       pendingX.current = e.clientX - rect.left;
       if (rafRef.current === null) {
         rafRef.current = requestAnimationFrame(() => {
@@ -458,7 +461,7 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
     if (mouseX === null) return 1;
     const itemCenter = i * (base + gap) + base / 2 + 12;
     const dist = Math.abs(mouseX - itemCenter);
-    return 1 + 0.55 * Math.max(0, 1 - dist / 130);
+    return 1 + 0.6 * Math.max(0, 1 - dist / 160);
   });
   // push: each item's width = base * scale, neighbors shift to accommodate
   const widths = scales.map((sc) => base * sc);
