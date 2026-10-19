@@ -60,6 +60,7 @@ const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff
 export function SettingsPage() {
   const tab = uiStore.use((s) => s.settings);
   const [search, setSearch] = useState('');
+  const allSettings = useSettings((s) => s);
   const me = sessionStore.use((s) => s.me)!;
   const staff = (me.platform_role ?? 'user') !== 'user';
   const admin = me.platform_role === 'admin' || me.platform_role === 'owner';
@@ -108,7 +109,7 @@ export function SettingsPage() {
               <p className="muted small">Matching settings — toggle them right here.</p>
               <div className="settings-search-list">
                 {(() => {
-                  const s = useSettings((x) => x);
+                  const s = allSettings;
                   const voice = s.voice;
                   const chat = s.chat;
                   const entries: { key: string; label: string; tab: string; tabLabel: string; control: ReactNode }[] = [
