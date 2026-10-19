@@ -102,21 +102,42 @@ export function SettingsPage() {
       </nav>
       <main className="sp-content">
         <div className={`sp-inner${tab === 'moderation' || tab === 'reports' || tab === 'discovery-queue' || tab === 'badges' ? ' wide' : ''}`}>
-          {tab === 'account' && <AccountTab />}
-          {tab === 'profile' && <ProfileTab />}
-          {tab === 'privacy' && <PrivacyTab />}
-          {tab === 'security' && <SecurityTab />}
-          {tab === 'devices' && <DevicesTab />}
-          {tab === 'appearance' && <AppearanceTab />}
-          {tab === 'voice' && <VoiceTab />}
-          {tab === 'chat' && <ChatTab />}
-          {tab === 'language' && <LanguageTab />}
-          {tab === 'my-apps' && <MyAppsTab />}
-          {tab === 'connections' && <ConnectionsTab />}
-          {tab === 'moderation' && staff && <ModerationCenter />}
-          {tab === 'reports' && admin && <ReportCentre />}
-          {tab === 'discovery-queue' && staff && <DiscoveryQueue />}
-          {tab === 'badges' && designer && <BadgeDesigner />}
+          {search.trim() ? (
+            <div className="settings-search-results">
+              <h2>Search results</h2>
+              <p className="muted small">Click a result to jump to that setting.</p>
+              <div className="settings-search-list">
+                {TABS.filter((t) => (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer) && t.label.toLowerCase().includes(search.toLowerCase())).map((t) => (
+                  <button key={t.id} className="settings-search-item" onClick={() => { uiStore.set({ settings: t.id }); setSearch(''); }}>
+                    <Icon name={t.icon} size={16} />
+                    <span>{t.label}</span>
+                    <span className="small muted">{t.group}</span>
+                  </button>
+                ))}
+                {TABS.filter((t) => (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer) && t.label.toLowerCase().includes(search.toLowerCase())).length === 0 && (
+                  <p className="muted small">No settings match "{search}".</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {tab === 'account' && <AccountTab />}
+              {tab === 'profile' && <ProfileTab />}
+              {tab === 'privacy' && <PrivacyTab />}
+              {tab === 'security' && <SecurityTab />}
+              {tab === 'devices' && <DevicesTab />}
+              {tab === 'appearance' && <AppearanceTab />}
+              {tab === 'voice' && <VoiceTab />}
+              {tab === 'chat' && <ChatTab />}
+              {tab === 'language' && <LanguageTab />}
+              {tab === 'my-apps' && <MyAppsTab />}
+              {tab === 'connections' && <ConnectionsTab />}
+              {tab === 'moderation' && staff && <ModerationCenter />}
+              {tab === 'reports' && admin && <ReportCentre />}
+              {tab === 'discovery-queue' && staff && <DiscoveryQueue />}
+              {tab === 'badges' && designer && <BadgeDesigner />}
+            </>
+          )}
         </div>
         <button className="sp-close" onClick={closeSettings} title="Close (Esc)">
           <Icon name="x" size={18} />
