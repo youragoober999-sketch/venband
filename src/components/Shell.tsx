@@ -1699,6 +1699,13 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
   const call = useActiveCall();
   const serverId = nav.use((s) => s.serverId);
   const [accountSwitcherOpen, setAccountSwitcherOpen] = useState(false);
+  const [accountPickerOpen, setAccountPickerOpen] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('venband:accounts') || '[]');
+      const dontAsk = localStorage.getItem('venband:dontAskAccount');
+      return saved.length > 1 && !dontAsk;
+    } catch { return false; }
+  });
   const discover = nav.use((s) => s.discover);
   const dmId = nav.use((s) => s.channelByServer['@me']);
   const server = servers.find((x) => x.id === serverId);
@@ -1768,6 +1775,9 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
     </header>
     {accountSwitcherOpen && (
       <AccountSwitcherModal onClose={() => setAccountSwitcherOpen(false)} me={me} />
+    )}
+    {accountPickerOpen && (
+      <AccountPickerModal onClose={() => setAccountPickerOpen(false)} me={me} />
     )}
     </>
   );
@@ -2100,8 +2110,8 @@ function AccountSwitcherModal({ onClose, me }: { onClose: () => void; me: Profil
   });
   // ensure current account is in list
   useEffect(() => {
-    if (me.username && !accounts.includes(me.username)) {
-      const next = [...accounts, me.username].slice(-2);
+    if (me.username && !accounts.some((a) => a.username === me.username)) {
+      const next = [...accounts, { username: me.username, displayName: me.display_name, avatarUrl: me.avatar_url ?? null }].slice(-2);
       setAccounts(next);
       localStorage.setItem('venband:accounts', JSON.stringify(next));
     }
@@ -2120,6 +2130,10 @@ function AccountSwitcherModal({ onClose, me }: { onClose: () => void; me: Profil
     const next = accounts.filter((a) => a.username !== username);
     setAccounts(next);
     localStorage.setItem('venband:accounts', JSON.stringify(next));
+    if (username === me.username) {
+      // sign out and go to sign-in (pick another saved account there)
+      signOut().then(() => go('sign-in'));
+    }
   }
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -2147,6 +2161,51 @@ function AccountSwitcherModal({ onClose, me }: { onClose: () => void; me: Profil
             </button>
           )}
         </div>
+        <button className="btn ghost small" onClick={onClose} style={{ marginTop: 12 }}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+function AccountPickerModal({ onClose, me }: { onClose: () => void; me: Profile }) {
+  const [accounts] = useState<any[]>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('venband:accounts') || '[]');
+      return raw.map((a: any) => (typeof a === 'string' ? { username: a, displayName: a, avatarUrl: null } : a)).filter(Boolean);
+    } catch { return []; }
+  });
+  const [dontAsk, setDontAsk] = useState(false);
+  function pick(username: string) {
+    if (dontAsk) localStorage.setItem('venband:dontAskAccount', username);
+    if (username !== me.username) {
+      signOut().then(() => go('sign-in'));
+    }
+    onClose();
+  }
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal account-switcher" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, width: '90vw' }}>
+        <h2>Which account?</h2>
+        <p className="small muted">You have multiple accounts saved on this device.</p>
+        <div className="account-switcher-list">
+          {accounts.map((a) => (
+            <div key={a.username} className="account-switcher-row">
+              {a.avatarUrl ? <img src={a.avatarUrl} alt="" className="account-switcher-avatar" style={{ objectFit: 'cover' }} /> : <div className="account-switcher-avatar">{String(a.displayName || a.username || '?').slice(0, 2).toUpperCase()}</div>}
+              <div className="account-switcher-info">
+                <div className="account-switcher-name">{a.username === me.username ? me.display_name : (a.displayName || a.username)}</div>
+                <div className="account-switcher-user">@{a.username}</div>
+              </div>
+              {a.username === me.username && <span className="account-switcher-current">Current</span>}
+              <div className="account-switcher-actions">
+                <button className="btn small primary" onClick={() => pick(a.username)}>Use</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <label className="checkbox" style={{ marginTop: 12 }}>
+          <input type="checkbox" checked={dontAsk} onChange={(e) => setDontAsk(e.target.checked)} />
+          <span>Don't ask again (use this account next time)</span>
+        </label>
         <button className="btn ghost small" onClick={onClose} style={{ marginTop: 12 }}>Close</button>
       </div>
     </div>
