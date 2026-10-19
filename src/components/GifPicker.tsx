@@ -17,6 +17,7 @@ export function toggleGifFavorite(g: GifFavorite) {
 export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) => void; onFile: (f: File) => void; onClose: () => void }) {
   const favorites = useSettings((s) => s.gifFavorites);
   const [tab, setTab] = useState<Tab>(favorites.length ? 'favorites' : gifsEnabled ? 'search' : 'make');
+  const [makeOpen, setMakeOpen] = useState(false);
   const [q, setQ] = useState('');
   const [items, setItems] = useState<GifFavorite[]>([]);
   const [page, setPage] = useState(1);
@@ -77,6 +78,7 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
   };
 
   return (
+    <>
     <div className="gif-picker" ref={ref} role="dialog" aria-label="GIFs">
       <div className="gif-tabs">
         <button className={tab === 'favorites' ? 'active' : ''} onClick={() => setTab('favorites')}>
@@ -92,7 +94,7 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
             <Icon name="home" size={14} /> Server
           </button>
         )}
-        <button className={tab === 'make' ? 'active' : ''} onClick={() => setTab('make')}>
+        <button className={tab === 'make' ? 'active' : ''} onClick={() => setMakeOpen(true)}>
           <Icon name="sparkles" size={14} /> Make a GIF
         </button>
       </div>
@@ -100,14 +102,7 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
         <input className="gif-search" autoFocus placeholder="Search Klipy" value={q} onChange={(e) => setQ(e.target.value)} />
       )}
       {error && <div className="form-error">{error}</div>}
-      {tab === 'make' ? (
-        <MakeGif
-          onDone={(f) => {
-            onFile(f);
-            onClose();
-          }}
-        />
-      ) : tab === 'server' ? (
+      {tab === 'server' ? (
         <div className="gif-grid">
           {serverItems.map((x) => (
             <button
@@ -141,6 +136,16 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
       )}
       {tab === 'search' && <div className="gif-attribution">Powered by KLIPY</div>}
     </div>
+    {makeOpen && (
+      <div className="modal-backdrop" onClick={() => setMakeOpen(false)}>
+        <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+          <h2>Make a GIF</h2>
+          <MakeGif onDone={(f) => { onFile(f); setMakeOpen(false); onClose(); }} />
+          <button className="btn ghost small" onClick={() => setMakeOpen(false)} style={{ marginTop: 8 }}>Close</button>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
