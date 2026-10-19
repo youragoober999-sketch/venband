@@ -1689,6 +1689,7 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
   const me = sessionStore.use((s) => s.me)!;
   const call = useActiveCall();
   const serverId = nav.use((s) => s.serverId);
+  const [accountSwitcherOpen, setAccountSwitcherOpen] = useState(false);
   const discover = nav.use((s) => s.discover);
   const dmId = nav.use((s) => s.channelByServer['@me']);
   const server = servers.find((x) => x.id === serverId);
@@ -1715,25 +1716,14 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
         },
       },
       { label: 'View Profile', icon: 'user', onClick: () => openProfile(me.id) },
-      { label: 'Switch account', icon: 'users', onClick: () => {
-        const saved = JSON.parse(localStorage.getItem('venband:accounts') || '[]') as string[];
-        const choice = window.prompt('Switch to which account?\\n' + saved.map((e, i) => `${i + 1}. ${e}`).join('\\n') + '\\n\\nType an email to add, or "new" to sign in fresh.');
-        if (!choice) return;
-        if (choice === 'new' || !saved.includes(choice)) {
-          // save current email first
-          const cur = sessionStore.get().me?.username;
-          if (cur && !saved.includes(cur)) { saved.push(cur); if (saved.length > 2) saved.shift(); localStorage.setItem('venband:accounts', JSON.stringify(saved)); }
-          signOut().then(() => go('sign-in'));
-        } else {
-          signOut().then(() => go('sign-in'));
-        }
-      } },
+      { label: 'Switch account', icon: 'users', onClick: () => setAccountSwitcherOpen(true) },
       { label: 'Settings', icon: 'settings', onClick: () => openSettings('account') },
       { label: 'Copy User ID', icon: 'copy', onClick: () => copyText(me.id) },
     ]);
   }
 
   return (
+    <> 
     <header className="topbar">
       <button className="icon-btn topbar-menu" onClick={() => setDrawer(uiStore.get().drawer === 'nav' ? null : 'nav')} aria-label="Open menu">
         <Icon name="menu" size={22} />
@@ -1767,6 +1757,10 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
         </button>
       </div>
     </header>
+    {accountSwitcherOpen && (
+      <AccountSwitcherModal onClose={() => setAccountSwitcherOpen(false)} me={me} />
+    )}
+    </>
   );
 }
 
@@ -2084,6 +2078,65 @@ function ConvoAvatar({ dm, size }: { dm: DmChannel; size: number }) {
 }
 
 /** A rounded square in the app's color with a "wren"/robot mark for bots. */
+function AccountSwitcherModal({ onClose, me }: { onClose: () => void; me: Profile }) {
+  const [accounts, setAccounts] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('venband:accounts') || '[]'); } catch { return []; }
+  });
+  // ensure current account is in list
+  useEffect(() => {
+    if (me.username && !accounts.includes(me.username)) {
+      const next = [...accounts, me.username].slice(-2);
+      setAccounts(next);
+      localStorage.setItem('venband:accounts', JSON.stringify(next));
+    }
+  }, [me.username]);
+  async function doSwitch() {
+    // save current
+    const cur = me.username;
+    const saved = [...accounts];
+    if (cur && !saved.includes(cur)) { saved.push(cur); if (saved.length > 2) saved.shift(); }
+    localStorage.setItem('venband:accounts', JSON.stringify(saved));
+    await signOut();
+    go('sign-in');
+    onClose();
+  }
+  function removeAccount(email: string) {
+    const next = accounts.filter((a) => a !== email);
+    setAccounts(next);
+    localStorage.setItem('venband:accounts', JSON.stringify(next));
+  }
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal account-switcher" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <h2>Switch account</h2>
+        <p className="small muted">Up to 2 accounts on this device.</p>
+        <div className="account-switcher-list">
+          {accounts.map((a) => (
+            <div key={a} className="account-switcher-row">
+              <div className="account-switcher-avatar">{a.slice(0, 2).toUpperCase()}</div>
+              <div className="account-switcher-info">
+                <div className="account-switcher-name">{a === me.username ? me.display_name : a}</div>
+                <div className="account-switcher-user">@{a}</div>
+              </div>
+              {a === me.username && <span className="account-switcher-current">Current</span>}
+              <div className="account-switcher-actions">
+                {a !== me.username && <button className="btn small primary" onClick={doSwitch}>Switch</button>}
+                <button className="btn small ghost" onClick={() => removeAccount(a)} title="Remove">Remove</button>
+              </div>
+            </div>
+          ))}
+          {accounts.length < 2 && (
+            <button className="btn secondary full" onClick={() => { doSwitch(); }} style={{ marginTop: 8 }}>
+              + Add account
+            </button>
+          )}
+        </div>
+        <button className="btn ghost small" onClick={onClose} style={{ marginTop: 12 }}>Close</button>
+      </div>
+    </div>
+  );
+}
+
 function BotAvatar({ dm, size }: { dm: DmChannel; size: number }) {
   return (
     <span className="bot-avatar" style={{ width: size, height: size, background: dm.bot!.app_color || '#5865f2', color: '#fff' }} title="Bot">

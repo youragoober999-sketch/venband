@@ -2598,3 +2598,12 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 
 .audio-wave { display: flex; align-items: flex-end; gap: 2px; height: 28px; width: 96px; flex-shrink: 0; }
 .audio-wave span { width: 3px; background: var(--accent); border-radius: 2px; }
+
+.account-switcher-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.account-switcher-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--line); }
+.account-switcher-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
+.account-switcher-info { flex: 1; }
+.account-switcher-name { font-weight: 600; font-size: 14px; }
+.account-switcher-user { font-size: 12px; color: var(--text-2); }
+.account-switcher-current { font-size: 11px; color: var(--accent); font-weight: 600; }
+.account-switcher-actions { display: flex; gap: 6px; }
