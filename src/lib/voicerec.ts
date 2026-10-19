@@ -47,38 +47,46 @@ export function createVoiceRecorder(onLevel?: (level: number) => void): VoiceRec
 
   async function stop(): Promise<File> {
     return new Promise((resolve) => {
-      if (!mediaRecorder) { resolve(new File([], 'voice.mp3')); return; }
+      if (!mediaRecorder) { resolve(new File([], 'voice.webm', { type: 'audio/webm' })); return; }
       mediaRecorder.onstop = async () => {
         if (raf) cancelAnimationFrame(raf);
-        const blob = new Blob(chunks, { type: mediaRecorder!.mimeType });
-        // decode to PCM
-        const ab = await blob.arrayBuffer();
-        const ctx = new AudioContext();
-        const audioBuffer = await ctx.decodeAudioData(ab);
-        const pcm = audioBuffer.getChannelData(0);
-        // encode to mp3
-        const sampleRate = audioBuffer.sampleRate;
-        const encoder = new (lamejs as any).Mp3Encoder(1, sampleRate, 128);
-        const mp3Chunks: Int8Array[] = [];
-        const blockSize = 1152;
-        for (let i = 0; i < pcm.length; i += blockSize) {
-          const slice = pcm.subarray(i, i + blockSize);
-          const int16 = new Int16Array(slice.length);
-          for (let j = 0; j < slice.length; j++) int16[j] = Math.max(-32768, Math.min(32767, slice[j] * 32767));
-          const mp3buf = encoder.encodeBuffer(int16);
-          if (mp3buf.length > 0) mp3Chunks.push(mp3buf);
+        const blob = new Blob(chunks, { type: mediaRecorder!.mimeType || 'audio/webm' });
+        // try MP3 encoding via lamejs, fall back to webm
+        let file: File;
+        try {
+          const ab = await blob.arrayBuffer();
+          const ctx = new AudioContext();
+          const audioBuffer = await ctx.decodeAudioData(ab);
+          const pcm = audioBuffer.getChannelData(0);
+          const sampleRate = audioBuffer.sampleRate;
+          const Encoder = (lamejs as any).Mp3Encoder || (lamejs as any).default?.Mp3Encoder;
+          if (!Encoder) throw new Error('no encoder');
+          const encoder = new Encoder(1, sampleRate, 128);
+          const mp3Chunks: any[] = [];
+          const blockSize = 1152;
+          for (let i = 0; i < pcm.length; i += blockSize) {
+            const slice = pcm.subarray(i, i + blockSize);
+            const int16 = new Int16Array(slice.length);
+            for (let j = 0; j < slice.length; j++) int16[j] = Math.max(-32768, Math.min(32767, slice[j] * 32767));
+            const mp3buf = encoder.encodeBuffer(int16);
+            if (mp3buf.length > 0) mp3Chunks.push(mp3buf);
+          }
+          const end = encoder.flush();
+          if (end.length > 0) mp3Chunks.push(end);
+          const mp3Blob = new Blob(mp3Chunks.map((b: any) => new Uint8Array(b)), { type: 'audio/mp3' });
+          file = new File([mp3Blob], `voice-${Date.now()}.mp3`, { type: 'audio/mp3' });
+          ctx.close();
+        } catch (e) {
+          console.error('mp3 encode failed, falling back to webm', e);
+          file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
         }
-        const end = encoder.flush();
-        if (end.length > 0) mp3Chunks.push(end);
-        const mp3Blob = new Blob(mp3Chunks.map((b) => new Uint8Array(b)), { type: 'audio/mp3' });
-        const file = new File([mp3Blob], `voice-${Date.now()}.mp3`, { type: 'audio/mp3' });
-        // cleanup
         stream?.getTracks().forEach((t) => t.stop());
         audioCtx?.close();
-        ctx.close();
         recording = false;
         resolve(file);
       };
+      // fallback timeout in case onstop never fires
+      setTimeout(() => { if (recording) { recording = false; resolve(new File([new Blob(chunks, { type: 'audio/webm' })], `voice-${Date.now()}.webm`, { type: 'audio/webm' })); } }, 5000);
       mediaRecorder.stop();
     });
   }

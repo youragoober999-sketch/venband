@@ -674,12 +674,14 @@ export function Composer({
                   <Icon name="x" />
                 </button>
                 <button type="button" className="icon-btn ready" onClick={async () => {
-                  const file = await recorderRef.current?.stop();
-                  if (recTimerRef.current) clearInterval(recTimerRef.current);
-                  setRecording(false);
-                  setRecSeconds(0);
-                  setWave([]);
-                  if (file) setFiles((prev) => [...prev, { id: crypto.randomUUID(), file, spoiler: false, alt: '' }]);
+                  try {
+                    const file = await recorderRef.current?.stop();
+                    if (recTimerRef.current) clearInterval(recTimerRef.current);
+                    setRecording(false);
+                    setRecSeconds(0);
+                    setWave([]);
+                    if (file) setFiles((prev) => [...prev, { id: crypto.randomUUID(), file, spoiler: false, alt: '' }]);
+                  } catch (e) { console.error(e); alert('Recording failed: ' + String((e as Error)?.message || e)); }
                 }} title="Stop & attach" aria-label="Stop recording">
                   <Icon name="check" />
                 </button>
