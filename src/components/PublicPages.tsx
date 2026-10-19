@@ -502,102 +502,243 @@ export function TermsPage() {
     if (id) document.getElementById(id)?.scrollIntoView();
   }, []);
   return (
-    <Doc page="tos" title="Terms of Service" updated="October 6, 2026">
+    <Doc page="tos" title="Terms of Service" updated="October 19, 2026">
       <p>
-        These terms are the rules for using Venband (the website at venband.com, the apps and the API). By making an account or using Venband you agree to
-        them. If you don’t agree, please don’t use Venband.
+        These Terms of Service (“Terms”) govern your access to and use of Venband (the website at venband.com and any subdomains, our web, desktop and mobile apps,
+        and our APIs; collectively the “Service”). By creating an account or using the Service you agree to these Terms. If you do not agree, do not use Venband.
       </p>
-      <h2 id="accounts">1. Your account</h2>
+      <h2 id="eligibility">1. Eligibility and age</h2>
       <ul>
-        <li>You must be at least 13 years old, or older if the law where you live says so.</li>
-        <li>Keep your password and recovery codes safe. Because messages are end-to-end encrypted, we can’t recover them if you lose every device and your recovery code.</li>
-        <li>One person may have a reasonable number of accounts, but using extra accounts to get around a ban, a limit or a block is not allowed.</li>
+        <li>You must be at least 13 years old, or the minimum age required by the law where you live, whichever is higher. Some features or linked services may require you to be older.</li>
+        <li>If you are under 18, you confirm that a parent or guardian has reviewed and agreed to these Terms on your behalf where required by law.</li>
+        <li>You must not be barred from using the Service under applicable law or by a prior ban.</li>
       </ul>
-      <h2 id="content">2. What you post</h2>
-      <p>
-        You own what you post. You give Venband permission to store and deliver it so the service works. Messages are encrypted on your device, so we can’t read
-        them; reports you send include the reported messages so moderators can review them.
-      </p>
-      <p>
-        You must follow the <L to="guidelines">Community Guidelines</L>. In short: no harassment, hate, threats, sexual content involving minors, non-consensual
-        intimate images, illegal goods, malware, scams, spam or impersonation.
-      </p>
-      <h2 id="gifs">3. GIFs, emoji and media</h2>
-      <p>
-        GIFs come from a third-party search provider and server owners can upload their own emoji, GIFs, stickers and sounds. A server’s owner or founders may
-        remove a GIF from their server. When that happens you’ll see “This GIF has been removed, probably because it didn’t follow the Terms of Service.” Venband
-        staff may remove any media that breaks these terms everywhere on Venband.
-      </p>
-      <h2 id="servers">4. Servers and moderation</h2>
+      <h2 id="accounts">2. Your account</h2>
       <ul>
-        <li>Server owners set their own rules on top of these. They’re responsible for moderating their server.</li>
-        <li>Venband staff may limit, suspend or remove accounts and servers that break these terms, and may review reported content.</li>
-        <li>If you think we made a mistake you can appeal from the notice on your account.</li>
+        <li>You are responsible for keeping your password, recovery code and devices secure. Because messages are end-to-end encrypted, Venband cannot recover your password, recovery code or private keys.</li>
+        <li>You may have a reasonable number of accounts, but you may not use additional accounts to evade a ban, limit, block, rate limit or moderation action.</li>
+        <li>You must provide accurate information when required and keep your account secure. Notify us promptly of any unauthorized use.</li>
+        <li>We may require email verification, additional checks or restrictions to protect the Service and other users.</li>
       </ul>
-      <h2 id="bots">5. Bots, the API and Voogle</h2>
+      <h2 id="acceptable-use">3. Acceptable use</h2>
+      <p>You agree not to:</p>
       <ul>
-        <li>Keep bot tokens and webhook URLs secret. Anyone who has them can act as your bot.</li>
-        <li>Bots can’t read encrypted messages. Don’t trick people into sharing messages or keys with a bot.</li>
-        <li>Don’t use the API to spam, scrape profiles, or get around rate limits.</li>
+        <li>Harass, threaten, stalk, dox, or encourage harm to any person.</li>
+        <li>Share sexual content involving minors, non-consensual intimate images, or content that exploits or endangers children.</li>
+        <li>Post hate speech, extremist propaganda, or content that incites violence.</li>
+        <li>Share malware, phishing links, scams, token grabbers, or attempt to steal accounts or credentials.</li>
+        <li>Spam, raid, flood, or abuse the Service or its APIs, including attempts to bypass rate limits.</li>
+        <li>Impersonate other people, servers, or Venband staff.</li>
+        <li>Reverse engineer, probe, or attack our systems except through our responsible disclosure process.</li>
+        <li>Use the Service to violate any law, third-party right, or the terms of a linked platform.</li>
+      </ul>
+      <p>Server owners may set additional rules; you must also follow the rules of any server you join.</p>
+      <h2 id="content">4. Your content</h2>
+      <p>
+        You retain ownership of the content you post. You grant Venband a worldwide, non-exclusive, royalty-free license to store, process, transmit and display your content
+        as needed to operate and improve the Service. Messages are end-to-end encrypted; Venband cannot read their contents. Reports you submit may include the reported
+        messages so moderators can review them.
+      </p>
+      <p>
+        You must follow the <L to="guidelines">Community Guidelines</L>. Venband and server owners may remove content that violates these Terms or their rules.
+      </p>
+      <h2 id="media">5. GIFs, emoji and media</h2>
+      <p>
+        GIF search is provided by third parties and server owners may upload emoji, GIFs, stickers and sounds. Server owners or founders may remove media from their
+        server. Venband may remove media that violates these Terms anywhere on the Service.
+      </p>
+      <h2 id="servers">6. Servers and moderation</h2>
+      <ul>
+        <li>Server owners are responsible for moderating their servers and setting their own rules on top of these Terms.</li>
+        <li>Venband may limit, suspend or remove accounts, servers or content that violate these Terms, and may review reported content.</li>
+        <li>If you believe we made an error, you may appeal using the notice on your account or server.</li>
+      </ul>
+      <h2 id="bots">7. Bots, API and Voogle</h2>
+      <ul>
+        <li>Keep bot tokens, webhook URLs and API credentials secret. Anyone who has them can act as your bot.</li>
+        <li>Bots cannot read end-to-end encrypted messages. Do not trick users into sharing messages or keys with a bot.</li>
+        <li>Do not use the API to spam, scrape profiles, evade rate limits, or circumvent security.</li>
         <li>Voogle verification must only be used to protect servers from alternate accounts, raids and ban evasion — never to track people.</li>
       </ul>
-      <h2 id="security">6. Security</h2>
-      <p>Don’t try to break into accounts, servers or our systems. If you find a security problem, please tell us privately through the bug bounty instead of using it.</p>
-      <h2 id="ip">7. Open source</h2>
-      <p>Venband’s source code is published under the MIT license. The license covers the code; it doesn’t give anyone rights to other people’s content or accounts.</p>
-      <h2 id="disclaimer">8. No warranty</h2>
+      <h2 id="third-party">8. Third-party services and linked accounts</h2>
       <p>
-        Venband is provided “as is”. We work hard to keep it running and secure, but we can’t promise it will always be available or free of bugs. To the extent the
-        law allows, we aren’t liable for indirect losses from using it.
+        The Service may let you link accounts from third-party platforms such as YouTube, TikTok, Twitch, Steam, Roblox, Spotify, Discord, GitHub, Xbox, Instagram and Epic.
+        When you link an account, you authorize Venband to access the information and permissions you approve through that platform’s authorization screen. Your use of
+        each linked platform remains subject to that platform’s own terms and privacy policy. Venband is not affiliated with or endorsed by those platforms. You may unlink
+        an account at any time from Settings.
       </p>
-      <h2 id="changes">9. Changes</h2>
-      <p>We may update these terms. We’ll change the date above and, for big changes, tell you in the app. Using Venband after a change means you accept it.</p>
-      <p className="small muted">See also the <L to="privacy">Privacy Policy</L>.</p>
+      <h2 id="security">9. Security</h2>
+      <p>
+        Do not attempt to gain unauthorized access to accounts, servers or systems. If you discover a security vulnerability, report it privately through our security
+        advisory process instead of exploiting it.
+      </p>
+      <h2 id="ip">10. Open source and intellectual property</h2>
+      <p>
+        Venband’s source code is published under the MIT license. The license covers the code; it does not grant rights to other users’ content or accounts. You may not
+        use Venband’s name, logos or branding without permission.
+      </p>
+      <h2 id="privacy">11. Privacy</h2>
+      <p>
+        Our <L to="privacy">Privacy Policy</L> explains what we store and how we protect it. By using the Service you agree to that policy.
+      </p>
+      <h2 id="disclaimer">12. No warranty</h2>
+      <p>
+        Venband is provided “as is” and “as available.” We work hard to keep it running and secure, but we cannot guarantee uninterrupted, error-free or secure service.
+        To the fullest extent permitted by law, we disclaim all warranties, express or implied.
+      </p>
+      <h2 id="liability">13. Limitation of liability</h2>
+      <p>
+        To the fullest extent permitted by law, Venband and its contributors are not liable for indirect, incidental, special, consequential or punitive damages, or for
+        loss of data, profits or goodwill, arising from your use of the Service. Our total liability for any claim is limited to the amount you paid us, if any, in the
+        twelve months before the claim.
+      </p>
+      <h2 id="termination">14. Suspension and termination</h2>
+      <p>
+        We may suspend or terminate your account or access to the Service if you violate these Terms, create risk or legal exposure, or to protect other users. You may
+        delete your account at any time from Settings. Provisions that by their nature should survive will survive termination.
+      </p>
+      <h2 id="changes">15. Changes to these Terms</h2>
+      <p>
+        We may update these Terms. We will change the date above and, for material changes, notify you in the app or by other reasonable means. Your continued use of the
+        Service after a change means you accept the updated Terms.
+      </p>
+      <h2 id="contact">16. Contact</h2>
+      <p>
+        Questions about these Terms? Open an issue on our <a href={REPO_URL}>source code repository</a>.
+      </p>
+      <p className="small muted">See also the <L to="privacy">Privacy Policy</L> and <L to="guidelines">Community Guidelines</L>.</p>
     </Doc>
   );
 }
 
 export function PrivacyPage() {
   return (
-    <Doc page="privacy" title="Privacy Policy" updated="October 6, 2026">
-      <p>Venband is built so we know as little about you as possible. Here’s exactly what we store and why.</p>
-      <h2>What we can’t see</h2>
-      <ul>
-        <li>The content of your messages, files, voice and video calls. They’re encrypted on your device with keys we never have.</li>
-        <li>Your private keys. They’re encrypted with your password before they’re stored.</li>
-      </ul>
-      <h2>What we store</h2>
-      <ul>
-        <li>Your account: email address, username, display name, profile details you choose to add, and when you joined.</li>
-        <li>Who is in which server, channel and group, when messages were sent and by whom (but not what they say).</li>
-        <li>Reactions and other small extras are encrypted too; only counts are visible to the server.</li>
-        <li>Plain-text things you choose to make public: server names, descriptions, discovery listings, status page incidents and messages posted by bots.</li>
-        <li>Reports you send, including the messages you reported, so moderators can review them.</li>
-      </ul>
-      <h2>Network addresses</h2>
+    <Doc page="privacy" title="Privacy Policy" updated="October 19, 2026">
       <p>
-        We never show anyone your IP address. At sign-up we keep a one-way, peppered hash of your network address to limit how many accounts one network can make. The
-        devices list in Settings shows a rough location (city / country) worked out when you look at it; it isn’t stored.
+        Venband is designed to know as little about you as possible. This Privacy Policy explains what information we collect, how we use it, and the choices you have.
+        It applies to the Venband website, apps and APIs (the “Service”). If you do not agree with this policy, please do not use the Service.
       </p>
-      <h2>Voogle verification</h2>
+      <h2 id="scope">1. Scope</h2>
       <p>
-        If you verify for a server that uses Voogle, we store one-way hashes of a random token kept in your browser, of some general browser traits, and of your
-        network. They are only used to tell server moderators “this is likely the same person as that account”. Nobody, including moderators and bots, can see the
-        values themselves.
+        This policy covers information processed by Venband. It does not cover third-party platforms you may link to your account; those are governed by their own
+        privacy policies.
       </p>
-      <h2>Cookies and tracking</h2>
-      <p>No ads, no third-party trackers, no selling data. We use your browser’s storage to keep you signed in and to remember your settings.</p>
-      <h2>Your choices</h2>
+      <h2 id="cannot-see">2. What we cannot see</h2>
       <ul>
+        <li>The content of your messages, files, voice and video calls. They are encrypted on your device with keys Venband never has.</li>
+        <li>Your private keys. They are encrypted with a key derived from your password before storage.</li>
+        <li>Your password. Only a derived login key is transmitted.</li>
+      </ul>
+      <h2 id="collect">3. Information we collect</h2>
+      <h3>Account information</h3>
+      <ul>
+        <li>Email address, username, display name and any profile details you choose to add (such as avatar, bio, status and pronouns).</li>
+        <li>Account creation date, last sign-in time and account status.</li>
+      </ul>
+      <h3>Service data</h3>
+      <ul>
+        <li>Server, channel and group memberships and roles; who sent a message and when, and message size, but not message content.</li>
+        <li>Reactions and similar metadata, where not fully encrypted; only aggregate counts are visible to the server.</li>
+        <li>Content you choose to make public: server names and descriptions, discovery listings, status page incidents and messages posted by bots.</li>
+        <li>Reports you submit, including the reported messages, so moderators can review them.</li>
+      </ul>
+      <h3>Device and network information</h3>
+      <ul>
+        <li>A one-way, peppered hash of your network address at sign-up, used only to limit how many accounts one network can create. We do not store or display your IP address to other users.</li>
+        <li>Device sessions you create, including a rough location (city/country) computed on demand when you view your devices list; this is not stored.</li>
+        <li>Browser and device traits used for Voogle verification, stored only as one-way hashes.</li>
+      </ul>
+      <h3>Linked accounts</h3>
+      <p>
+        If you link a third-party account (such as YouTube, TikTok, Twitch, Steam, Roblox, Spotify, Discord, GitHub, Xbox, Instagram or Epic), we store the account
+        identifier, display name, avatar and the metadata you authorize, along with the connection date. We do not store your third-party passwords.
+      </p>
+      <h3>Support and safety</h3>
+      <ul>
+        <li>Messages you send to support or moderators, and reports, appeals and moderation records.</li>
+        <li>Security logs needed to protect the Service, such as failed sign-in attempts and abuse signals.</li>
+      </ul>
+      <h2 id="use">4. How we use information</h2>
+      <ul>
+        <li>To create and maintain your account and provide the Service.</li>
+        <li>To route and store encrypted messages and media, and to deliver notifications.</li>
+        <li>To enforce our Terms, Community Guidelines and security measures, including rate limits and abuse prevention.</li>
+        <li>To operate optional features you enable, such as link previews, presence and connected-account activity.</li>
+        <li>To respond to support requests and investigate reports.</li>
+        <li>To comply with legal obligations and protect the rights and safety of users and the public.</li>
+      </ul>
+      <h2 id="legal-bases">5. Legal bases (EEA/UK)</h2>
+      <p>
+        Where applicable, we process personal data based on performance of a contract, our legitimate interests in operating and securing the Service, your consent where
+        required (for example, optional features), and compliance with legal obligations.
+      </p>
+      <h2 id="sharing">6. Sharing and disclosure</h2>
+      <ul>
+        <li>We do not sell your personal data and we do not show ads.</li>
+        <li>Service providers: we use providers such as Supabase (database, authentication, storage) and Vercel (hosting and serverless functions) to operate the Service. They process data on our instructions.</li>
+        <li>Linked platforms: when you link an account, data is exchanged with that platform according to the permissions you approve.</li>
+        <li>Legal and safety: we may disclose information if required by law, or to protect the rights, property or safety of Venband, our users or others.</li>
+        <li>Business transfers: if Venband is involved in a merger, acquisition or asset sale, your information may be transferred as part of that transaction.</li>
+        <li>With your consent or at your direction.</li>
+      </ul>
+      <h2 id="third-party">7. Third-party services</h2>
+      <p>
+        The Service integrates with third-party services including YouTube, TikTok, Twitch, Steam, Roblox, Spotify, Discord, GitHub, Xbox, Instagram, Epic, Klipy (GIF search),
+        Supabase and Vercel. When you use these features, those providers may collect information according to their own policies. Venband is not responsible for the
+        privacy practices of third parties.
+      </p>
+      <h2 id="cookies">8. Cookies and local storage</h2>
+      <p>
+        We do not use advertising or tracking cookies. We use your browser’s local storage and similar technologies to keep you signed in, store your settings and
+        encryption keys, and enable offline functionality. You can clear this data through your browser settings, but doing so may sign you out or remove local data.
+      </p>
+      <h2 id="retention">9. Data retention</h2>
+      <p>
+        We retain account and service data for as long as your account exists. If you delete your account, we delete or anonymize your personal data within a reasonable
+        period, except where retention is required for security, fraud prevention, legal obligations, or to resolve disputes. Encrypted message content cannot be read by
+        Venband and is removed with the underlying storage when deleted.
+      </p>
+      <h2 id="security">10. Security</h2>
+      <p>
+        We use industry-standard measures to protect the Service, including transport encryption, row-level security, signed media URLs and end-to-end encryption for
+        messages. No system is perfectly secure; you are responsible for keeping your devices and recovery codes safe. If you discover a vulnerability, report it privately.
+      </p>
+      <h2 id="children">11. Children’s privacy</h2>
+      <p>
+        The Service is not directed to children under 13. We do not knowingly collect personal information from children under 13. If you believe a child under 13 has
+        created an account, contact us and we will delete the account. Parents and guardians should supervise minors’ use of the Service.
+      </p>
+      <h2 id="international">12. International data transfers</h2>
+      <p>
+        Your data may be processed in countries other than your own. Where required, we use appropriate safeguards for international transfers.
+      </p>
+      <h2 id="rights">13. Your rights and choices</h2>
+      <ul>
+        <li>Access, correct or update your information in Settings.</li>
         <li>Download your data or delete your account from Settings.</li>
+        <li>Unlink connected accounts from Settings → Connections.</li>
         <li>Turn off link previews, embeds and other features that contact other websites in Settings → Privacy.</li>
+        <li>Object to or restrict certain processing, or request deletion, subject to legal limits.</li>
       </ul>
+      <p>
+        To exercise rights not available in the app, contact us using the information below. We may need to verify your identity before responding.
+      </p>
+      <h2 id="changes">14. Changes to this policy</h2>
+      <p>
+        We may update this Privacy Policy. We will change the date above and, for material changes, notify you in the app. Your continued use of the Service after a change
+        means you accept the updated policy.
+      </p>
+      <h2 id="contact">15. Contact</h2>
+      <p>
+        Questions about this Privacy Policy? Open an issue on our <a href={REPO_URL}>source code repository</a>.
+      </p>
       <p className="small muted">
-        Questions? Open an issue on our <a href={REPO_URL}>source code page</a>.
+        See also the <L to="tos">Terms of Service</L> and <L to="guidelines">Community Guidelines</L>.
       </p>
     </Doc>
   );
 }
+
 
 export function GuidelinesPage() {
   return (

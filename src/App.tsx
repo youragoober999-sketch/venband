@@ -61,6 +61,16 @@ export default function App() {
     })();
   }, []);
   const route = parseRoute(useRoute());
+  // Dedicated privacy-policy subdomain (privacy.venband.com and friends).
+  if (window.location.hostname.toLowerCase().startsWith('privacy.')) {
+    return (
+      <>
+        <PrivacyPage />
+        <DialogHost />
+        <ContextMenuHost />
+      </>
+    );
+  }
   if (route.kind === 'page')
     return (
       <>
