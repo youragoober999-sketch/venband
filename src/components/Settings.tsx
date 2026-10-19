@@ -1059,6 +1059,9 @@ function AppearanceTab() {
   return (
     <>
       <h2>Appearance</h2>
+      <Section title="Dock style">
+        <Select value={useSettings((s) => s.dockStyle)} onChange={(v) => updateSettings({ dockStyle: v as 'default' | 'macos' })} options={[{ value: 'default', label: 'Default taskbar' }, { value: 'macos', label: 'macOS dock (hover magnification)' }]} />
+      </Section>
       <div className="tabs">
         <button className={view === 'themes' ? 'active' : ''} onClick={() => setView('themes')}>
           My Themes
