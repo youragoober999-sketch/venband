@@ -2123,7 +2123,7 @@ function AccountSwitcherModal({ onClose, me }: { onClose: () => void; me: Profil
   }
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal account-switcher" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+      <div className="modal account-switcher" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, width: '90vw' }}>
         <h2>Switch account</h2>
         <p className="small muted">Up to 2 accounts on this device.</p>
         <div className="account-switcher-list">
