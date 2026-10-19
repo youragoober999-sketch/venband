@@ -1,6 +1,4 @@
 // Voice message recorder: records audio, shows live waveform, exports MP3.
-import lamejs from 'lamejs';
-
 export interface VoiceRecorder {
   start: () => Promise<void>;
   stop: () => Promise<File>;
@@ -59,7 +57,8 @@ export function createVoiceRecorder(onLevel?: (level: number) => void): VoiceRec
           const audioBuffer = await ctx.decodeAudioData(ab);
           const pcm = audioBuffer.getChannelData(0);
           const sampleRate = audioBuffer.sampleRate;
-          const Encoder = (lamejs as any).Mp3Encoder || (lamejs as any).default?.Mp3Encoder;
+          const lame = (window as any).lamejs;
+          const Encoder = lame?.Mp3Encoder;
           if (!Encoder) throw new Error('no encoder');
           const encoder = new Encoder(1, sampleRate, 128);
           const mp3Chunks: any[] = [];
