@@ -454,7 +454,7 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
           scale = 1 + 0.45 * Math.max(0, 1 - dist / 120);
         }
         return (
-          <div key={it.key} className="mac-dock-slot" style={{ transform: `scale(${scale})`, transition: 'transform .1s ease-out' }}>
+          <div key={it.key} className="mac-dock-slot" style={{ transform: `scale(${scale})`, transition: 'transform .25s cubic-bezier(.22,1,.36,1)', zIndex: scale > 1.05 ? 2 : 1 }}>
             {it.node}
           </div>
         );
