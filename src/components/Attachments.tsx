@@ -220,7 +220,11 @@ function MediaAttachment({ a, auto, video }: { a: Attachment; auto: boolean; vid
     </div>
   ) : (
     <div className="audio-card">
-      <span className="att-icon">🎵</span>
+      <div className="audio-wave">
+        {(a.waveform && a.waveform.length ? a.waveform : Array.from({ length: 32 }, () => 0.3)).map((v, i) => (
+          <span key={i} style={{ height: `${Math.max(2, v * 28)}px` }} />
+        ))}
+      </div>
       <div className="grow att-text">
         <div className="attachment-name">{a.name}</div>
         <audio src={url} controls preload="metadata" onError={() => setUnplayable(true)} />

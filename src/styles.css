@@ -2595,3 +2595,6 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 
 .voice-wave { display: flex; align-items: flex-end; gap: 2px; height: 32px; width: 80px; }
 .voice-wave span { width: 3px; background: #ff3b30; border-radius: 2px; transition: height .1s; }
+
+.audio-wave { display: flex; align-items: flex-end; gap: 2px; height: 28px; width: 96px; flex-shrink: 0; }
+.audio-wave span { width: 3px; background: var(--accent); border-radius: 2px; }

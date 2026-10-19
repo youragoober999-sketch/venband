@@ -35,6 +35,7 @@ export interface PendingFile {
   file: File;
   spoiler: boolean;
   alt: string;
+  waveform?: number[];
 }
 
 export interface PollDraft {
@@ -675,12 +676,14 @@ export function Composer({
                 </button>
                 <button type="button" className="icon-btn ready" onClick={async () => {
                   try {
-                    const file = await recorderRef.current?.stop();
+                    const rec = recorderRef.current;
+                    const w = rec?.getWaveform?.() ?? [];
+                    const file = await rec?.stop();
                     if (recTimerRef.current) clearInterval(recTimerRef.current);
                     setRecording(false);
                     setRecSeconds(0);
                     setWave([]);
-                    if (file) setFiles((prev) => [...prev, { id: crypto.randomUUID(), file, spoiler: false, alt: '' }]);
+                    if (file) setFiles((prev) => [...prev, { id: crypto.randomUUID(), file, spoiler: false, alt: '', waveform: w }]);
                   } catch (e) { console.error(e); alert('Recording failed: ' + String((e as Error)?.message || e)); }
                 }} title="Stop & attach" aria-label="Stop recording">
                   <Icon name="check" />

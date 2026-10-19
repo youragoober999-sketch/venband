@@ -295,7 +295,7 @@ export function ChatView({
     let doneBytes = 0;
     for (const f of files) {
       const a = await uploadEncrypted(channel.id, f.file, (p) => onProgress?.((doneBytes + p * f.file.size) / totalBytes));
-      attachments.push({ ...a, ...(f.spoiler ? { spoiler: true } : {}), ...(f.alt ? { alt: f.alt } : {}) });
+      attachments.push({ ...a, ...(f.spoiler ? { spoiler: true } : {}), ...(f.alt ? { alt: f.alt } : {}), ...(f.waveform ? { waveform: f.waveform } : {}) });
       doneBytes += f.file.size;
     }
     const link = getSettings().chat.linkPreviews && !poll ? previewableLink(text) : null;

@@ -380,6 +380,8 @@ export interface Attachment {
   /** large files: number of 8 MiB pieces stored under `path/<n>.bin` */
   chunks?: number;
   chunkSize?: number;
+  /** voice message waveform (0..1 amplitudes) */
+  waveform?: number[];
 }
 
 export interface MessagePayload {
