@@ -352,7 +352,7 @@ export function Shell() {
       <WarningsNotice />
       <TopBar servers={servers} dms={dms} />
       <div className="shell-body">
-        <ServerRail servers={servers} dms={dms} current={serverId} discover={discover} onAdd={() => setModal('create-join')} reload={reload} />
+        {useSettings((s) => s.dockStyle) !== 'macos' && <ServerRail servers={servers} dms={dms} current={serverId} discover={discover} onAdd={() => setModal('create-join')} reload={reload} />}
         {discover ? (
           <>
             <DiscoverySidebar />
@@ -390,24 +390,75 @@ export function Shell() {
 function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position }: { servers: Server[]; dms: DmChannel[]; current: string | null; onAdd: () => void; discover: boolean; onDiscover: () => void; position: 'top' | 'left' | 'right' | 'bottom' | 'custom' }) {
   const unreadState = unreadStore.use((s) => s);
   const dmUnread = dms.reduce((n, d) => n + (unreadState.counts[d.channel.id] ?? 0), 0);
-  return (
-    <div className={`mac-dock mac-dock-${position}`}>
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [mouseX, setMouseX] = useState<number | null>(null);
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dockRef.current) return;
+      const rect = dockRef.current.getBoundingClientRect();
+      setMouseX(e.clientX - rect.left);
+    };
+    const onLeave = () => setMouseX(null);
+    window.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseleave', onLeave);
+    return () => { window.removeEventListener('mousemove', onMove); document.removeEventListener('mouseleave', onLeave); };
+  }, []);
+  const railOrder = useSettings((s) => s.rail.order);
+  const sortedServers = [...servers].sort((a, b) => {
+    const ra = railOrder.indexOf(a.id); const rb = railOrder.indexOf(b.id);
+    return (ra === -1 ? 9999 : ra) - (rb === -1 ? 9999 : rb);
+  });
+  const items = [
+    { key: 'home', node: (
       <button className="mac-dock-item" onClick={() => openServer(null)} title="Home / DMs">
         <Icon name="message" size={20} />
         {dmUnread > 0 && <span className="mac-dock-badge">{dmUnread}</span>}
+        <span className="mac-dock-label">Home / DMs</span>
       </button>
+    ) },
+    ...sortedServers.map((s) => ({ key: s.id, node: (
+      <button key={s.id} className={`mac-dock-item${s.id === current ? ' active' : ''}`} draggable onDragStart={() => setDragKey(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => {
+        if (!dragKey || dragKey === s.id) return;
+        const newOrder = railOrder.includes(dragKey) ? railOrder.filter((x) => x !== dragKey) : [...railOrder];
+        const targetIdx = newOrder.indexOf(s.id);
+        if (targetIdx === -1) newOrder.push(dragKey); else newOrder.splice(targetIdx, 0, dragKey);
+        updateSettings({ rail: { ...useSettings((st) => st.rail), order: newOrder } });
+        setDragKey(null);
+      }} onClick={() => openServer(s.id)} title={s.name}>
+        {s.icon_url ? <img src={s.icon_url} alt="" className="mac-dock-img" /> : <span className="mac-dock-icon" style={{ background: s.icon_color }}>{s.name.slice(0, 1).toUpperCase()}</span>}
+        <span className="mac-dock-label">{s.name}</span>
+      </button>
+    ) })),
+    { key: 'discover', node: (
       <button className={`mac-dock-item${discover ? ' active' : ''}`} onClick={onDiscover} title="Discover">
         <Icon name="compass" size={20} />
+        <span className="mac-dock-label">Discover</span>
       </button>
-      {servers.map((s) => (
-        <button key={s.id} className={`mac-dock-item${s.id === current ? ' active' : ''}`} onClick={() => openServer(s.id)} title={s.name}>
-          <span className="mac-dock-icon">{s.name.slice(0, 2).toUpperCase()}</span>
-          <span className="mac-dock-label">{s.name}</span>
-        </button>
-      ))}
+    ) },
+    { key: 'create', node: (
       <button className="mac-dock-item" onClick={onAdd} title="Create / Join server">
         <Icon name="plus" size={20} />
+        <span className="mac-dock-label">Create / Join</span>
       </button>
+    ) },
+  ];
+  return (
+    <div className={`mac-dock mac-dock-${position}`} ref={dockRef}>
+      {items.map((it, i) => {
+        const base = 52;
+        let scale = 1;
+        if (mouseX !== null && dockRef.current) {
+          const itemCenter = (i * (base + 10)) + base / 2 + 12;
+          const dist = Math.abs(mouseX - itemCenter);
+          scale = 1 + 0.7 * Math.max(0, 1 - dist / 140);
+        }
+        return (
+          <div key={it.key} className="mac-dock-slot" style={{ transform: `scale(${scale})`, transition: 'transform .1s ease-out' }}>
+            {it.node}
+          </div>
+        );
+      })}
     </div>
   );
 }
