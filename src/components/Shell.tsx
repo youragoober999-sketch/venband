@@ -393,16 +393,24 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
   const dockRef = useRef<HTMLDivElement>(null);
   const [mouseX, setMouseX] = useState<number | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const pendingX = useRef<number | null>(null);
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!dockRef.current) return;
       const rect = dockRef.current.getBoundingClientRect();
-      setMouseX(e.clientX - rect.left);
+      pendingX.current = e.clientX - rect.left;
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          setMouseX(pendingX.current);
+          rafRef.current = null;
+        });
+      }
     };
     const onLeave = () => setMouseX(null);
     window.addEventListener('mousemove', onMove);
     document.addEventListener('mouseleave', onLeave);
-    return () => { window.removeEventListener('mousemove', onMove); document.removeEventListener('mouseleave', onLeave); };
+    return () => { window.removeEventListener('mousemove', onMove); document.removeEventListener('mouseleave', onLeave); if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, []);
   const railOrder = useSettings((s) => s.rail.order);
   const sortedServers = [...servers].sort((a, b) => {
@@ -456,12 +464,12 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
   const widths = scales.map((sc) => base * sc);
   const totalW = widths.reduce((a, w) => a + w, 0) + gap * (items.length - 1) + 24;
   return (
-    <div className={`mac-dock mac-dock-${position}`} ref={dockRef} style={{ width: totalW, transition: 'width .2s cubic-bezier(.22,1,.36,1)' }}>
+    <div className={`mac-dock mac-dock-${position}`} ref={dockRef} style={{ width: totalW, transition: 'width .35s cubic-bezier(.25,.8,.25,1)' }}>
       {items.map((it, i) => {
         const sc = scales[i];
         return (
-          <div key={it.key} className="mac-dock-slot" style={{ width: widths[i], height: base * sc, transition: 'width .2s cubic-bezier(.22,1,.36,1), height .2s cubic-bezier(.22,1,.36,1)', zIndex: sc > 1.05 ? 2 : 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-            <div style={{ transform: `scale(${sc})`, transformOrigin: 'bottom center', transition: 'transform .2s cubic-bezier(.22,1,.36,1)' }}>
+          <div key={it.key} className="mac-dock-slot" style={{ width: widths[i], height: base * sc, transition: 'width .35s cubic-bezier(.25,.8,.25,1), height .35s cubic-bezier(.25,.8,.25,1)', zIndex: sc > 1.05 ? 2 : 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            <div style={{ transform: `scale(${sc})`, transformOrigin: 'bottom center', transition: 'transform .35s cubic-bezier(.25,.8,.25,1)' }}>
               {it.node}
             </div>
           </div>
