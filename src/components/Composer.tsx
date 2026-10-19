@@ -550,7 +550,7 @@ export function Composer({
           }}
         />
         <div className={`composer-input${composing ? ' composing' : ''}`}>
-          <div className="md-backdrop" ref={mdBackdrop} aria-hidden>
+          <div className="md-backdrop" ref={mdBackdrop} aria-hidden style={{ display: 'none' }}>
             {renderPreview(text)}
           </div>
           {showAutocorrectLine && (
@@ -780,14 +780,14 @@ function renderMistakes(text: string, mistakes: { start: number; end: number }[]
 // Live formatting inside the message box (Discord-style): only text-styling
 // tokens are transformed so the overlay stays aligned with the textarea.
 const PREVIEW_TOKENS: { re: RegExp; wrap: (m: RegExpExecArray, inner: ReactNode) => ReactNode }[] = [
-  { re: /`([^`\n]+)`/, wrap: (_m, inner) => <code className="md-code">{inner}</code> },
-  { re: /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)/, wrap: (_m, inner) => inner },
-  { re: /\|\|([\s\S]+?)\|\|/, wrap: (_m, inner) => inner },
+  { re: /`([^`\n]+)`/, wrap: (m, _inner) => <code className="md-code">{m[0]}</code> },
+  { re: /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)/, wrap: (m, _inner) => <>{m[0]}</> },
+  { re: /\|\|([\s\S]+?)\|\|/, wrap: (m, _inner) => <>{m[0]}</> },
   { re: /\*\*\*([\s\S]+?)\*\*\*/, wrap: (m, inner) => <>{m[0].slice(0, 3)}<strong><em>{inner}</em></strong>{m[0].slice(-3)}</> },
   { re: /\*\*([\s\S]+?)\*\*/, wrap: (m, inner) => <>{m[0].slice(0, 2)}<strong>{inner}</strong>{m[0].slice(-2)}</> },
-  { re: /__([\s\S]+?)__/, wrap: (_m, inner) => <u>{inner}</u> },
-  { re: /\*([^*\s][\s\S]*?)\*|\b_([^_\s][\s\S]*?)_\b/, wrap: (_m, inner) => <em>{inner}</em> },
-  { re: /~~([\s\S]+?)~~/, wrap: (_m, inner) => <s>{inner}</s> },
+  { re: /__([\s\S]+?)__/, wrap: (m, _inner) => <u>{m[0]}</u> },
+  { re: /\*([^*\s][\s\S]*?)\*|\b_([^_\s][\s\S]*?)_\b/, wrap: (m, _inner) => <em>{m[0]}</em> },
+  { re: /~~([\s\S]+?)~~/, wrap: (m, _inner) => <s>{m[0]}</s> },
 ];
 
 function renderPreview(text: string, ns = ''): ReactNode[] {
