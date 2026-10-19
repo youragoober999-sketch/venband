@@ -1667,7 +1667,7 @@ button.edited:hover { text-decoration: underline; color: var(--text-2); }
 .char-count.over { color: var(--warning); }
 
 .composer-input { position: relative; flex: 1; min-width: 0; display: flex; }
-.composer-input textarea { position: relative; z-index: 2; width: 100%; color: transparent; caret-color: var(--text); font-variant-ligatures: none; }
+.composer-input textarea { position: relative; z-index: 2; width: 100%; color: var(--text); caret-color: var(--text); font-variant-ligatures: none; }
 .composer-input.composing textarea { color: var(--text); }
 .composer-input.composing .md-backdrop { display: none; }
 .md-backdrop { position: absolute; inset: 0; padding: 9px 2px; white-space: pre-wrap; overflow-wrap: break-word; overflow: hidden; pointer-events: none; font: inherit; line-height: inherit; z-index: 0; letter-spacing: normal; word-spacing: normal; font-variant-ligatures: none; }
