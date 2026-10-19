@@ -2620,3 +2620,6 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .mac-dock-left { left: 8px; right: auto; top: 50%; transform: translateY(-50%); flex-direction: column; }
 .mac-dock-right { right: 8px; left: auto; top: 50%; transform: translateY(-50%); flex-direction: column; }
 .mac-dock-bottom { bottom: 8px; top: auto; left: 50%; transform: translateX(-50%); }
+
+.mac-dock-img { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; display: block; }
+.mac-dock-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
