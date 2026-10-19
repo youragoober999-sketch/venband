@@ -172,8 +172,9 @@ function Login({ email, setEmail, setMode }: FormProps) {
       await signIn(hit.email as string, password, remember);
       // save up to 2 accounts for the switcher
       try {
-        const saved = JSON.parse(localStorage.getItem('venband:accounts') || '[]') as string[];
-        if (!saved.includes(hit.email as string)) { saved.push(hit.email as string); if (saved.length > 2) saved.shift(); }
+        const saved = JSON.parse(localStorage.getItem('venband:accounts') || '[]') as any[];
+        const entry = { username: hit.username, displayName: hit.username, avatarUrl: null };
+        if (!saved.some((a) => a.username === hit.username)) { saved.push(entry); if (saved.length > 2) saved.shift(); }
         localStorage.setItem('venband:accounts', JSON.stringify(saved));
       } catch {}
     } catch (err) {

@@ -2079,8 +2079,12 @@ function ConvoAvatar({ dm, size }: { dm: DmChannel; size: number }) {
 
 /** A rounded square in the app's color with a "wren"/robot mark for bots. */
 function AccountSwitcherModal({ onClose, me }: { onClose: () => void; me: Profile }) {
-  const [accounts, setAccounts] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('venband:accounts') || '[]'); } catch { return []; }
+  const [accounts, setAccounts] = useState<any[]>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('venband:accounts') || '[]');
+      // migrate old string format
+      return raw.map((a: any) => (typeof a === 'string' ? { username: a, displayName: a, avatarUrl: null } : a));
+    } catch { return []; }
   });
   // ensure current account is in list
   useEffect(() => {
@@ -2100,8 +2104,8 @@ function AccountSwitcherModal({ onClose, me }: { onClose: () => void; me: Profil
     go('sign-in');
     onClose();
   }
-  function removeAccount(email: string) {
-    const next = accounts.filter((a) => a !== email);
+  function removeAccount(username: string) {
+    const next = accounts.filter((a) => a.username !== username);
     setAccounts(next);
     localStorage.setItem('venband:accounts', JSON.stringify(next));
   }
@@ -2112,16 +2116,16 @@ function AccountSwitcherModal({ onClose, me }: { onClose: () => void; me: Profil
         <p className="small muted">Up to 2 accounts on this device.</p>
         <div className="account-switcher-list">
           {accounts.map((a) => (
-            <div key={a} className="account-switcher-row">
-              <div className="account-switcher-avatar">{a.slice(0, 2).toUpperCase()}</div>
+            <div key={a.username} className="account-switcher-row">
+              {a.avatarUrl ? <img src={a.avatarUrl} alt="" className="account-switcher-avatar" style={{ objectFit: 'cover' }} /> : <div className="account-switcher-avatar">{(a.displayName || a.username).slice(0, 2).toUpperCase()}</div>}
               <div className="account-switcher-info">
-                <div className="account-switcher-name">{a === me.username ? me.display_name : a}</div>
-                <div className="account-switcher-user">@{a}</div>
+                <div className="account-switcher-name">{a.username === me.username ? me.display_name : (a.displayName || a.username)}</div>
+                <div className="account-switcher-user">@{a.username}</div>
               </div>
-              {a === me.username && <span className="account-switcher-current">Current</span>}
+              {a.username === me.username && <span className="account-switcher-current">Current</span>}
               <div className="account-switcher-actions">
-                {a !== me.username && <button className="btn small primary" onClick={doSwitch}>Switch</button>}
-                <button className="btn small ghost" onClick={() => removeAccount(a)} title="Remove">Remove</button>
+                {a.username !== me.username && <button className="btn small primary" onClick={doSwitch}>Switch</button>}
+                <button className="btn small ghost" onClick={() => removeAccount(a.username)} title="Remove">Remove</button>
               </div>
             </div>
           ))}
