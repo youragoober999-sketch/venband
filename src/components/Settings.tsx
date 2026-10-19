@@ -105,18 +105,48 @@ export function SettingsPage() {
           {search.trim() ? (
             <div className="settings-search-results">
               <h2>Search results</h2>
-              <p className="muted small">Click a result to jump to that setting.</p>
+              <p className="muted small">Matching settings — toggle them right here.</p>
               <div className="settings-search-list">
-                {TABS.filter((t) => (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer) && t.label.toLowerCase().includes(search.toLowerCase())).map((t) => (
-                  <button key={t.id} className="settings-search-item" onClick={() => { uiStore.set({ settings: t.id }); setSearch(''); }}>
-                    <Icon name={t.icon} size={16} />
-                    <span>{t.label}</span>
-                    <span className="small muted">{t.group}</span>
-                  </button>
-                ))}
-                {TABS.filter((t) => (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer) && t.label.toLowerCase().includes(search.toLowerCase())).length === 0 && (
-                  <p className="muted small">No settings match "{search}".</p>
-                )}
+                {(() => {
+                  const s = useSettings((x) => x);
+                  const voice = s.voice;
+                  const chat = s.chat;
+                  const entries: { key: string; label: string; tab: string; tabLabel: string; control: ReactNode }[] = [
+                    { key: 'noise', label: 'Noise Suppression', tab: 'voice', tabLabel: 'Voice & Video', control: <Toggle label="Noise Suppression" checked={voice.noiseSuppression} onChange={(v) => updateVoice({ noiseSuppression: v })} /> },
+                    { key: 'echo', label: 'Echo Cancellation', tab: 'voice', tabLabel: 'Voice & Video', control: <Toggle label="Echo Cancellation" checked={voice.echoCancellation} onChange={(v) => updateVoice({ echoCancellation: v })} /> },
+                    { key: 'agc', label: 'Auto Gain Control', tab: 'voice', tabLabel: 'Voice & Video', control: <Toggle label="Auto Gain Control" checked={voice.autoGain} onChange={(v) => updateVoice({ autoGain: v })} /> },
+                    { key: 'joinmuted', label: 'Join Muted', tab: 'voice', tabLabel: 'Voice & Video', control: <Toggle label="Join Muted" checked={voice.joinMuted} onChange={(v) => updateVoice({ joinMuted: v })} /> },
+                    { key: 'ptt', label: 'Push to Talk', tab: 'voice', tabLabel: 'Voice & Video', control: <Toggle label="Push to Talk" checked={voice.pushToTalk} onChange={(v) => updateVoice({ pushToTalk: v })} /> },
+                    { key: 'gifauto', label: 'GIF Autoplay', tab: 'chat', tabLabel: 'Chat', control: <Toggle label="GIF Autoplay" checked={chat.gifAutoplay} onChange={(v) => updateChat({ gifAutoplay: v })} /> },
+                    { key: 'autoembed', label: 'Auto Embeds', tab: 'chat', tabLabel: 'Chat', control: <Toggle label="Auto Embeds" checked={chat.autoEmbeds} onChange={(v) => updateChat({ autoEmbeds: v })} /> },
+                    { key: 'reduce', label: 'Reduce Motion', tab: 'chat', tabLabel: 'Chat', control: <Toggle label="Reduce Motion" checked={chat.reduceMotion} onChange={(v) => updateChat({ reduceMotion: v })} /> },
+                    { key: 'autocorrect', label: 'Autocorrect', tab: 'chat', tabLabel: 'Chat', control: <Toggle label="Autocorrect" checked={chat.autocorrect !== 'off'} onChange={(v) => updateChat({ autocorrect: v ? 'suggest' : 'off' })} /> },
+                    { key: 'dock', label: 'Dock Style', tab: 'appearance', tabLabel: 'Appearance', control: <Select value={s.dockStyle} onChange={(v) => updateSettings({ dockStyle: v as 'default' | 'macos' })} options={[{ value: 'default', label: 'Default taskbar' }, { value: 'macos', label: 'macOS dock' }]} /> },
+                  ];
+                  const q = search.toLowerCase();
+                  const matches = entries.filter((e) => e.label.toLowerCase().includes(q));
+                  if (!matches.length) {
+                    // fall back to tab matches
+                    const tabMatches = TABS.filter((t) => (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer) && t.label.toLowerCase().includes(q));
+                    if (!tabMatches.length) return <p className="muted small">No settings match "{search}".</p>;
+                    return tabMatches.map((t) => (
+                      <button key={t.id} className="settings-search-item" onClick={() => { uiStore.set({ settings: t.id }); setSearch(''); }}>
+                        <Icon name={t.icon} size={16} />
+                        <span>{t.label}</span>
+                        <span className="small muted">{t.group}</span>
+                      </button>
+                    ));
+                  }
+                  return matches.map((e) => (
+                    <div key={e.key} className="settings-search-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{e.label}</span>
+                        <span className="small muted">in {e.tabLabel}</span>
+                      </div>
+                      {e.control}
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           ) : (
