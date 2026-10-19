@@ -150,7 +150,7 @@ function shouldAutoload(kind: keyof typeof AUTO_LOAD, size: number): boolean {
 }
 
 function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
-  const { url, progress, error, load } = useDecrypted(a, auto);
+  const { url, blob, progress, error, load } = useDecrypted(a, auto);
   const [big, setBig] = useState(false);
   const [broken, setBroken] = useState(false);
   if (error || broken) return <FileCard a={a}>{error && <div className="small danger-text">{error}</div>}</FileCard>;
@@ -166,12 +166,11 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
         { label: 'Save image', icon: 'download', onClick: () => { const a2 = document.createElement('a'); a2.href = url; a2.download = a.name; a2.click(); } },
         { label: 'Make as GIF', icon: 'sparkles', onClick: async () => {
           try {
-            const caption = window.prompt('Caption (optional):', '') ?? '';
-            const res = await fetch(url);
-            const blob = await res.blob();
-            const file = new File([blob], a.name, { type: blob.type || 'image/png' });
+            if (!blob) { await load(); }
+            const b = blob || (await (async () => { const r = await fetch(url!); return r.blob(); })());
+            const file = new File([b], a.name, { type: b.type || 'image/png' });
             const { imagesToGif } = await import('../lib/gifenc');
-            const gif = await imagesToGif([file], { delayMs: 500, caption });
+            const gif = await imagesToGif([file], { delayMs: 500 });
             const u = URL.createObjectURL(gif);
             const a2 = document.createElement('a'); a2.href = u; a2.download = a.name.replace(/\\.[^.]+$/, '') + '.gif'; a2.click();
             setTimeout(() => URL.revokeObjectURL(u), 1000);
