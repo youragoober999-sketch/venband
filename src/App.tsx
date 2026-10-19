@@ -47,7 +47,7 @@ export default function App() {
     if (!isAndroid()) return;
     (async () => {
       try {
-        const r = await fetch('/api/app-version', { cache: 'no-store' });
+        const r = await fetch('/api/vdl?r=version', { cache: 'no-store' });
         const j = await r.json();
         const latest = j?.android?.version;
         const current = '1.0.3';
@@ -165,3 +165,4 @@ function NotConfigured() {
     </div>
   );
 }
+

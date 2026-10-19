@@ -82,7 +82,7 @@ export async function GET(request) {
     const res = await sql`select * from vdl_outbound_emails order by created_at desc limit 100`;
     return json(200, { rows: res.rows });
   }
-  if (r === 'stats') {
+  if (r === 'version') {\n    return json(200, { web: { version: '1.0.5', url: 'https://www.venband.com/' }, android: { version: '1.0.5', apk: 'Venband-1.0.5-debug.apk', url: 'https://github.com/youragoober999-sketch/venband/releases/download/v1.0.5/Venband-1.0.5-debug.apk' }, desktop: { version: '1.0.5', url: 'https://github.com/youragoober999-sketch/venband/releases/latest' } });\n  }\n  if (r === 'stats') {
     if (!isTopStaff(me)) return json(403, { error: 'top staff only' });
     const users = await sql`select count(*)::int as c from vdl_users`;
     const servers = await sql`select count(*)::int as c from vdl_servers`;
