@@ -99,8 +99,8 @@ export function Composer({
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [recording, setRecording] = useState(false);
   const [recSeconds, setRecSeconds] = useState(0);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const [wave, setWave] = useState<number[]>([]);
+  const recorderRef = useRef<any>(null);
   const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [upload, setUpload] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -552,7 +552,7 @@ export function Composer({
           }}
         />
         <div className={`composer-input${composing ? ' composing' : ''}`}>
-          <div className="md-backdrop" ref={mdBackdrop} aria-hidden style={{ display: 'none' }}>
+          <div className="md-backdrop" ref={mdBackdrop} aria-hidden>
             {renderPreview(text)}
           </div>
           {showAutocorrectLine && (
@@ -661,20 +661,25 @@ export function Composer({
               <div className="voice-recording">
                 <span className="voice-rec-dot" />
                 <span className="voice-rec-time">{Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}</span>
-                <span className="voice-rec-label">Recording…</span>
+                <div className="voice-wave">
+                  {wave.map((v, i) => <span key={i} style={{ height: `${Math.max(2, v * 32)}px` }} />)}
+                </div>
                 <button type="button" className="icon-btn" onClick={() => {
-                  recorderRef.current?.stop();
+                  recorderRef.current?.cancel();
                   if (recTimerRef.current) clearInterval(recTimerRef.current);
                   setRecording(false);
                   setRecSeconds(0);
+                  setWave([]);
                 }} title="Cancel" aria-label="Cancel recording">
                   <Icon name="x" />
                 </button>
-                <button type="button" className="icon-btn ready" onClick={() => {
-                  recorderRef.current?.stop();
+                <button type="button" className="icon-btn ready" onClick={async () => {
+                  const file = await recorderRef.current?.stop();
                   if (recTimerRef.current) clearInterval(recTimerRef.current);
                   setRecording(false);
                   setRecSeconds(0);
+                  setWave([]);
+                  if (file) setFiles((prev) => [...prev, { id: crypto.randomUUID(), file, spoiler: false, alt: '' }]);
                 }} title="Stop & attach" aria-label="Stop recording">
                   <Icon name="check" />
                 </button>
@@ -682,20 +687,13 @@ export function Composer({
             ) : (
               <button type="button" className="icon-btn" disabled={disabled} onClick={async () => {
                 try {
-                  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                  const mr = new MediaRecorder(stream);
-                  chunksRef.current = [];
-                  mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
-                  mr.onstop = () => {
-                    const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-                    const f = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
-                    setFiles((prev) => [...prev, { id: crypto.randomUUID(), file: f, spoiler: false, alt: '' }]);
-                    stream.getTracks().forEach((t) => t.stop());
-                  };
-                  mr.start();
-                  recorderRef.current = mr;
+                  const { createVoiceRecorder } = await import('../lib/voicerec');
+                  const rec = createVoiceRecorder((lvl) => setWave((w) => [...w.slice(-40), lvl]));
+                  await rec.start();
+                  recorderRef.current = rec;
                   setRecording(true);
                   setRecSeconds(0);
+                  setWave([]);
                   recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
                 } catch { alert('Microphone access denied'); }
               }} title="Voice message" aria-label="Voice message">

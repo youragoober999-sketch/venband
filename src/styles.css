@@ -2592,3 +2592,6 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .voice-rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; animation: pulse 1s ease-in-out infinite; }
 .voice-rec-time { font-variant-numeric: tabular-nums; font-weight: 600; color: #ff3b30; }
 .voice-rec-label { font-size: 12px; color: var(--text-2); }
+
+.voice-wave { display: flex; align-items: flex-end; gap: 2px; height: 32px; width: 80px; }
+.voice-wave span { width: 3px; background: #ff3b30; border-radius: 2px; transition: height .1s; }
