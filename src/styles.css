@@ -2587,3 +2587,8 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .settings-search-item:hover { background: var(--bg-3); border-color: var(--line-2); }
 
 .qr-popup { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--line); }
+
+.voice-recording { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; background: #ff3b3020; border: 1px solid #ff3b3040; }
+.voice-rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; animation: pulse 1s ease-in-out infinite; }
+.voice-rec-time { font-variant-numeric: tabular-nums; font-weight: 600; color: #ff3b30; }
+.voice-rec-label { font-size: 12px; color: var(--text-2); }

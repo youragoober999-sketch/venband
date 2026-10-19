@@ -98,8 +98,10 @@ export function Composer({
   const [text, setText] = useState('');
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [recording, setRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [upload, setUpload] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -655,30 +657,51 @@ export function Composer({
             <button type="button" className="icon-btn gif-btn" disabled={disabled} onClick={() => setGifs((g) => !g)} title="GIFs" aria-label="GIFs">
               <Icon name="gif" />
             </button>
-            <button type="button" className={`icon-btn${recording ? ' recording' : ''}`} disabled={disabled} onClick={async () => {
-              if (recording) {
-                recorderRef.current?.stop();
-                setRecording(false);
-                return;
-              }
-              try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const mr = new MediaRecorder(stream);
-                chunksRef.current = [];
-                mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
-                mr.onstop = () => {
-                  const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-                  const f = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
-                  setFiles((prev) => [...prev, { id: crypto.randomUUID(), file: f, spoiler: false, alt: '' }]);
-                  stream.getTracks().forEach((t) => t.stop());
-                };
-                mr.start();
-                recorderRef.current = mr;
-                setRecording(true);
-              } catch { alert('Microphone access denied'); }
-            }} title={recording ? 'Stop recording' : 'Voice message'} aria-label="Voice message">
-              <Icon name={recording ? 'micOff' : 'mic'} />
-            </button>
+            {recording ? (
+              <div className="voice-recording">
+                <span className="voice-rec-dot" />
+                <span className="voice-rec-time">{Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}</span>
+                <span className="voice-rec-label">Recording…</span>
+                <button type="button" className="icon-btn" onClick={() => {
+                  recorderRef.current?.stop();
+                  if (recTimerRef.current) clearInterval(recTimerRef.current);
+                  setRecording(false);
+                  setRecSeconds(0);
+                }} title="Cancel" aria-label="Cancel recording">
+                  <Icon name="x" />
+                </button>
+                <button type="button" className="icon-btn ready" onClick={() => {
+                  recorderRef.current?.stop();
+                  if (recTimerRef.current) clearInterval(recTimerRef.current);
+                  setRecording(false);
+                  setRecSeconds(0);
+                }} title="Stop & attach" aria-label="Stop recording">
+                  <Icon name="check" />
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="icon-btn" disabled={disabled} onClick={async () => {
+                try {
+                  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                  const mr = new MediaRecorder(stream);
+                  chunksRef.current = [];
+                  mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+                  mr.onstop = () => {
+                    const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+                    const f = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+                    setFiles((prev) => [...prev, { id: crypto.randomUUID(), file: f, spoiler: false, alt: '' }]);
+                    stream.getTracks().forEach((t) => t.stop());
+                  };
+                  mr.start();
+                  recorderRef.current = mr;
+                  setRecording(true);
+                  setRecSeconds(0);
+                  recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
+                } catch { alert('Microphone access denied'); }
+              }} title="Voice message" aria-label="Voice message">
+                <Icon name="mic" />
+              </button>
+            )}
             <button ref={emojiBtn} type="button" className="icon-btn" disabled={disabled} onClick={() => setEmojiOpen((o) => !o)} title="Emoji" aria-label="Emoji">
               <Icon name="smile" />
             </button>

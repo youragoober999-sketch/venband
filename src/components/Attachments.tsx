@@ -1,5 +1,5 @@
 import { sanitizeHtml } from '../lib/sanitize';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { isRiskyFile } from '../lib/metadata';
 import { askConfirm } from './Dialogs';
 import type { Attachment } from '../lib/crypto';
@@ -175,20 +175,11 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
             const u = URL.createObjectURL(gif);
             const a2 = document.createElement('a'); a2.href = u; a2.download = a.name.replace(/\\.[^.]+$/, '') + '.gif'; a2.click();
             setTimeout(() => URL.revokeObjectURL(u), 1000);
-          } catch (e) { alert('Could not make GIF'); }
+          } catch (e) { console.error(e); alert('Could not make GIF: ' + String((e as Error)?.message || e)); }
         } },
       ])} />
       {big && (
-        <div className="lightbox" onClick={() => setBig(false)}>
-          <img src={url} alt={a.name} onClick={(e) => e.stopPropagation()} />
-          <div className="lightbox-bar" onClick={(e) => e.stopPropagation()}>
-            <span>{a.name}</span>
-            <DownloadButton a={a} />
-            <button className="icon-btn" onClick={() => setBig(false)} title="Close">
-              <Icon name="x" />
-            </button>
-          </div>
-        </div>
+        <Lightbox url={url} name={a.name} onClose={() => setBig(false)} download={<DownloadButton a={a} />} />
       )}
     </>
   );
@@ -349,5 +340,47 @@ function CodeViewer({ name, text, lang, setLang, a, onClose }: { name: string; t
         </pre>
       </div>
     </Modal>
+  );
+}
+
+function Lightbox({ url, name, onClose, download }: { url: string; name: string; onClose: () => void; download: ReactNode }) {
+  const [scale, setScale] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const dragging = useRef(false);
+  const last = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setScale((s) => Math.min(5, Math.max(0.5, s + (e.deltaY < 0 ? 0.25 : -0.25))));
+    };
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => window.removeEventListener('wheel', onWheel);
+  }, []);
+  const isVideo = /\.(mp4|webm|mov|ogg)$/i.test(name);
+  return (
+    <div className="lightbox" onClick={onClose} style={{ overflow: 'hidden' }}>
+      <div
+        style={{ transform: `translate(${pos.x}px, ${pos.y}px) scale(${scale})`, transformOrigin: 'center', transition: dragging.current ? 'none' : 'transform .1s', cursor: scale > 1 ? 'grab' : 'zoom-in' }}
+        onMouseDown={(e) => { dragging.current = true; last.current = { x: e.clientX - pos.x, y: e.clientY - pos.y }; }}
+        onMouseMove={(e) => { if (!dragging.current) return; setPos({ x: e.clientX - last.current.x, y: e.clientY - last.current.y }); }}
+        onMouseUp={() => { dragging.current = false; }}
+        onMouseLeave={() => { dragging.current = false; }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {isVideo ? (
+          <video src={url} controls autoPlay style={{ maxWidth: '90vw', maxHeight: '90vh' }} />
+        ) : (
+          <img src={url} alt={name} style={{ maxWidth: '90vw', maxHeight: '90vh', userSelect: 'none' }} draggable={false} />
+        )}
+      </div>
+      <div className="lightbox-bar" onClick={(e) => e.stopPropagation()}>
+        <span>{name}</span>
+        <span className="small muted">{Math.round(scale * 100)}%</span>
+        {download}
+        <button className="icon-btn" onClick={onClose} title="Close">
+          <Icon name="x" />
+        </button>
+      </div>
+    </div>
   );
 }
