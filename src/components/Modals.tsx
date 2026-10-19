@@ -603,9 +603,16 @@ function ChannelPermissionsEditor({
       const writeKeys = new Set(toWrite.map((w) => `${w.target_type}:${w.target_id}`));
       const delIds = existing.filter((o) => !writeKeys.has(`${o.target_type}:${o.target_id}`)).map((o) => o.id);
       if (delIds.length) await supabase.from('channel_overwrites').delete().in('id', delIds);
-      if (toWrite.length) {
-        const { error: e } = await supabase.from('channel_overwrites').insert(toWrite);
-        if (e) throw e;
+      // update existing rows in place, insert new ones (avoid duplicate-key on re-save)
+      for (const w of toWrite) {
+        const ex = existing.find((o) => o.target_type === w.target_type && o.target_id === w.target_id);
+        if (ex) {
+          const { error: e } = await supabase.from('channel_overwrites').update({ allow: w.allow, deny: w.deny }).eq('id', ex.id);
+          if (e) throw e;
+        } else {
+          const { error: e } = await supabase.from('channel_overwrites').insert(w);
+          if (e) throw e;
+        }
       }
       data.reload();
       onDone?.();

@@ -2091,8 +2091,11 @@ function AccountSwitcherModal({ onClose, me }: { onClose: () => void; me: Profil
   const [accounts, setAccounts] = useState<any[]>(() => {
     try {
       const raw = JSON.parse(localStorage.getItem('venband:accounts') || '[]');
-      // migrate old string format
-      return raw.map((a: any) => (typeof a === 'string' ? { username: a, displayName: a, avatarUrl: null } : a));
+      return raw.map((a: any) => {
+        if (typeof a === 'string') return { username: a, displayName: a, avatarUrl: null };
+        if (!a || typeof a !== 'object') return null;
+        return { username: a.username || a.email || '', displayName: a.displayName || a.username || a.email || '', avatarUrl: a.avatarUrl ?? null };
+      }).filter(Boolean);
     } catch { return []; }
   });
   // ensure current account is in list
@@ -2126,7 +2129,7 @@ function AccountSwitcherModal({ onClose, me }: { onClose: () => void; me: Profil
         <div className="account-switcher-list">
           {accounts.map((a) => (
             <div key={a.username} className="account-switcher-row">
-              {a.avatarUrl ? <img src={a.avatarUrl} alt="" className="account-switcher-avatar" style={{ objectFit: 'cover' }} /> : <div className="account-switcher-avatar">{(a.displayName || a.username).slice(0, 2).toUpperCase()}</div>}
+              {a.avatarUrl ? <img src={a.avatarUrl} alt="" className="account-switcher-avatar" style={{ objectFit: 'cover' }} /> : <div className="account-switcher-avatar">{String(a.displayName || a.username || '?').slice(0, 2).toUpperCase()}</div>}
               <div className="account-switcher-info">
                 <div className="account-switcher-name">{a.username === me.username ? me.display_name : (a.displayName || a.username)}</div>
                 <div className="account-switcher-user">@{a.username}</div>
