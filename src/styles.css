@@ -2573,3 +2573,9 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 
 .sp-search { display: flex; align-items: center; gap: 6px; padding: 6px 10px; margin: 8px 8px 4px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); }
 .sp-search input { background: none; border: 0; color: var(--text); font-size: 13px; width: 100%; outline: none; }
+
+.mac-dock { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.15); backdrop-filter: blur(20px); border-radius: 20px; border: 1px solid rgba(255,255,255,0.2); z-index: 9999; }
+.mac-dock-item { width: 48px; height: 48px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform .2s var(--ease), background .2s; }
+.mac-dock-item:hover { transform: scale(1.35) translateY(-8px); background: var(--accent); }
+.mac-dock-item.active { box-shadow: 0 0 0 2px var(--accent); }
+.mac-dock-icon { font-size: 13px; font-weight: 700; color: var(--text); }

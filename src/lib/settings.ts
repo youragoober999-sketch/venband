@@ -29,6 +29,7 @@ export interface Settings {
   installedThemes: Theme[];
   translateMode: 'auto' | 'manual' | 'off';
   language: string;
+  dockStyle: 'default' | 'macos';
   voice: {
     inputId: string;
     outputId: string;
@@ -97,6 +98,7 @@ export const DEFAULT_SETTINGS: Settings = {
   installedThemes: [],
   translateMode: 'manual',
   language: '',
+  dockStyle: 'default',
   voice: {
     inputId: '',
     outputId: '',
@@ -162,6 +164,7 @@ function merge(raw: unknown): Settings {
     voice: { ...DEFAULT_SETTINGS.voice, ...(r.voice ?? {}) },
     chat: { ...DEFAULT_SETTINGS.chat, ...(r.chat ?? {}) },
     screenTime: { ...DEFAULT_SETTINGS.screenTime, ...(r.screenTime ?? {}) },
+    dockStyle: r.dockStyle ?? DEFAULT_SETTINGS.dockStyle,
     layout: { ...DEFAULT_SETTINGS.layout, ...(r.layout ?? {}) },
     gifFavorites: Array.isArray(r.gifFavorites) ? r.gifFavorites.slice(0, 200) : [],
     volumes: r.volumes && typeof r.volumes === 'object' ? r.volumes : {},

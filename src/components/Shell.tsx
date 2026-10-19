@@ -382,6 +382,19 @@ export function Shell() {
       <SettingsPage />
       <ContextMenuHost />
       <DialogHost />
+      {useSettings((s) => s.dockStyle) === 'macos' && <MacDock servers={servers} current={serverId} />}
+    </div>
+  );
+}
+
+function MacDock({ servers, current }: { servers: Server[]; current: string | null }) {
+  return (
+    <div className="mac-dock">
+      {servers.map((s) => (
+        <button key={s.id} className={`mac-dock-item${s.id === current ? ' active' : ''}`} onClick={() => openServer(s.id)} title={s.name}>
+          <span className="mac-dock-icon">{s.name.slice(0, 2).toUpperCase()}</span>
+        </button>
+      ))}
     </div>
   );
 }
