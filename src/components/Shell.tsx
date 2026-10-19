@@ -429,6 +429,15 @@ function ServerRail({
       st.any && { label: 'Mark As Read', icon: 'check', onClick: () => st.chans.forEach(markRead) },
       { label: 'Copy Link', icon: 'link', onClick: () => copyText(linkTo(`channels/${s.id}`)) },
       { type: 'sep' },
+      {
+        label: useSettings((st) => st.mutedServers.includes(s.id)) ? 'Unmute Server' : 'Mute Server',
+        icon: 'bellOff',
+        onClick: () => {
+          const cur = useSettings((st) => st.mutedServers);
+          const next = cur.includes(s.id) ? cur.filter((x) => x !== s.id) : [...cur, s.id];
+          updateSettings({ mutedServers: next });
+        },
+      },
       s.owner_id !== me.id && {
         label: 'Leave Server',
         icon: 'logout',
