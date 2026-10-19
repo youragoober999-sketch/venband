@@ -778,6 +778,14 @@ function ProfileTab() {
           <Field label="Custom status" hint={`${(preview.status_text ?? '').length}/300 · shown as a bubble on your profile`}>
             <textarea rows={2} maxLength={300} value={preview.status_text ?? ''} placeholder="Listening to the new album" onChange={(e) => set({ status_text: e.target.value })} />
           </Field>
+          <Field label="Clear status after">
+            <Select value="0" onChange={(v) => {
+              const mins = Number(v);
+              if (mins > 0 && preview.status_text) {
+                setTimeout(() => { updateMyProfile({ status_text: '' }).catch(() => {}); }, mins * 60 * 1000);
+              }
+            }} options={[{ value: '0', label: 'Never' }, { value: '30', label: '30 minutes' }, { value: '60', label: '1 hour' }, { value: '240', label: '4 hours' }, { value: '1440', label: 'Today' }]} />
+          </Field>
           <Field label="Online status">
             <Select value={preview.presence ?? 'online'} onChange={(v) => set({ presence: v as PresenceStatus })} options={PRESENCE.map((p) => ({ value: p.id, label: p.label, icon: <span className={`status-dot inline ${p.id}`} /> }))} />
           </Field>
