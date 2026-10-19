@@ -443,19 +443,27 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
       </button>
     ) },
   ];
+  const base = 40;
+  const gap = 10;
+  // compute magnification + push neighbors (macOS-style: items grow and push others aside)
+  const scales = items.map((_, i) => {
+    if (mouseX === null) return 1;
+    const itemCenter = i * (base + gap) + base / 2 + 12;
+    const dist = Math.abs(mouseX - itemCenter);
+    return 1 + 0.55 * Math.max(0, 1 - dist / 130);
+  });
+  // push: each item's width = base * scale, neighbors shift to accommodate
+  const widths = scales.map((sc) => base * sc);
+  const totalW = widths.reduce((a, w) => a + w, 0) + gap * (items.length - 1) + 24;
   return (
-    <div className={`mac-dock mac-dock-${position}`} ref={dockRef}>
+    <div className={`mac-dock mac-dock-${position}`} ref={dockRef} style={{ width: totalW, transition: 'width .2s cubic-bezier(.22,1,.36,1)' }}>
       {items.map((it, i) => {
-        const base = 40;
-        let scale = 1;
-        if (mouseX !== null && dockRef.current) {
-          const itemCenter = (i * (base + 10)) + base / 2 + 12;
-          const dist = Math.abs(mouseX - itemCenter);
-          scale = 1 + 0.45 * Math.max(0, 1 - dist / 120);
-        }
+        const sc = scales[i];
         return (
-          <div key={it.key} className="mac-dock-slot" style={{ transform: `scale(${scale})`, transition: 'transform .25s cubic-bezier(.22,1,.36,1)', zIndex: scale > 1.05 ? 2 : 1 }}>
-            {it.node}
+          <div key={it.key} className="mac-dock-slot" style={{ width: widths[i], height: base * sc, transition: 'width .2s cubic-bezier(.22,1,.36,1), height .2s cubic-bezier(.22,1,.36,1)', zIndex: sc > 1.05 ? 2 : 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            <div style={{ transform: `scale(${sc})`, transformOrigin: 'bottom center', transition: 'transform .2s cubic-bezier(.22,1,.36,1)' }}>
+              {it.node}
+            </div>
           </div>
         );
       })}
