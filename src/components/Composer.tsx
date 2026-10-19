@@ -554,7 +554,7 @@ export function Composer({
             {renderPreview(text)}
           </div>
           {showAutocorrectLine && (
-            <div className="spell-backdrop" ref={backdrop} aria-hidden>
+            <div className="spell-backdrop" ref={backdrop} aria-hidden style={{ display: 'none' }}>
               {renderMistakes(text, mistakes)}
             </div>
           )}
