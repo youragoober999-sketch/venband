@@ -73,7 +73,7 @@
       "destination": "/api/vbb?action=download&id=:id"
     },
     {
-      "source": "/((?!api/|assets/|download/|download\\.json|favicon|icon-|apple-touch-icon|robots\\.txt|sitemap\\.xml|site\\.webmanifest).*)",
+      "source": "/((?!api/|assets/|download/|download\\.json|favicon|icon-|apple-touch-icon|robots\\.txt|sitemap\\.xml|site\\.webmanifest|google).*)",
       "destination": "/index.html"
     }
   ],
