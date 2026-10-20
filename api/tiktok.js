@@ -3,7 +3,7 @@
 import { json, preflight, readJson } from './_lib/rpc.js';
 
 const CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY || process.env.VITE_TIKTOK_CLIENT_KEY || 'aw3rf61cawh6b01a';
-const CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET || 'qj5t80WJfwJoLWSDYRxXJDMnFg3FupE1';
+const CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET || '';
 
 export function OPTIONS() { return preflight(); }
 

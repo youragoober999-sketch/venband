@@ -4,7 +4,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 
-const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
+const SECRET = process.env.VDL_JWT_SECRET ? new TextEncoder().encode(process.env.VDL_JWT_SECRET) : null;
 
 async function currentUser(request) {
   const cookie = request.headers.get('cookie') || '';
@@ -13,7 +13,8 @@ async function currentUser(request) {
   const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   const token = m ? m[1] : bearer;
   if (!token) return null;
-  try { const { payload } = await jwtVerify(token, SECRET); return payload; } catch { return null; }
+  if (SECRET) { try { const { payload } = await jwtVerify(token, SECRET); return payload; } catch {} }
+  // fall through to Supabase verification below
 }
 function isTopStaff(u) { return u && (u.role === 'owner' || (Array.isArray(u.badges) && (u.badges.includes('owner') || u.badges.includes('founder')))); }
 

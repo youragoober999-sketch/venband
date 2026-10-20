@@ -7,7 +7,7 @@ import { sql, json, preflight, readJson, ensureSchema } from './vdl/_db.js';
 import crypto from 'node:crypto';
 import { jwtVerify } from 'jose';
 import { put, del } from '@vercel/blob';
-const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
+const SECRET = process.env.VDL_JWT_SECRET ? new TextEncoder().encode(process.env.VDL_JWT_SECRET) : null;
 
 const CHUNK_SIZE = 3 * 1024 * 1024; // 3 MB (safe under Vercel's 4.5 MB body limit)
 const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB
@@ -20,7 +20,7 @@ async function currentUser(request) {
   const token = m ? m[1] : bearer;
   if (!token) return null;
   // 1. try VDL JWT
-  try { const { payload } = await jwtVerify(token, SECRET); return payload; } catch {}
+  if (SECRET) { try { const { payload } = await jwtVerify(token, SECRET); return payload; } catch {} }
   // 2. fall back to Supabase session (verify via Supabase Auth)
   try {
     const URL_ = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');

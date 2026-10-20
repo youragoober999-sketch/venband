@@ -11,7 +11,7 @@ async function isTopStaff(jwt) {
   // try VDL first
   try {
     const { jwtVerify } = await import('jose');
-    const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
+    const SECRET = process.env.VDL_JWT_SECRET ? new TextEncoder().encode(process.env.VDL_JWT_SECRET) : null;
     const { payload } = await jwtVerify(jwt, SECRET);
     const role = payload.role || payload.platform_role;
     const badges = payload.badges || [];
@@ -36,7 +36,7 @@ export async function GET(request) {
   let ok = false;
   try {
     const { jwtVerify } = await import('jose');
-    const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
+    const SECRET = process.env.VDL_JWT_SECRET ? new TextEncoder().encode(process.env.VDL_JWT_SECRET) : null;
     await jwtVerify(jwt, SECRET);
     ok = true;
   } catch {
@@ -62,7 +62,7 @@ export async function POST(request) {
   let ok = false;
   try {
     const { jwtVerify } = await import('jose');
-    const SECRET = new TextEncoder().encode(process.env.VDL_JWT_SECRET || 'dev-only-insecure-secret-change-me');
+    const SECRET = process.env.VDL_JWT_SECRET ? new TextEncoder().encode(process.env.VDL_JWT_SECRET) : null;
     await jwtVerify(jwt, SECRET);
     ok = true;
   } catch {
