@@ -35,6 +35,7 @@ import {
   removeConnection,
   spotifyLogin,
   steamLogin,
+  tiktokLogin,
   youtubeLogin,
   subscribeConnections,
   type ConnectionProvider,
@@ -360,7 +361,7 @@ function ConnectionsTab() {
                 </button>
               )}
               {info.kind === 'openid' && linked.length > 0 && <span className="tag-soft success">Connected</span>}
-              {info.kind === 'oauth' && (info.provider === 'spotify' || info.provider === 'youtube') && (
+              {info.kind === 'oauth' && (info.provider === 'spotify' || info.provider === 'youtube' || info.provider === 'tiktok') && (
                 <button
                   className="btn secondary small"
                   disabled={busy === info.provider}
@@ -370,6 +371,7 @@ function ConnectionsTab() {
                     try {
                       if (info.provider === 'spotify') await spotifyLogin();
                       else if (info.provider === 'youtube') await youtubeLogin();
+                      else if (info.provider === 'tiktok') await tiktokLogin();
                     } catch (e) {
                       setError(errorMessage(e));
                       setBusy(null);
@@ -379,7 +381,7 @@ function ConnectionsTab() {
                   <Icon name="link" size={14} /> Connect
                 </button>
               )}
-              {info.kind === 'oauth' && !(info.provider === 'spotify' || info.provider === 'youtube') && (
+              {info.kind === 'oauth' && !(info.provider === 'spotify' || info.provider === 'youtube' || info.provider === 'tiktok') && (
                 <button className="btn secondary small" disabled title="Needs a Venband-run OAuth server for the client secret — on the roadmap.">
                   <Icon name="link" size={14} /> Connect
                 </button>

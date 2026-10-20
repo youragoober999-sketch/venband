@@ -55,7 +55,7 @@ export const PROVIDERS: ProviderInfo[] = [
   { provider: 'youtube', name: 'YouTube', slug: 'youtube', color: '#ff0000', kind: 'oauth', desc: 'Watching YouTube video presence.' },
   { provider: 'xbox', name: 'Xbox', slug: 'xbox', color: '#107c10', kind: 'planned', desc: 'Xbox network presence.' },
   { provider: 'instagram', name: 'Instagram', slug: 'instagram', color: '#e1306c', kind: 'planned', desc: 'Instagram presence.' },
-  { provider: 'tiktok', name: 'TikTok', slug: 'tiktok', color: '#010101', kind: 'planned', desc: 'TikTok presence.' },
+  { provider: 'tiktok', name: 'TikTok', slug: 'tiktok', color: '#010101', kind: 'oauth', desc: 'TikTok presence.' },
   { provider: 'epic', name: 'Epic Games', slug: 'epic', color: '#121212', kind: 'planned', desc: 'Epic Games Store presence.' },
 ];
 
@@ -369,6 +369,54 @@ export async function handleYouTubeRedirect(): Promise<string | null> {
     return name;
   } catch (e) {
     return `YouTube link failed: ${errorMessage(e)}`;
+  }
+}
+
+// --------------------------------------------------------------- tiktok -----
+const TIKTOK_CLIENT_KEY = 'aw3rf61cawh6b01a';
+const TIKTOK_SCOPES = 'user.info.basic';
+
+export async function tiktokLogin(): Promise<void> {
+  sessionStorage.setItem('tiktok_state', 'tiktok');
+  const redirectUri = new URL('/callback', window.location.origin).toString();
+  const params = new URLSearchParams({
+    client_key: TIKTOK_CLIENT_KEY,
+    response_type: 'code',
+    scope: TIKTOK_SCOPES,
+    redirect_uri: redirectUri,
+    state: 'tiktok',
+  });
+  window.location.href = `https://www.tiktok.com/v2/auth/authorize/?${params}`;
+}
+
+export async function acceptTikTokReturn(href: string): Promise<{ name: string }> {
+  const u = new URL(href);
+  const code = u.searchParams.get('code');
+  if (!code) throw new Error('TikTok did not return a code.');
+  if (u.searchParams.get('state') !== 'tiktok') throw new Error('Not a TikTok return.');
+  const redirectUri = new URL('/callback', window.location.origin).toString();
+  const res = await fetch(`/api/tiktok?code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || 'TikTok token exchange failed.');
+  const name = data.display_name || 'TikTok';
+  await addConnection('tiktok', data.open_id || 'tiktok', name, data.avatar_url || null, { scopes: TIKTOK_SCOPES });
+  return { name };
+}
+
+export async function handleTikTokRedirect(): Promise<string | null> {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('code')) return null;
+  if (params.get('state') !== 'tiktok') return null;
+  if (!window.location.pathname.endsWith('/callback')) return null;
+  try {
+    const { name } = await acceptTikTokReturn(window.location.href);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('code');
+    url.searchParams.delete('state');
+    history.replaceState(null, '', url.toString());
+    return name;
+  } catch (e) {
+    return `TikTok link failed: ${errorMessage(e)}`;
   }
 }
 
