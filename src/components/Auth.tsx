@@ -16,6 +16,7 @@ import {
   signIn,
   signOut,
   signUp,
+  signUpDisposable,
   unlock,
   unlockViaPasskey,
 } from '../lib/session';
@@ -458,6 +459,24 @@ function Signup({ email, setEmail, setMode }: FormProps) {
       {error && <div className="form-error">{error}</div>}
       <button className="btn primary full" disabled={busy || !understood || !tosAccepted || !birthDate}>
         {busy ? 'Setting things up…' : 'Create account'}
+      </button>
+      <button
+        type="button"
+        className="btn secondary full"
+        disabled={busy}
+        onClick={async () => {
+          setError(null);
+          setBusy(true);
+          try {
+            await signUpDisposable();
+          } catch (err) {
+            setError(friendlyError(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Create disposable account (7 days, no email)
       </button>
       <p className="switch">
         Already have one?{' '}

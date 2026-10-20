@@ -433,6 +433,7 @@ function AccountTab() {
   const [msg, setMsg] = useState<string | null>(null);
   const [showEmail, setShowEmail] = useState(false);
   const [delPhrase, setDelPhrase] = useState('');
+  const [disposableEmail, setDisposableEmail] = useState('');
   useEffect(() => {
     fingerprint(identity.encPublic, identity.signPublic).then(setFp);
   }, [identity]);
@@ -623,6 +624,33 @@ function AccountTab() {
           <li>Translation runs on your device, so decrypted messages never leave it.</li>
         </ul>
       </Section>
+      {me.disposable && (
+        <Section title="Disposable account" desc={`This account expires on ${me.expires_at ? new Date(me.expires_at).toLocaleString() : 'soon'}. Add an email to make it permanent.`}>
+          <div className="row">
+            <Field label="Email">
+              <input type="email" value={disposableEmail} onChange={(e) => setDisposableEmail(e.target.value)} placeholder="you@example.com" />
+            </Field>
+            <button
+              className="btn primary"
+              disabled={!disposableEmail || busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const { error } = await supabase.auth.updateUser({ email: disposableEmail.trim() });
+                  if (error) throw error;
+                  setMsg('Check your inbox to verify the email. Once verified, your account becomes permanent.');
+                } catch (err) {
+                  setMsg(errorMessage(err));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? 'Sending…' : 'Add email'}
+            </button>
+          </div>
+        </Section>
+      )}
       <Section title="Delete account" desc="Wipes your account off Venband for good.">
         <div className="warning-box">
           This permanently deletes your account and everything tied to it: your 1:1 DMs, files, pictures, messages,

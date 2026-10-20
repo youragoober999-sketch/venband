@@ -104,7 +104,18 @@ async function fetchMyProfile(userId: string): Promise<Profile> {
   const rpc = await supabase.rpc('my_profile');
   const fromRpc = rpc.data as Profile | null;
   if (!rpc.error && fromRpc?.id) {
+    if (fromRpc.disposable && fromRpc.expires_at && new Date(fromRpc.expires_at).getTime() < Date.now()) {
+      await supabase.auth.signOut();
+      throw new Error('This disposable account has expired.');
+    }
     putProfile(fromRpc);
+    // If a disposable account has since added a verified email, make it permanent.
+    if (fromRpc.disposable) {
+      const { data: u } = await supabase.auth.getUser();
+      if (u.user?.email) {
+        try { await makeAccountPermanent(); fromRpc.disposable = false; fromRpc.expires_at = null; putProfile(fromRpc); } catch { /* ignore */ }
+      }
+    }
     return fromRpc;
   }
   // Databases set up before my_profile() existed: fall back to a plain read.
@@ -305,6 +316,25 @@ export async function signUp(input: { email: string; password: string; username:
     throw new Error('There’s already an account with that email. Try logging in instead.');
   }
   return data;
+}
+
+/** Create a disposable (anonymous, 7-day) account with a random username. */
+export async function signUpDisposable(): Promise<{ username: string }> {
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  let username = '';
+  for (let i = 0; i < 12; i++) username += letters[Math.floor(Math.random() * letters.length)];
+  const { data, error } = await supabase.auth.signInAnonymously({
+    options: { data: { username, display_name: username, disposable: true } },
+  });
+  if (error) throw error;
+  if (!data.user) throw new Error('Could not create disposable account.');
+  return { username };
+}
+
+/** Promote the current disposable account to permanent (call after email verified). */
+export async function makeAccountPermanent(): Promise<void> {
+  const { error } = await supabase.rpc('make_account_permanent');
+  if (error) throw error;
 }
 
 export async function resendVerification(email: string) {

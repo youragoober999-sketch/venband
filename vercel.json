@@ -66,6 +66,12 @@
       ]
     }
   ],
+  "crons": [
+    {
+      "path": "/api/cleanup-disposable",
+      "schedule": "0 3 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/o/:id",

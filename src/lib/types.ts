@@ -21,6 +21,8 @@ export interface Profile {
   badges?: string[];
   platform_role?: PlatformRole;
   account_status?: AccountStatus;
+  disposable?: boolean;
+  expires_at?: string | null;
   language?: string;
   onboarded?: boolean;
   avatar_url?: string | null;
