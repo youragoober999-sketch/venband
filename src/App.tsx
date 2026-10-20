@@ -17,7 +17,7 @@ import { DownloadPage } from './components/Download';
 import { VooglePage } from './components/Voogle';
 import { StorageConsole } from './components/Storage';
 import { DialogHost } from './components/Dialogs';
-import { handleSteamRedirect, handleSpotifyRedirect } from './lib/connections';
+import { handleSteamRedirect, handleSpotifyRedirect, handleYouTubeRedirect } from './lib/connections';
 import { openSettings, isAndroid } from './lib/ui';
 
 export default function App() {
@@ -35,6 +35,11 @@ export default function App() {
     void handleSpotifyRedirect().then((msg) => {
       if (!msg) return;
       if (msg.startsWith('Spotify link failed')) alert(msg);
+      else openSettings('connections');
+    });
+    void handleYouTubeRedirect().then((msg) => {
+      if (!msg) return;
+      if (msg.startsWith('YouTube link failed')) alert(msg);
       else openSettings('connections');
     });
   }, []);

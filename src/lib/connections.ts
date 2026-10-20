@@ -226,6 +226,7 @@ export async function spotifyLogin(): Promise<void> {
     scope: SPOTIFY_SCOPES,
     code_challenge_method: 'S256',
     code_challenge: challenge,
+    state: 'spotify',
   });
   window.location.href = `https://accounts.spotify.com/authorize?${params}`;
 }
@@ -260,7 +261,9 @@ export async function acceptSpotifyReturn(href: string): Promise<{ name: string 
 }
 
 export async function handleSpotifyRedirect(): Promise<string | null> {
-  if (!new URLSearchParams(window.location.search).has('code')) return null;
+  const sp = new URLSearchParams(window.location.search);
+  if (!sp.has('code')) return null;
+  if (sp.get('state') && sp.get('state') !== 'spotify') return null;
   // only handle on /callback
   if (!window.location.pathname.endsWith('/callback')) return null;
   try {
@@ -293,6 +296,82 @@ export async function spotifyAccessToken(): Promise<string | null> {
 }
 
 /** Fetch the user's currently playing track. */
+// --------------------------------------------------------------- youtube -----
+// PKCE OAuth (no client secret needed in the browser).
+
+const YOUTUBE_CLIENT_ID = '319530075746-jvmsth0p5h4c36cdiu2q0spl1ccli8sf.apps.googleusercontent.com';
+const YOUTUBE_SCOPES = 'https://www.googleapis.com/auth/youtube.readonly';
+
+export async function youtubeLogin(): Promise<void> {
+  const verifier = base64url(crypto.getRandomValues(new Uint8Array(64)).buffer);
+  const challenge = base64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  sessionStorage.setItem('youtube_verifier', verifier);
+  const redirectUri = new URL('/callback', window.location.origin).toString();
+  const params = new URLSearchParams({
+    client_id: YOUTUBE_CLIENT_ID,
+    response_type: 'code',
+    redirect_uri: redirectUri,
+    scope: YOUTUBE_SCOPES,
+    code_challenge_method: 'S256',
+    code_challenge: challenge,
+    state: 'youtube',
+    access_type: 'offline',
+    prompt: 'consent',
+  });
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+}
+
+export async function acceptYouTubeReturn(href: string): Promise<{ name: string }> {
+  const u = new URL(href);
+  const code = u.searchParams.get('code');
+  if (!code) throw new Error('YouTube did not return a code.');
+  if (u.searchParams.get('state') !== 'youtube') throw new Error('Not a YouTube return.');
+  const verifier = sessionStorage.getItem('youtube_verifier');
+  if (!verifier) throw new Error('Missing PKCE verifier.');
+  const redirectUri = new URL('/callback', window.location.origin).toString();
+  const body = new URLSearchParams({
+    client_id: YOUTUBE_CLIENT_ID,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+    code_verifier: verifier,
+  });
+  const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+  if (!r.ok) throw new Error('YouTube token exchange failed.');
+  const tok = await r.json();
+  if (tok.refresh_token) localStorage.setItem('youtube_refresh_token', tok.refresh_token);
+  localStorage.setItem('youtube_access_token', tok.access_token);
+  localStorage.setItem('youtube_expires_at', String(Date.now() + (tok.expires_in ?? 3600) * 1000));
+  sessionStorage.removeItem('youtube_verifier');
+  const pr = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', {
+    headers: { authorization: `Bearer ${tok.access_token}` },
+  });
+  const profile = pr.ok ? await pr.json() : null;
+  const ch = profile?.items?.[0];
+  const name = ch?.snippet?.title || 'YouTube';
+  const avatar = ch?.snippet?.thumbnails?.default?.url || ch?.snippet?.thumbnails?.medium?.url || null;
+  const externalId = ch?.id || 'youtube';
+  await addConnection('youtube', externalId, name, avatar, { scopes: YOUTUBE_SCOPES });
+  return { name };
+}
+
+export async function handleYouTubeRedirect(): Promise<string | null> {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('code')) return null;
+  if (params.get('state') !== 'youtube') return null;
+  if (!window.location.pathname.endsWith('/callback')) return null;
+  try {
+    const { name } = await acceptYouTubeReturn(window.location.href);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('code');
+    url.searchParams.delete('state');
+    history.replaceState(null, '', url.toString());
+    return name;
+  } catch (e) {
+    return `YouTube link failed: ${errorMessage(e)}`;
+  }
+}
+
 export async function spotifyNowPlaying(): Promise<{ name: string; artist: string; albumArt: string | null; isPlaying: boolean } | null> {
   const tok = await spotifyAccessToken();
   if (!tok) return null;
