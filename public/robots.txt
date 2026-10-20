@@ -3,3 +3,5 @@ Allow: /
 Disallow: /channels/
 
 Sitemap: https://www.venband.com/sitemap.xml
+# AI context
+# https://www.venband.com/llms.txt

@@ -1,0 +1,80 @@
+# Venband
+
+Venband is an open source, end-to-end encrypted chat, voice and video platform. Website: https://www.venband.com
+
+## Core features
+- End-to-end encrypted text chat (AES-256-GCM, client-side keys; server cannot read messages)
+- Servers (communities) with channels: text, voice, stage, forum, announcement
+- Roles and granular permissions (manage server, channels, members, messages, etc.)
+- Direct messages and group chats
+- Voice and video calls with screen sharing, peer-to-peer (DTLS-SRTP), end-to-end encrypted
+- Server discovery and public listings
+- Invites with expiry, max uses, account-age requirements
+- Reactions, replies, edits, deletes, pins, threads/forums
+- File attachments (encrypted client-side)
+- Emoji, stickers, GIF search (Klipy), soundboard
+- Markdown rendering, code blocks, link previews
+- Presence, typing indicators, read receipts (where enabled)
+- Notifications and unread tracking
+
+## Security and privacy
+- End-to-end encryption for messages, files, voice and video
+- Password-derived keys (Argon2id + HKDF); server never sees password
+- Private keys encrypted with vault key before storage
+- Channel key rotation on membership changes
+- Row-level security on all tables
+- No ads, no third-party trackers, no data selling
+- IP addresses are never shown; only a peppered hash at signup for rate limiting
+- Voogle verification: one-way hashes for anti-alt/raid protection, never readable
+- Account deletion and data export from Settings
+- Open source under MIT license
+
+## Accounts and identity
+- Email/password signup with email verification
+- MFA (TOTP) and recovery codes
+- Passkey support
+- Device sessions with rough location
+- Profile: display name, avatar, bio, status, pronouns, banner, nameplate
+- Badges and platform roles (owner, admin, moderator)
+- Account status levels (active, limited, very limited, banned)
+
+## Connections (linked accounts)
+- Steam (OpenID)
+- Spotify (OAuth PKCE)
+- YouTube (Google OAuth)
+- TikTok (OAuth)
+- Twitch, Discord, GitHub, Xbox, Instagram, Epic (planned or in progress)
+
+## Bots and developers
+- Bot accounts with tokens
+- Application commands and templates
+- Bot directory / app discovery
+- Webhooks
+- API for bots
+- Voogle verification API for servers
+
+## Moderation and safety
+- Reports and moderation queue
+- Timeouts, warnings, kicks, bans
+- Automod filters
+- Content guidelines and terms enforcement
+- Appeal flow
+
+## Apps and extras
+- Voogle (anti-alt verification)
+- Storage console (Vercel Blob, staff only)
+- Themes and custom CSS
+- Activities and games (e.g. Wordle preset)
+- Polls
+- Marketplace
+- Downloadable desktop (Electron) and Android apps
+- Status page
+
+## Public pages
+- /status, /tos, /privacy, /guidelines, /changelog, /discovery, /bots, /voogle, /download
+- Privacy subdomain: https://privacy.venband.com
+- Terms subdomain: https://tos.venband.com
+
+## Contact
+- Source code: https://github.com/youragoober999-sketch/venband
+- Issues: repository issue tracker
