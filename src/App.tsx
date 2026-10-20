@@ -81,6 +81,15 @@ export default function App() {
       </>
     );
   }
+  if (window.location.hostname.toLowerCase().startsWith('tos.')) {
+    return (
+      <>
+        <TermsPage />
+        <DialogHost />
+        <ContextMenuHost />
+      </>
+    );
+  }
   if (route.kind === 'page')
     return (
       <>

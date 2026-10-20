@@ -137,7 +137,7 @@ export function InvitePage({ code }: { code: string }) {
         {p?.banner_url ? <div className="invite-banner" style={{ backgroundImage: `url(${p.banner_url})` }} /> : <div className="invite-banner" style={{ background: p?.banner_color ?? p?.icon_color ?? 'var(--bg-3)' }} />}
         <div className="invite-card-body">
           {p === undefined && <div className="spinner" />}
-          {p === null && <WrongTurn signedIn={signedIn} />}
+          {p === null && <WrongTurn />}
           {p && (
             <>
               <ServerBadge p={p} size={84} />
@@ -467,26 +467,15 @@ export function ServerPreviewModal({ serverId, onClose }: { serverId: string; on
   );
 }
 
-const WRONG_TURN_MESSAGES = ['Wrong turn?', 'You look lost, stranger.', 'Oops, nothing to see here.', 'This invite took a wrong turn.', 'Lost? Happens to the best of us.'];
-const WRONG_TURN_TIPS = ['Status Page', '@Venband', 'Venband Support', 'Help Center', 'Community'];
-
-export function WrongTurn({ signedIn }: { signedIn: boolean }) {
-  const msg = WRONG_TURN_MESSAGES[Math.floor(Math.random() * WRONG_TURN_MESSAGES.length)];
+export function WrongTurn() {
   return (
     <div className="wrong-turn">
-      <div className="wrong-turn-bar">
-        <span>Home</span><span>Features</span><span>Discover</span><span>Download</span><span>Status</span><span>Terms</span><span>Privacy</span><span>Guidelines</span><span>Blog</span><span>Developers</span>
-      </div>
       <div className="wrong-turn-body">
-        <div className="wrong-turn-noodle">🍜</div>
-        <h1>{msg}</h1>
-        <p className="muted">You look lost, stranger. You know what helps when you're lost? A piping hot bowl of noodles. Take a seat, we're frantically at work here cooking up something good. Oh, you need something to read? These might help you:</p>
-        <ul className="wrong-turn-tips">
-          {WRONG_TURN_TIPS.map((t) => <li key={t}>{t}</li>)}
-        </ul>
-        <button className="btn primary" onClick={() => go(signedIn ? 'channels/@me' : 'sign-in')}>
-          {signedIn ? 'Back to Venband' : 'Sign in'}
-        </button>
+        <h1>Oops, this is an invalid subdomain.</h1>
+        <p className="muted">Click below to go to the main page.</p>
+        <a className="btn primary" href="https://www.venband.com/" onClick={(e) => { e.preventDefault(); window.location.href = 'https://www.venband.com/'; }}>
+          Go to www.venband.com
+        </a>
       </div>
     </div>
   );

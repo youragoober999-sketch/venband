@@ -18,7 +18,8 @@ const NAV: { page: PublicPage; label: string }[] = [
   { page: 'bots', label: 'Developers' },
   { page: 'voogle', label: 'Voogle' },
   { page: 'status', label: 'Status' },
-  { page: 'tos', label: 'Terms' },
+  { page: 'privacy', label: 'Privacy' },
+  { page: 'tos', label: 'TOS' },
 ];
 
 export function PublicLayout({ page, title, children, wide }: { page: PublicPage; title: string; children: ReactNode; wide?: boolean }) {
@@ -48,11 +49,12 @@ export function PublicLayout({ page, title, children, wide }: { page: PublicPage
             {NAV.map((n) => (
               <a
                 key={n.page}
-                href={`${import.meta.env.BASE_URL}${n.page}`}
+                href={n.page === 'privacy' ? 'https://privacy.venband.com' : `${import.meta.env.BASE_URL}${n.page}`}
                 className={n.page === page ? 'active' : ''}
                 onClick={(e) => {
                   e.preventDefault();
-                  go(n.page);
+                  if (n.page === 'privacy') window.location.href = 'https://privacy.venband.com';
+                  else go(n.page);
                 }}
               >
                 {n.label}
@@ -92,6 +94,9 @@ export function PublicLayout({ page, title, children, wide }: { page: PublicPage
         ))}
         <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
           Source code
+        </a>
+        <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
+          Learn more
         </a>
       </footer>
     </div>
@@ -504,112 +509,210 @@ export function TermsPage() {
   return (
     <Doc page="tos" title="Terms of Service" updated="October 19, 2026">
       <p>
-        These Terms of Service (“Terms”) govern your access to and use of Venband (the website at venband.com and any subdomains, our web, desktop and mobile apps,
-        and our APIs; collectively the “Service”). By creating an account or using the Service you agree to these Terms. If you do not agree, do not use Venband.
+        These Terms of Service (“Terms”) apply to your use of Venband (the website, apps and API; the “Service”). Venband is an open source project. By
+        creating an account or using the Service you agree to these Terms. If you do not agree, do not use Venband.
       </p>
-      <h2 id="eligibility">1. Eligibility and age</h2>
+
+      <h2 id="who-we-are">Who we are</h2>
+      <p>
+        Venband is a community chat service. The Service is provided by the Venband project and its contributors. You can find the source code at our repository.
+        Questions about these Terms can be sent to us through that repository’s issue tracker.
+      </p>
+
+      <h2 id="age">Age requirements</h2>
+      <p>
+        You must be at least 13 years old, or the minimum age required where you live, whichever is higher. Our Service is not designed for users under 13. By
+        creating an account you confirm that you meet this requirement and that you have the legal capacity to agree to these Terms, or that a parent or legal
+        guardian agrees on your behalf. Parents and guardians are responsible for the use of the Service by any minor they allow to use it.
+      </p>
+
+      <h2 id="what-to-expect">What you can expect from us</h2>
+      <p>
+        Venband provides services that help you connect with other users and communities through servers, channels, direct messages and calls. Servers are digital
+        spaces made up of text, voice and other channels. Server owners and admins control their server’s rules, permissions, membership and moderation. We are
+        always improving the Service and may add, change or remove features. We try to avoid disruptions but cannot guarantee the Service will always be available
+        or free of errors.
+      </p>
+      <p>
+        Venband is designed to make communicating easy. Messages appear in the order they are sent. Voice and video happen in real time. We may build features that
+        help you create content, communicate, discover communities or connect other accounts. You control whether to connect other accounts in your Settings.
+      </p>
+      <p>
+        We take user safety seriously and provide tools to help keep the Service safe. Some features may have different defaults depending on your age or location.
+      </p>
+
+      <h2 id="account">Your Venband account</h2>
+      <p>
+        To use the Service on an ongoing basis you need an account. You provide a username and password and a way to contact you, such as an email address. You may
+        also be asked to provide your date of birth or to verify your account.
+      </p>
       <ul>
-        <li>You must be at least 13 years old, or the minimum age required by the law where you live, whichever is higher. Some features or linked services may require you to be older.</li>
-        <li>If you are under 18, you confirm that a parent or guardian has reviewed and agreed to these Terms on your behalf where required by law.</li>
-        <li>You must not be barred from using the Service under applicable law or by a prior ban.</li>
+        <li>You are responsible for keeping your account secure, including your password and recovery code. Because messages are end-to-end encrypted, Venband cannot recover your password, recovery code or private keys.</li>
+        <li>You must provide accurate information and keep it up to date.</li>
+        <li>You agree not to sell, lend or transfer your account or username without our prior written permission.</li>
+        <li>We may delete, change or reclaim a username or other identifier.</li>
+        <li>If you are locked out of your account, we may need to contact you at the email or phone number on file. If your account is compromised we may not be able to restore access.</li>
       </ul>
-      <h2 id="accounts">2. Your account</h2>
+
+      <h2 id="content">Content in the Service</h2>
+      <h3>Your content</h3>
+      <p>
+        “Your content” means anything you add to the Service, such as text, links, images, files, emoji, voice or video. You are responsible for ensuring you have
+        the right to post it and that it is lawful. We take no responsibility for your content and are not responsible for others’ use of it.
+      </p>
+      <p>
+        Be aware of where you are posting. Servers and channels can be public or large spaces, and their permissions are set by server owners and may change over time.
+        Choose the right space and settings for you and your content.
+      </p>
+      <p>
+        You keep ownership of your content, but by using the Service you grant Venband a worldwide, non-exclusive, royalty-free license to use, reproduce, distribute,
+        display and perform your content for the limited purpose of providing, developing and improving the Service. This license is sublicensable and transferable.
+        See the <L to="privacy">Privacy Policy</L> for how we use your content.
+      </p>
+      <p>
+        We may block, remove or delete your content if it breaches these Terms, the Community Guidelines or any law, or if it creates risk for the Service or other
+        users. We may disclose content to third parties when required by law or to prevent harm.
+      </p>
+      <p>
+        If you send us feedback, you grant us a non-exclusive, perpetual, irrevocable, transferable license to use that feedback without restriction or compensation.
+      </p>
+
+      <h3>Venband’s content</h3>
+      <p>
+        The Service includes content that belongs to Venband, such as the design of the apps and website, art, images and text written by us. You may use our software
+        as outlined in these Terms. You may only use our trademarks and copyrights as permitted or with our prior written permission. We retain all intellectual
+        property rights in our content.
+      </p>
+
+      <h3>Other content</h3>
+      <p>
+        The Service may give you access to other people’s content. You may not use it without that person’s consent or as allowed by law. Other people’s content is
+        theirs and does not necessarily reflect Venband’s views. We do not endorse or verify the accuracy or reliability of user content. We work to keep the Service
+        safe, positive and inclusive, but cannot always prevent you from encountering objectionable content. You agree we are not liable for harm caused by that content.
+        You may report content that you think violates our policies.
+      </p>
+      <p>
+        The Service may contain links to or allow access to third-party websites, features, apps or content. We are not responsible for the content or services available
+        from those third parties.
+      </p>
+
+      <h2 id="software">Software in the Service</h2>
+      <p>
+        Some parts of the Service allow you to download client software. So long as you comply with these Terms, we grant you a worldwide, non-exclusive, personal,
+        non-transferable, non-sublicensable license to download, install and run that software solely to access the Service. You may not copy, modify, create derivative
+        works of, distribute, sell, lease or sublicense our software or services, and you may not reverse engineer or decompile them unless permitted by applicable law
+        or with our written consent. We retain our intellectual property rights in our software.
+      </p>
+      <p>
+        Some parts of the Service include software subject to separate open source licenses. Your use of those parts is subject to those licenses, which may override
+        these Terms where applicable.
+      </p>
+      <p>
+        The Service may allow access to apps, bots or other products developed by third parties. It is your choice whether to use them. Review the third parties’ terms
+        before doing so. Venband is not responsible for third-party services, which are controlled by their developers.
+      </p>
+
+      <h2 id="copyright">Copyright</h2>
+      <p>
+        We respect the intellectual property of others and expect our users to do the same. If you believe content on the Service infringes your copyright, please
+        contact us through our repository’s issue tracker with the details needed to investigate.
+      </p>
+
+      <h2 id="paid">Paid services</h2>
+      <p>
+        Venband is free to use. There are no paid features at this time. If paid features are introduced in the future, additional terms may apply.
+      </p>
+
+      <h2 id="restrictions">Restrictions on your use</h2>
+      <p>
+        When using the Service you must comply with these Terms and all applicable laws, and use the Service only for authorized and acceptable purposes. You must also
+        follow the <L to="guidelines">Community Guidelines</L> and other policies. In particular, do not:
+      </p>
       <ul>
-        <li>You are responsible for keeping your password, recovery code and devices secure. Because messages are end-to-end encrypted, Venband cannot recover your password, recovery code or private keys.</li>
-        <li>You may have a reasonable number of accounts, but you may not use additional accounts to evade a ban, limit, block, rate limit or moderation action.</li>
-        <li>You must provide accurate information when required and keep your account secure. Notify us promptly of any unauthorized use.</li>
-        <li>We may require email verification, additional checks or restrictions to protect the Service and other users.</li>
+        <li>Use the Service to harm yourself or others, including accessing another user’s account or non-public parts of the Service, infringing intellectual property, harassing, bullying, spamming or using the Service to plan real-world harm.</li>
+        <li>Use the Service to harm Venband, including gaining unauthorized access to or attacking our systems, scraping without written consent, selling or commercializing data from the Service, transmitting malicious code, abusing payment systems or reverse engineering our services without permission.</li>
+        <li>Use the Service for anything illegal.</li>
       </ul>
-      <h2 id="acceptable-use">3. Acceptable use</h2>
-      <p>You agree not to:</p>
+      <p>
+        We encourage you to report content or conduct that violates these restrictions. If you or someone else is in immediate danger, contact your local emergency
+        services.
+      </p>
+
+      <h2 id="termination">Term and termination</h2>
+      <p>
+        You may stop using the Service at any time. To terminate this agreement, delete your account from Settings and discontinue use of the Service. Certain
+        provisions survive termination as noted below.
+      </p>
+      <p>
+        We may suspend or terminate your account or access to the Service, with or without notice, at our discretion, including if you breach these Terms or our
+        policies, if required by law, if we believe it is necessary to prevent harm, if your account has been inactive for more than two years, or if continuing to
+        provide access creates risk for the Service or other users. We will give advance notice where reasonable or required by law.
+      </p>
+      <p>
+        You can appeal enforcement actions, including terminations, suspensions or content removals, by contacting us through our repository’s issue tracker.
+      </p>
+
+      <h2 id="indemnity">Indemnity</h2>
+      <p>
+        You agree to indemnify and hold Venband and its contributors harmless from claims, liabilities, damages and costs (including reasonable legal fees) arising
+        from your use of the Service, your content, your breach of these Terms, or your negligence or willful misconduct.
+      </p>
+
+      <h2 id="as-is">Services “as is”</h2>
+      <p>
+        We work hard to offer a good Service, but we cannot guarantee any minimum level of quality. To the fullest extent permitted by law, the Service is provided
+        “as is” without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, quiet enjoyment and non-infringement.
+        Some jurisdictions do not allow disclaimer of implied warranties; in those cases we limit the duration and remedies to the fullest extent permitted.
+      </p>
+
+      <h2 id="data-charges">Data charges</h2>
+      <p>
+        You are responsible for any mobile or internet charges you incur using the Service, including data and messaging charges. If you are unsure what you may be
+        charged, ask your service provider before using the Service.
+      </p>
+
+      <h2 id="liability">Limitation of liability</h2>
+      <p>
+        We do not exclude or limit liability where it would be illegal to do so. In jurisdictions where exclusions are not allowed, we are responsible only for losses
+        that are a reasonably foreseeable result of our failure to use reasonable care and skill or our material breach of contract. To the extent permitted by law,
+        Venband and its contributors are not liable for incidental, special, exemplary or consequential damages, or for lost profits, revenues, savings, business
+        opportunity, data or goodwill, service interruption, computer damage or system failure, or the cost of substitute services, arising from these Terms or from
+        use of or inability to use the Service. Our total liability is limited to the greater of the amounts you paid us in the three months before you first assert a
+        claim, or 100 USD (or the equivalent in your local currency). Venband is not liable for the conduct or content of any user.
+      </p>
+
+      <h2 id="disputes">Settling disputes</h2>
+      <p>
+        Most disputes can be resolved informally. If you have an issue, contact us first and we will try to resolve it. If a dispute cannot be resolved informally,
+        it will be governed by the laws of your jurisdiction, without regard to conflict of law provisions, and brought in the courts of your domicile, unless applicable
+        law requires otherwise. Nothing in these Terms limits any consumer rights you may have under mandatory local law.
+      </p>
+
+      <h2 id="more">More important stuff</h2>
       <ul>
-        <li>Harass, threaten, stalk, dox, or encourage harm to any person.</li>
-        <li>Share sexual content involving minors, non-consensual intimate images, or content that exploits or endangers children.</li>
-        <li>Post hate speech, extremist propaganda, or content that incites violence.</li>
-        <li>Share malware, phishing links, scams, token grabbers, or attempt to steal accounts or credentials.</li>
-        <li>Spam, raid, flood, or abuse the Service or its APIs, including attempts to bypass rate limits.</li>
-        <li>Impersonate other people, servers, or Venband staff.</li>
-        <li>Reverse engineer, probe, or attack our systems except through our responsible disclosure process.</li>
-        <li>Use the Service to violate any law, third-party right, or the terms of a linked platform.</li>
+        <li>You have certain rights that by law cannot be limited by these Terms, and we do not intend to restrict them.</li>
+        <li>These Terms cover the entire agreement between you and Venband regarding your use of the Service.</li>
+        <li>If any part of these Terms is found invalid or unenforceable, the rest remains in effect.</li>
+        <li>You may not assign these Terms without our written consent. We may assign our rights to an affiliate or successor.</li>
+        <li>Provisions that by their nature should survive termination will survive, including our rights to retain certain data, amounts owed, indemnity, disclaimers, limitation of liability and dispute resolution.</li>
       </ul>
-      <p>Server owners may set additional rules; you must also follow the rules of any server you join.</p>
-      <h2 id="content">4. Your content</h2>
+
+      <h2 id="updates">Updates to these Terms</h2>
       <p>
-        You retain ownership of the content you post. You grant Venband a worldwide, non-exclusive, royalty-free license to store, process, transmit and display your content
-        as needed to operate and improve the Service. Messages are end-to-end encrypted; Venband cannot read their contents. Reports you submit may include the reported
-        messages so moderators can review them.
+        We may update these Terms to reflect changes to the Service or our business, for legal or regulatory reasons, to prevent abuse, or to better protect users. If
+        changes materially affect your use or your legal rights, we will give reasonable advance notice where possible. If you continue to use the Service after changes
+        take effect, you agree to the changes. If you do not agree, you must stop using the Service.
       </p>
+
+      <h2 id="contact">Contacting us</h2>
       <p>
-        You must follow the <L to="guidelines">Community Guidelines</L>. Venband and server owners may remove content that violates these Terms or their rules.
-      </p>
-      <h2 id="media">5. GIFs, emoji and media</h2>
-      <p>
-        GIF search is provided by third parties and server owners may upload emoji, GIFs, stickers and sounds. Server owners or founders may remove media from their
-        server. Venband may remove media that violates these Terms anywhere on the Service.
-      </p>
-      <h2 id="servers">6. Servers and moderation</h2>
-      <ul>
-        <li>Server owners are responsible for moderating their servers and setting their own rules on top of these Terms.</li>
-        <li>Venband may limit, suspend or remove accounts, servers or content that violate these Terms, and may review reported content.</li>
-        <li>If you believe we made an error, you may appeal using the notice on your account or server.</li>
-      </ul>
-      <h2 id="bots">7. Bots, API and Voogle</h2>
-      <ul>
-        <li>Keep bot tokens, webhook URLs and API credentials secret. Anyone who has them can act as your bot.</li>
-        <li>Bots cannot read end-to-end encrypted messages. Do not trick users into sharing messages or keys with a bot.</li>
-        <li>Do not use the API to spam, scrape profiles, evade rate limits, or circumvent security.</li>
-        <li>Voogle verification must only be used to protect servers from alternate accounts, raids and ban evasion — never to track people.</li>
-      </ul>
-      <h2 id="third-party">8. Third-party services and linked accounts</h2>
-      <p>
-        The Service may let you link accounts from third-party platforms such as YouTube, TikTok, Twitch, Steam, Roblox, Spotify, Discord, GitHub, Xbox, Instagram and Epic.
-        When you link an account, you authorize Venband to access the information and permissions you approve through that platform’s authorization screen. Your use of
-        each linked platform remains subject to that platform’s own terms and privacy policy. Venband is not affiliated with or endorsed by those platforms. You may unlink
-        an account at any time from Settings.
-      </p>
-      <h2 id="security">9. Security</h2>
-      <p>
-        Do not attempt to gain unauthorized access to accounts, servers or systems. If you discover a security vulnerability, report it privately through our security
-        advisory process instead of exploiting it.
-      </p>
-      <h2 id="ip">10. Open source and intellectual property</h2>
-      <p>
-        Venband’s source code is published under the MIT license. The license covers the code; it does not grant rights to other users’ content or accounts. You may not
-        use Venband’s name, logos or branding without permission.
-      </p>
-      <h2 id="privacy">11. Privacy</h2>
-      <p>
-        Our <L to="privacy">Privacy Policy</L> explains what we store and how we protect it. By using the Service you agree to that policy.
-      </p>
-      <h2 id="disclaimer">12. No warranty</h2>
-      <p>
-        Venband is provided “as is” and “as available.” We work hard to keep it running and secure, but we cannot guarantee uninterrupted, error-free or secure service.
-        To the fullest extent permitted by law, we disclaim all warranties, express or implied.
-      </p>
-      <h2 id="liability">13. Limitation of liability</h2>
-      <p>
-        To the fullest extent permitted by law, Venband and its contributors are not liable for indirect, incidental, special, consequential or punitive damages, or for
-        loss of data, profits or goodwill, arising from your use of the Service. Our total liability for any claim is limited to the amount you paid us, if any, in the
-        twelve months before the claim.
-      </p>
-      <h2 id="termination">14. Suspension and termination</h2>
-      <p>
-        We may suspend or terminate your account or access to the Service if you violate these Terms, create risk or legal exposure, or to protect other users. You may
-        delete your account at any time from Settings. Provisions that by their nature should survive will survive termination.
-      </p>
-      <h2 id="changes">15. Changes to these Terms</h2>
-      <p>
-        We may update these Terms. We will change the date above and, for material changes, notify you in the app or by other reasonable means. Your continued use of the
-        Service after a change means you accept the updated Terms.
-      </p>
-      <h2 id="contact">16. Contact</h2>
-      <p>
-        Questions about these Terms? Open an issue on our <a href={REPO_URL}>source code repository</a>.
+        Questions about these Terms? Contact us through our source code repository’s issue tracker. For technical support, submit a request there as well.
       </p>
       <p className="small muted">See also the <L to="privacy">Privacy Policy</L> and <L to="guidelines">Community Guidelines</L>.</p>
     </Doc>
   );
 }
+
 
 export function PrivacyPage() {
   return (
