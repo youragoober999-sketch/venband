@@ -127,8 +127,14 @@ export async function userFromRequest(request) {
   if (!base || !key) return null;
   const res = await fetch(`${base}/auth/v1/user`, { headers: { apikey: key, authorization: `Bearer ${token}` } });
   const user = res.ok ? await res.json() : null;
-  tokenCache.set(token, { user, until: Date.now() + 5 * 60_000 });
-  if (tokenCache.size > 5000) tokenCache.clear();
+  // Only cache successful lookups, and for a short window, so revoked tokens
+  // stop working quickly.
+  if (user) {
+    tokenCache.set(token, { user, until: Date.now() + 60_000 });
+    if (tokenCache.size > 5000) tokenCache.clear();
+  } else {
+    tokenCache.delete(token);
+  }
   return user;
 }
 

@@ -845,7 +845,7 @@ begin
     (select value from public.platform_config where key = 'ip_pepper') || '|' || v_ip, 'sha256'), 'hex');
   select count(*) into v_used from public.signup_ips s
   where s.ip_hash = v_hash and (s.user_id is null or exists (select 1 from auth.users u where u.id = s.user_id));
-  if v_used >= 6 then
+  if v_used >= 25 then
     return jsonb_build_object('error', jsonb_build_object(
       'http_code', 403, 'message', 'Too many accounts have been created from this network.'));
   end if;
