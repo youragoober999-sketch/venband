@@ -35,14 +35,13 @@ export async function readJson(request) {
 }
 
 export function json(status, body) {
-  return Response.json(body, { status, headers: { 'cache-control': 'no-store', 'access-control-allow-origin': '*' } });
+  return Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 }
 
 export function preflight() {
   return new Response(null, {
     status: 204,
     headers: {
-      'access-control-allow-origin': '*',
       'access-control-allow-methods': 'POST, OPTIONS',
       'access-control-allow-headers': 'authorization, content-type',
       'access-control-max-age': '86400',
