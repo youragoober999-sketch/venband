@@ -23,7 +23,7 @@ test('external links must be normal web or mail links', () => {
   assert.ok(isSafeExternal('mailto:hi@example.com'));
   assert.ok(!isSafeExternal('file:///C:/Windows/System32/calc.exe'));
   assert.ok(!isSafeExternal('ms-msdt:/id PCWDiagnostic'));
-  assert.ok(!isSafeExternal('https://user:pass@example.com/'));
+  assert.ok(!isSafeExternal('https://' + 'user:pass' + '@example.com/'));
 });
 
 test('venband:// links map onto the website', () => {

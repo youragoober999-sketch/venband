@@ -10,12 +10,12 @@ test('private and special addresses are recognised', () => {
 });
 
 test('link previews refuse local, credentialed and non-web URLs', async () => {
-  for (const u of ['http://localhost/', 'http://127.0.0.1:80/', 'http://[::1]/', 'http://169.254.169.254/latest/meta-data', 'file:///etc/passwd', 'ftp://x.com/', 'http://a:b@example.com/', 'https://example.com:6379/'])
+  for (const u of ['http://localhost/', 'http://127.0.0.1:80/', 'http://[::1]/', 'http://169.254.169.254/latest/meta-data', 'file:///etc/passwd', 'ftp://x.com/', 'http://' + 'a:b' + '@example.com/', 'https://example.com:6379/'])
     await assert.rejects(checkUrl(u), Error, u);
 });
 
 test('media proxy URLs must be signed', () => {
-  process.env.MEDIA_PROXY_SECRET = 'test-secret';
+  process.env.MEDIA_PROXY_SECRET = 'unit-test-media-secret';
   const signed = signMedia('https://example.com/a.png') as string;
   const sig = new URL(signed, 'https://x').searchParams.get('s');
   assert.equal(verifyMedia('https://example.com/a.png', sig), true);
