@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { isTopStaff } from '../lib/session';
 import { go } from '../lib/router';
 import { Icon, Field } from './ui';
-import { vdlListUsers, vdlListServers, vdlBanUser, vdlEraseUser, vdlListAudit, vdlListLedger, vdlRebuildLedger, vdlQueueEmail, vdlSendQueuedEmails, vdlStats } from '../lib/vdl';
+import { vdlListUsers, vdlListServers, vdlBanUser, vdlUnbanUser, vdlEraseUser, vdlListAudit, vdlListLedger, vdlVerifyLedger, vdlRebuildLedger, vdlQueueEmail, vdlSendQueuedEmails, vdlRetryFailedEmails, vdlStats, vdlHealth } from '../lib/vdl';
 import { vbbList, vbbUpload, vbbDelete, vbbPublish, vbbDownloadUrl, vbbListShards } from '../lib/vbb';
 
 function decodePayload(p: string): string {
@@ -151,24 +151,38 @@ export function StorageConsole() {
 
 function OverviewTab() {
   const [stats, setStats] = useState<any>(null);
+  const [health, setHealth] = useState<any>(null);
   const [err, setErr] = useState('');
   useEffect(() => {
     (async () => {
       try {
-        setStats(await vdlStats());
+        const [s, h] = await Promise.all([vdlStats(), vdlHealth()]);
+        setStats(s);
+        setHealth(h);
       } catch (e) {
         setErr(String((e as Error).message));
       }
     })();
   }, []);
+  const mb = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : `${(b / (1 << 20)).toFixed(1)} MB`);
   return (
     <div className="storage-overview">
       <div className="storage-card-grid">
         <StatCard label="Users" value={stats?.users ?? '—'} />
+        <StatCard label="New this week" value={stats?.new_users_7d ?? '—'} />
+        <StatCard label="Banned" value={stats?.banned ?? '—'} />
         <StatCard label="Servers" value={stats?.servers ?? '—'} />
-        <StatCard label="Storage objects" value={stats?.objects ?? '—'} />
+        <StatCard label="Messages" value={stats?.messages ?? '—'} />
+        <StatCard label="Storage objects" value={stats ? `${stats.objects} · ${mb(stats.object_bytes)}` : '—'} />
         <StatCard label="Ledger blocks" value={stats?.blocks ?? '—'} />
+        <StatCard label="Emails queued" value={stats?.emails_queued ?? '—'} />
       </div>
+      {health && (
+        <p className="small">
+          Database {health.ok ? `OK (${health.db_ms} ms)` : 'down'} · Sessions {!health.jwt_configured ? <b className="error">VDL_JWT_SECRET missing</b> : health.jwt_weak ? <b className="error">VDL_JWT_SECRET is short — use 32+ characters</b> : 'configured'} · Email{' '}
+          {health.email_configured ? `ready (${health.email_from || 'default from-address'})` : <b className="error">RESEND_API_KEY missing</b>}
+        </p>
+      )}
       {err && <p className="error small">{err}</p>}
       <p className="muted small">
         This console is restricted to owners and founders. All actions are audited. 100% local (Vercel Postgres + KV).
@@ -224,10 +238,17 @@ function TableTab() {
               <td>{u.account_status}</td>
               <td>{new Date(u.created_at).toLocaleString()}</td>
               <td className="storage-row-actions">
-                <button className="btn ghost small" onClick={async () => {
-                  if (!confirm('Ban this account?')) return;
-                  try { await vdlBanUser(u.id, 'storage console'); load(); } catch (e) { alert(String((e as Error).message)); }
-                }}>Ban</button>
+                {u.account_status === 'banned' ? (
+                  <button className="btn ghost small" onClick={async () => {
+                    try { await vdlUnbanUser(u.id, 'storage console'); load(); } catch (e) { alert(String((e as Error).message)); }
+                  }}>Unban</button>
+                ) : (
+                  <button className="btn ghost small" onClick={async () => {
+                    const reason = prompt('Ban this account? Reason (saved to the audit log):', 'storage console');
+                    if (reason === null) return;
+                    try { await vdlBanUser(u.id, reason); load(); } catch (e) { alert(String((e as Error).message)); }
+                  }}>Ban</button>
+                )}
                 <button className="btn ghost small danger" onClick={async () => {
                   if (!confirm('Permanently erase this account?')) return;
                   try { await vdlEraseUser(u.id); load(); } catch (e) { alert(String((e as Error).message)); }
@@ -334,10 +355,19 @@ function BlockchainTab() {
   const [rows, setRows] = useState<any[]>([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [integrity, setIntegrity] = useState('');
   const load = async () => {
     setBusy(true);
     try {
       setRows(await vdlListLedger());
+    } catch (e) { setErr(String((e as Error).message)); }
+    finally { setBusy(false); }
+  };
+  const verify = async () => {
+    setBusy(true); setIntegrity('');
+    try {
+      const v = await vdlVerifyLedger();
+      setIntegrity(v.ok ? `✓ Chain intact — ${v.blocks} blocks, head ${String(v.head).slice(0, 12)}…` : `✗ Chain broken at block #${v.broken_at}`);
     } catch (e) { setErr(String((e as Error).message)); }
     finally { setBusy(false); }
   };
@@ -355,8 +385,10 @@ function BlockchainTab() {
     <div>
       <div className="storage-toolbar">
         <button className="btn" onClick={load} disabled={busy}>Refresh</button>
+        <button className="btn ghost" onClick={verify} disabled={busy}>Verify integrity</button>
         <button className="btn ghost" onClick={rebuild} disabled={busy}>Rebuild ledger</button>
       </div>
+      {integrity && <p className="small">{integrity}</p>}
       {err && <p className="error small">{err}</p>}
       <p className="muted small">Append-only hash chain of user stats. Only owners/founders can decode.</p>
       <table className="storage-table">
@@ -385,8 +417,8 @@ function EmailTab() {
   const send = async () => {
     setMsg('');
     try {
-      await vdlQueueEmail(to, subject, body);
-      setMsg('Queued.');
+      const r = await vdlQueueEmail(to, subject, body);
+      setMsg(`Queued ${r.queued} email${r.queued === 1 ? '' : 's'}.`);
       setTo(''); setSubject(''); setBody('');
     } catch (e) { setMsg(String((e as Error).message)); }
   };
@@ -394,17 +426,26 @@ function EmailTab() {
     setMsg('');
     try {
       const r = await vdlSendQueuedEmails();
-      setMsg(`Sent ${r.sent}/${r.total}.`);
+      const firstErr = r.errors?.[0];
+      setMsg(r.total === 0 ? 'Nothing queued.' : `Sent ${r.sent}/${r.total}.${firstErr ? ` First error (${firstErr.to}): ${firstErr.error}` : ''}`);
+    } catch (e) { setMsg(String((e as Error).message)); }
+  };
+  const retryFailed = async () => {
+    setMsg('');
+    try {
+      const r = await vdlRetryFailedEmails();
+      setMsg(`Re-queued ${r.requeued} failed email${r.requeued === 1 ? '' : 's'}.`);
     } catch (e) { setMsg(String((e as Error).message)); }
   };
   return (
     <div className="storage-email">
-      <Field label="To"><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="user@example.com" /></Field>
+      <Field label="To"><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="user@example.com (comma-separate up to 50)" /></Field>
       <Field label="Subject"><input value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
       <Field label="Body"><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} /></Field>
       <div className="storage-toolbar">
         <button className="btn" onClick={send}>Queue email</button>
         <button className="btn ghost" onClick={sendQueued}>Send queued</button>
+        <button className="btn ghost" onClick={retryFailed}>Retry failed</button>
       </div>
       {msg && <p className="small">{msg}</p>}
       <p className="muted small">Sending uses Resend on the server (RESEND_API_KEY + STORAGE_EMAIL_FROM). From-address should be a subdomain of venband.com.</p>

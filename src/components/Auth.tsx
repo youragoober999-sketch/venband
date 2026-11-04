@@ -357,11 +357,21 @@ function Signup({ email, setEmail, setMode }: FormProps) {
   useEffect(() => {
     setAvailable(null);
     if (!usernameValid) return;
+    let cancelled = false;
     const t = setTimeout(async () => {
-      const { data } = await supabase.rpc('username_available', { p_username: username });
-      setAvailable(Boolean(data));
+      try {
+        const { data, error } = await supabase.rpc('username_available', { p_username: username });
+        if (cancelled) return;
+        // a failed check is "unknown", not "taken"; signup still picks a safe name server-side
+        setAvailable(error || typeof data !== 'boolean' ? null : data);
+      } catch {
+        if (!cancelled) setAvailable(null);
+      }
     }, 350);
-    return () => clearTimeout(t);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [username, usernameValid]);
 
   async function submit(e: FormEvent) {
