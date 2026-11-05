@@ -2626,3 +2626,92 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 
 .mac-dock-img { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; display: block; }
 .mac-dock-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
+
+/* ---- storage console: accounts explorer ---- */
+.su { display: flex; flex-direction: column; gap: 12px; }
+.su .tiny { font-size: 11px; }
+.su-spacer { flex: 1; }
+.su-sync { background: #0f1422; border: 1px solid #1f2740; border-radius: 10px; padding: 14px 16px; margin-bottom: 4px; }
+.su-sync.compact { margin-top: 12px; }
+.su-sync h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 15px; }
+.su-sync-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.su-sync-head p { margin: 0; max-width: 640px; }
+.su-sync-actions { display: flex; gap: 8px; }
+.su-sync-status { margin-top: 12px; }
+.su-progress { height: 6px; background: #1a2238; border-radius: 99px; overflow: hidden; }
+.su-progress > div { height: 100%; background: #2563eb; transition: width .4s ease; }
+.su-progress > div.done { background: #30a46c; }
+.su-progress > div.failed { background: #e5484d; }
+.su-sync-nums { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; align-items: center; color: #b6bdd0; }
+.su-warn { background: #2a2110; border: 1px solid #5c4513; color: #f5d08a; padding: 8px 10px; border-radius: 6px; margin: 10px 0 0; }
+.su-sync code { background: #00000055; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.su-sync .good { color: #4cc38a; }
+.su-sync .bad, .su .bad { color: #ff6b6b; }
+.su-sync .linklike, .su-drawer .linklike { background: none; border: 0; padding: 0; color: #7aa2ff; cursor: pointer; font: inherit; }
+.su-conflicts { margin-top: 10px; }
+.su-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.su-chip { display: inline-flex; align-items: center; gap: 6px; background: #0f1422; border: 1px solid #1f2740; color: #b6bdd0; border-radius: 99px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+.su-chip span { background: #1a2238; border-radius: 99px; padding: 0 7px; font-size: 11px; color: #e6e9ef; }
+.su-chip:hover { border-color: #33406a; color: #fff; }
+.su-chip.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+.su-chip.on span { background: #ffffff33; }
+.su-toolbar { flex-wrap: wrap; margin: 0; }
+.su-search { position: relative; display: flex; align-items: center; flex: 1 1 320px; min-width: 220px; color: #77809a; }
+.su-search > svg { position: absolute; left: 10px; }
+.su-search input { width: 100%; padding-left: 32px !important; padding-right: 28px !important; height: 34px; }
+.su-x { position: absolute; right: 6px; background: none; border: 0; color: #77809a; cursor: pointer; display: flex; }
+.su-toolbar select { height: 34px; }
+.su-toolbar a.btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.su-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #13203f; border: 1px solid #2563eb66; border-radius: 8px; padding: 8px 12px; }
+.su-notice { background: #10261b; border: 1px solid #1f5c3c; color: #8fe0b4; padding: 6px 10px; border-radius: 6px; margin: 0; cursor: pointer; }
+.su-table-wrap { overflow-x: auto; border: 1px solid #1f2740; border-radius: 10px; transition: opacity .15s; }
+.su-table-wrap.busy { opacity: .55; }
+.su-table { min-width: 860px; }
+.su-table tbody tr { cursor: pointer; }
+.su-table tbody tr:hover, .su-table tbody tr.open { background: #121a2e; }
+.su-table td { vertical-align: middle; }
+.su-check { width: 34px; }
+.su-user { display: flex; align-items: center; gap: 10px; min-width: 180px; }
+.su-name { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.su-avatar { border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex: none; object-fit: cover; }
+.su-role, .su-badge { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; background: #2b1f4d; color: #c4b2ff; border-radius: 4px; padding: 1px 6px; font-weight: 700; }
+.su-badge { background: #1a2238; color: #b6bdd0; }
+.su-copy { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; background: transparent; border: 1px solid transparent; color: inherit; border-radius: 6px; padding: 2px 6px; margin-left: -6px; cursor: pointer; font: inherit; font-size: 13px; }
+.su-copy.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #b6bdd0; }
+.su-copy-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+.su-copy svg { opacity: 0; flex: none; }
+.su-copy:hover { border-color: #1f2740; background: #0f1422; }
+.su-copy:hover svg { opacity: .8; }
+.su-flag { font-size: 10px; color: #f5d08a; background: #2a2110; border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
+.su-ok { font-size: 11px; color: #4cc38a; }
+.su-pill { display: inline-block; font-size: 11px; font-weight: 600; text-transform: capitalize; border-radius: 99px; padding: 2px 9px; background: #1a2238; color: #b6bdd0; white-space: nowrap; }
+.su-pill.su-active { background: #10261b; color: #4cc38a; }
+.su-pill.su-limited, .su-pill.su-very_limited { background: #2a2110; color: #f5d08a; }
+.su-pill.su-banned, .su-pill.su-deleted { background: #2d1416; color: #ff6b6b; }
+.su-empty { text-align: center; padding: 40px 10px !important; color: #77809a; }
+.su-pager { display: flex; align-items: center; gap: 8px; }
+.su-pager select { background: #0f1422; border: 1px solid #1f2740; color: #e6e9ef; padding: 5px 8px; border-radius: 6px; }
+.su-drawer-bg { position: fixed; inset: 0; background: #00000080; z-index: 50; display: flex; justify-content: flex-end; animation: su-fade .15s ease; }
+.su-drawer { position: relative; width: min(520px, 100vw); height: 100%; overflow-y: auto; background: #0b0f19; color: #e6e9ef; border-left: 1px solid #1f2740; padding: 22px; box-shadow: -20px 0 40px #0008; animation: su-slide .18s ease; }
+.su-drawer h4 { margin: 20px 0 8px; font-size: 13px; color: #b6bdd0; text-transform: uppercase; letter-spacing: .06em; }
+.su-drawer-close { position: absolute; top: 14px; right: 14px; background: #121a2e; border: 1px solid #1f2740; color: #e6e9ef; border-radius: 6px; padding: 6px; cursor: pointer; display: flex; }
+.su-drawer-head { display: flex; gap: 14px; align-items: center; padding-right: 36px; }
+.su-drawer-head h3 { margin: 0; font-size: 18px; }
+.su-drawer-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.su-linked { margin-top: 18px; background: #0f1422; border: 1px solid #1f2740; border-radius: 10px; padding: 12px 14px; }
+.su-linked-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #b6bdd0; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.su-linked-title .linklike { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.su-linked dl { display: grid; grid-template-columns: 90px 1fr; gap: 6px 10px; margin: 0; align-items: center; }
+.su-linked dt { color: #77809a; font-size: 12px; }
+.su-linked dd { margin: 0; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; }
+.su-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.su-grid > div { background: #0f1422; border: 1px solid #1f2740; border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.su-grid span { font-size: 11px; color: #77809a; }
+.su-grid b { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.su-about { margin: 12px 0 0; color: #b6bdd0; white-space: pre-wrap; }
+.su-drawer-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.su-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.su-history li { border-left: 2px solid #1f2740; padding-left: 10px; }
+@keyframes su-fade { from { opacity: 0; } }
+@keyframes su-slide { from { transform: translateX(24px); opacity: 0; } }
+@media (max-width: 700px) { .su-grid { grid-template-columns: 1fr; } .su-sync-actions { width: 100%; } }

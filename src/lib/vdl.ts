@@ -1,5 +1,7 @@
 // Venband Data Layer (VDL) client — fast, on-site backend on Vercel.
 // Auth is cookie-based (httpOnly); all requests are same-origin.
+import { deriveMasterKeys } from './crypto';
+
 const BASE = '/api/vdl';
 const TIMEOUT_MS = 15_000;
 
@@ -14,6 +16,58 @@ export interface VdlUser {
   account_status: string;
   created_at: string;
   last_sign_in_at?: string | null;
+  source?: 'supabase' | 'vdl' | string;
+  email_verified_at?: string | null;
+  is_anonymous?: boolean;
+  mfa_enabled?: boolean;
+  avatar_url?: string | null;
+  disposable?: boolean;
+  expires_at?: string | null;
+  banned_until?: string | null;
+  supabase_synced_at?: string | null;
+  upstream_deleted_at?: string | null;
+}
+
+export interface VdlUserDetail extends VdlUser {
+  password_scheme: string;
+  has_password: boolean;
+  phone: string | null;
+  about: string;
+  pronouns: string;
+  language: string;
+  providers: string[];
+  profile: Record<string, unknown>;
+  updated_at: string;
+}
+
+export interface VdlUserFacets {
+  all: number; active: number; limited: number; banned: number; supabase: number; vdl: number;
+  unverified: number; anonymous: number; staff: number; upstream_deleted: number; active_30d: number;
+}
+
+export interface VdlUserQuery {
+  q?: string;
+  status?: '' | 'active' | 'limited' | 'banned';
+  source?: '' | 'supabase' | 'vdl';
+  kind?: '' | 'verified' | 'unverified' | 'anonymous' | 'staff' | 'mfa' | 'upstream_deleted' | 'active_30d';
+  sort?: 'newest' | 'oldest' | 'recent_sign_in' | 'username' | 'email';
+  limit?: number;
+  offset?: number;
+}
+
+export interface VdlSyncRun {
+  id: string;
+  status: 'running' | 'done' | 'failed' | 'abandoned';
+  total: number | null;
+  scanned: number;
+  inserted: number;
+  updated: number;
+  conflicts: { id: string; email: string | null; username: string; reason: string; other_id: string }[];
+  upstream_deleted: number;
+  error: string | null;
+  trigger: string;
+  started_at: string;
+  finished_at: string | null;
 }
 
 export interface VdlStats {
@@ -33,24 +87,26 @@ export class VdlError extends Error {
   status: number;
   field?: string;
   suggestion?: string | null;
-  constructor(message: string, status: number, extra: { field?: string; suggestion?: string | null } = {}) {
+  retryLegacy?: boolean;
+  constructor(message: string, status: number, extra: { field?: string; suggestion?: string | null; retry_legacy?: boolean } = {}) {
     super(message);
     this.name = 'VdlError';
     this.status = status;
     this.field = extra.field;
     this.suggestion = extra.suggestion;
+    this.retryLegacy = Boolean(extra.retry_legacy);
   }
 }
 
 type Query = Record<string, string | number | boolean | undefined | null>;
 
-async function call<T>(resource: string, opts: { action?: string; query?: Query; body?: unknown } = {}): Promise<T> {
+async function call<T>(resource: string, opts: { action?: string; query?: Query; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
   const qs = new URLSearchParams({ r: resource });
   if (opts.action) qs.set('action', opts.action);
   for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
   const isPost = opts.action !== undefined || opts.body !== undefined;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? TIMEOUT_MS);
   let r: Response;
   try {
     r = await fetch(`${BASE}?${qs}`, {
@@ -68,20 +124,48 @@ async function call<T>(resource: string, opts: { action?: string; query?: Query;
   }
   let j: any = null;
   try { j = await r.json(); } catch { /* non-JSON (e.g. a platform error page) */ }
-  if (!r.ok) throw new VdlError(j?.error || `Request failed (${r.status})`, r.status, { field: j?.field, suggestion: j?.suggestion });
+  if (!r.ok) throw new VdlError(j?.error || `Request failed (${r.status})`, r.status, { field: j?.field, suggestion: j?.suggestion, retry_legacy: j?.retry_legacy });
   return j as T;
 }
 
 // ---------------------------------------------------------------- auth --
+// Passwords never leave the device: like the Supabase flow, the client derives
+// `authPassword` with Argon2id(email) and only that is sent. It is exactly the
+// value Supabase Auth hashed, so accounts synced from Supabase sign in unchanged.
+
+async function authKey(email: string, password: string) {
+  return (await deriveMasterKeys(email, password)).authPassword;
+}
 
 export async function vdlSignup(email: string, password: string, username: string, displayName?: string) {
-  const j = await call<{ user: VdlUser }>('auth', { action: 'signup', body: { email, password, username, display_name: displayName } });
+  const j = await call<{ user: VdlUser }>('auth', { action: 'signup', body: { email, password: await authKey(email, password), username, display_name: displayName } });
   return j.user;
 }
 
-export async function vdlSignin(email: string, password: string) {
-  const j = await call<{ user: VdlUser }>('auth', { action: 'signin', body: { email, password } });
-  return j.user;
+/** Username or email -> account email (VDL's replacement for Supabase resolve_login). */
+export async function vdlResolve(identifier: string) {
+  return call<{ found: boolean; email?: string | null; username?: string; banned?: boolean }>('auth', { action: 'resolve', body: { identifier } });
+}
+
+/** Sign in with an email or a username. */
+export async function vdlSignin(identifier: string, password: string) {
+  let email = identifier.trim();
+  if (!email.includes('@')) {
+    const hit = await vdlResolve(email);
+    if (!hit.found || !hit.email) throw new VdlError('No account with that username or email.', 404);
+    if (hit.banned) throw new VdlError(`@${hit.username} is banned.`, 403);
+    email = hit.email;
+  }
+  const key = await authKey(email, password);
+  try {
+    return (await call<{ user: VdlUser }>('auth', { action: 'signin', body: { email, password: key } })).user;
+  } catch (e) {
+    // old console-only accounts were created before on-device key derivation
+    if (e instanceof VdlError && e.status === 401 && (e as any).retryLegacy) {
+      return (await call<{ user: VdlUser }>('auth', { action: 'signin', body: { email, password: key, legacy_password: password } })).user;
+    }
+    throw e;
+  }
 }
 
 export async function vdlSignout() {
@@ -104,20 +188,52 @@ export async function vdlToken(): Promise<string | null> {
 
 // --------------------------------------------------------------- users --
 
-export async function vdlListUsers(q = '', opts: { limit?: number; offset?: number; status?: string } = {}): Promise<VdlUser[]> {
-  return (await vdlListUsersPage(q, opts)).users;
+export async function vdlListUsers(q = '', opts: Omit<VdlUserQuery, 'q'> = {}): Promise<VdlUser[]> {
+  return (await vdlQueryUsers({ q, ...opts })).users;
 }
 
-export async function vdlListUsersPage(q = '', opts: { limit?: number; offset?: number; status?: string } = {}) {
-  return call<{ users: VdlUser[]; total: number; limit: number; offset: number }>('users', { query: { q, ...opts } });
+export async function vdlQueryUsers(query: VdlUserQuery) {
+  return call<{ users: VdlUser[]; total: number; limit: number; offset: number; facets: VdlUserFacets }>('users', { query: { ...query } });
+}
+
+/** URL that downloads every account matching the filters (cookie auth, so a plain link works). */
+export function vdlExportUrl(format: 'csv' | 'json', query: VdlUserQuery = {}) {
+  const qs = new URLSearchParams({ r: 'users', format });
+  for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== '' && k !== 'limit' && k !== 'offset') qs.set(k, String(v));
+  return `${BASE}?${qs}`;
+}
+
+export async function vdlGetUser(id: string) {
+  return call<{ user: VdlUserDetail; history: any[]; counts: { servers: number; messages: number; files: number } }>('user', { query: { id } });
+}
+
+export async function vdlSetStatus(ids: string | string[], status: 'active' | 'limited' | 'very_limited' | 'banned', reason = '') {
+  return call<{ ok: true; updated: number; warnings: string[] }>('users', { action: 'set_status', body: { ids: Array.isArray(ids) ? ids : [ids], status, reason } });
 }
 
 export async function vdlBanUser(id: string, reason = ''): Promise<void> {
-  await call('users', { action: 'ban', body: { id, reason } });
+  await vdlSetStatus(id, 'banned', reason);
 }
 
 export async function vdlUnbanUser(id: string, reason = ''): Promise<void> {
-  await call('users', { action: 'unban', body: { id, reason } });
+  await vdlSetStatus(id, 'active', reason);
+}
+
+// ---------------------------------------------------------------- sync --
+
+export async function vdlSyncStatus() {
+  return call<{ configured: boolean; runs: VdlSyncRun[] }>('sync');
+}
+
+/** Pull every Supabase account into VDL. Calls `onProgress` after each ~25 s chunk. */
+export async function vdlSyncFromSupabase(onProgress?: (run: VdlSyncRun) => void, fresh = false): Promise<VdlSyncRun> {
+  let { run } = await call<{ run: VdlSyncRun }>('sync', { action: 'start', body: { fresh }, timeoutMs: 58_000 });
+  onProgress?.(run);
+  while (run.status === 'running') {
+    ({ run } = await call<{ run: VdlSyncRun }>('sync', { action: 'step', body: { run_id: run.id }, timeoutMs: 58_000 }));
+    onProgress?.(run);
+  }
+  return run;
 }
 
 export async function vdlEraseUser(id: string): Promise<void> {

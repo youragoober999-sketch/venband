@@ -74,8 +74,15 @@
     {
       "path": "/api/cleanup-disposable",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/vdl?r=cron",
+      "schedule": "30 3 * * *"
     }
   ],
+  "functions": {
+    "api/vdl.js": { "maxDuration": 60 }
+  },
   "rewrites": [
     {
       "source": "/o/:id",

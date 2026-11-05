@@ -8,6 +8,8 @@ import { go } from '../lib/router';
 import { Icon, Field } from './ui';
 import { vdlListUsers, vdlListServers, vdlBanUser, vdlUnbanUser, vdlEraseUser, vdlListAudit, vdlListLedger, vdlVerifyLedger, vdlRebuildLedger, vdlQueueEmail, vdlSendQueuedEmails, vdlRetryFailedEmails, vdlStats, vdlHealth } from '../lib/vdl';
 import { vbbList, vbbUpload, vbbDelete, vbbPublish, vbbDownloadUrl, vbbListShards } from '../lib/vbb';
+import { vdlSignin } from '../lib/vdl';
+import { UsersExplorer, SyncPanel } from './StorageUsers';
 
 function decodePayload(p: string): string {
   try {
@@ -45,8 +47,8 @@ interface Tab { id: string; label: string; icon: string }
 
 const TABS: Tab[] = [
   { id: 'overview', label: 'Overview', icon: 'home' },
+  { id: 'auth', label: 'Accounts', icon: 'users' },
   { id: 'table', label: 'Table Editor', icon: 'file' },
-  { id: 'auth', label: 'Authentication', icon: 'users' },
   { id: 'vbb', label: 'Storage', icon: 'folder' },
   { id: 'sql', label: 'SQL Editor', icon: 'code' },
   { id: 'logs', label: 'Logs', icon: 'history' },
@@ -78,10 +80,7 @@ export function StorageConsole() {
     e.preventDefault();
     setBusy(true); setAuthErr('');
     try {
-      const r = await fetch('/api/vdl?r=auth&action=signin', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'include', body: JSON.stringify({ email, password }) });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'sign in failed');
-      setMe(j.user);
+      setMe(await vdlSignin(email, password));
     } catch (e) { setAuthErr(String((e as Error).message)); }
     finally { setBusy(false); }
   };
@@ -92,8 +91,8 @@ export function StorageConsole() {
       <div className="storage-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <form onSubmit={signIn} className="storage-auth-form">
           <h2>Venband Storage</h2>
-          <p className="muted small">Sign in with a VDL account (owner/founder).</p>
-          <Field label="Email"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
+          <p className="muted small">Owners and founders: sign in with your normal Venband email or username and password.</p>
+          <Field label="Email or username"><input autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
           <Field label="Password"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
           {authErr && <p className="error small">{authErr}</p>}
           <button className="btn" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
@@ -184,6 +183,7 @@ function OverviewTab() {
         </p>
       )}
       {err && <p className="error small">{err}</p>}
+      <SyncPanel compact />
       <p className="muted small">
         This console is restricted to owners and founders. All actions are audited. 100% local (Vercel Postgres + KV).
       </p>
@@ -278,34 +278,7 @@ function TableTab() {
 }
 
 function AuthTab() {
-  const [users, setUsers] = useState<any[]>([]);
-  const [err, setErr] = useState('');
-  useEffect(() => {
-    (async () => {
-      try {
-        setUsers(await vdlListUsers());
-      } catch (e) { setErr(String((e as Error).message)); }
-    })();
-  }, []);
-  return (
-    <div>
-      <p className="muted small">Authentication users (VDL — fully local).</p>
-      {err && <p className="error small">{err}</p>}
-      <table className="storage-table">
-        <thead><tr><th>Email</th><th>Username</th><th>User ID</th><th>Created</th></tr></thead>
-        <tbody>
-          {users.map((u) => (
-            <tr key={u.id}>
-              <td>{u.email}</td>
-              <td>{u.username}</td>
-              <td className="mono small">{u.id}</td>
-              <td>{u.created_at ? new Date(u.created_at).toLocaleString() : '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  return <UsersExplorer />;
 }
 function SqlTab() {
   return (

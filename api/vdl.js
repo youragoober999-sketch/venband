@@ -5,7 +5,8 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { sql, json, preflight, readJson, ensureSchema, cookieHeader } from '../lib/vdl-db.js';
-import { vdlUser, isTopStaff, signSession, rateLimited, clientIp, SECRET, SECRET_WEAK, SESSION_TTL, USER_COLUMNS } from '../lib/vdl-auth.js';
+import { vdlUser, isTopStaff, isBanned, signSession, rateLimited, clientIp, SECRET, SECRET_WEAK, SESSION_TTL, USER_COLUMNS } from '../lib/vdl-auth.js';
+import { supabaseAdminConfig, startOrResumeRun, stepRun, writeThroughProfile } from '../lib/vdl-sync.js';
 
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
 const USERNAME_RE = /^[a-z0-9_.]{2,32}$/;
@@ -48,7 +49,7 @@ const GETS = {
     await sql`select 1`;
     const base = { ok: true, db_ms: Date.now() - t };
     if (!isTopStaff(me)) return base;
-    return { ...base, jwt_configured: Boolean(SECRET), jwt_weak: SECRET_WEAK,email_configured: Boolean(process.env.RESEND_API_KEY), email_from: process.env.STORAGE_EMAIL_FROM || null };
+    return { ...base, jwt_configured: Boolean(SECRET), jwt_weak: SECRET_WEAK, supabase_sync_configured: Boolean(supabaseAdminConfig()), email_configured: Boolean(process.env.RESEND_API_KEY), email_from: process.env.STORAGE_EMAIL_FROM || null };
   },
 
   async version({ request }) {
@@ -88,27 +89,66 @@ const GETS = {
 
   async users({ me, q }) {
     need(me, 401, 'not signed in');
-    if (!isTopStaff(me)) return { users: [me] };
-    const term = (q.get('q') || '').trim().slice(0, 100);
-    const limit = clampInt(q.get('limit'), 100, 1, 500);
-    const offset = clampInt(q.get('offset'), 0, 0, 1_000_000);
-    const status = q.get('status');
-    const params = [];
-    const where = [];
-    if (term) {
-      params.push(`%${term}%`);
-      const n = params.length;
-      if (UUID_RE.test(term)) params.push(term);
-      where.push(`(username ilike $${n} or display_name ilike $${n} or email ilike $${n}${UUID_RE.test(term) ? ` or id = $${n + 1}::uuid` : ''})`);
+    if (!isTopStaff(me)) return { users: [me], total: 1, limit: 1, offset: 0 };
+    const { where, params } = userFilters(q);
+    const sort = USER_SORTS[q.get('sort')] || USER_SORTS.newest;
+    const format = q.get('format');
+
+    if (format === 'csv' || format === 'json') {
+      // full export of everything matching the filters (never includes password hashes)
+      const { rows } = await sql.query(`select ${USER_COLUMNS}, badges from vdl_users ${where} order by ${sort} limit 200000`, params);
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      if (format === 'json') {
+        return new Response(JSON.stringify(rows, null, 2), { status: 200, headers: { 'content-type': 'application/json', 'content-disposition': `attachment; filename="venband-accounts-${stamp}.json"`, 'cache-control': 'no-store' } });
+      }
+      const cols = ['id', 'username', 'display_name', 'email', 'email_verified_at', 'account_status', 'platform_role', 'badges', 'source', 'is_anonymous', 'disposable', 'mfa_enabled', 'created_at', 'last_sign_in_at', 'upstream_deleted_at'];
+      const cell = (v) => {
+        if (v === null || v === undefined) return '';
+        const s = Array.isArray(v) ? v.join(' ') : v instanceof Date ? v.toISOString() : String(v);
+        return /[",\n\r]/.test(s) || /^[=+\-@]/.test(s) ? `"${(/^[=+\-@]/.test(s) ? "'" : '') + s.replace(/"/g, '""')}"` : s; // also blocks CSV formula injection
+      };
+      const csv = [cols.join(','), ...rows.map((r) => cols.map((c) => cell(r[c])).join(','))].join('\r\n');
+      return new Response('﻿' + csv, { status: 200, headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="venband-accounts-${stamp}.csv"`, 'cache-control': 'no-store' } });
     }
-    if (status) { params.push(status); where.push(`account_status = $${params.length}`); }
-    params.push(limit, offset);
-    const { rows } = await sql.query(
-      `select ${USER_COLUMNS}, count(*) over()::int as total from vdl_users ${where.length ? 'where ' + where.join(' and ') : ''} order by created_at desc limit $${params.length - 1} offset $${params.length}`,
-      params,
-    );
-    const total = rows[0]?.total ?? 0;
-    return { users: rows.map(({ total: _t, ...r }) => r), total, limit, offset };
+
+    const limit = clampInt(q.get('limit'), 50, 1, 500);
+    const offset = clampInt(q.get('offset'), 0, 0, 10_000_000);
+    const p = [...params, limit, offset];
+    const [{ rows }, { rows: [facets] }] = await Promise.all([
+      sql.query(`select ${USER_COLUMNS}, count(*) over()::int as total from vdl_users ${where} order by ${sort} limit $${p.length - 1} offset $${p.length}`, p),
+      sql`select count(*)::int as all,
+            count(*) filter (where account_status = 'active')::int as active,
+            count(*) filter (where account_status in ('limited', 'very_limited'))::int as limited,
+            count(*) filter (where account_status = 'banned' or banned_until > now())::int as banned,
+            count(*) filter (where source = 'supabase')::int as supabase,
+            count(*) filter (where source <> 'supabase')::int as vdl,
+            count(*) filter (where email_verified_at is null and not is_anonymous)::int as unverified,
+            count(*) filter (where is_anonymous or disposable)::int as anonymous,
+            count(*) filter (where platform_role <> 'user' or cardinality(badges) > 0)::int as staff,
+            count(*) filter (where upstream_deleted_at is not null)::int as upstream_deleted,
+            count(*) filter (where last_sign_in_at > now() - interval '30 days')::int as active_30d
+          from vdl_users`,
+    ]);
+    const total = rows[0]?.total ?? (offset ? undefined : 0);
+    return { users: rows.map(({ total: _t, ...r }) => r), total: total ?? 0, limit, offset, facets };
+  },
+
+  async user({ me, q }) {
+    need(isTopStaff(me), 403, 'top staff only');
+    const id = uuid(q.get('id'));
+    const { rows: [u] } = await sql.query(`select ${USER_COLUMNS}, password_scheme, (password_hash is not null) as has_password, phone, about, pronouns, language, providers, profile, updated_at from vdl_users where id = $1`, [id]);
+    need(u, 404, 'user not found');
+    const [{ rows: history }, { rows: [counts] }] = await Promise.all([
+      sql`select a.id, a.action, a.detail, a.reason, a.created_at, actor.username as actor from vdl_audit_log a left join vdl_users actor on actor.id = a.actor_id where a.target_user = ${id} or a.actor_id = ${id} order by a.created_at desc limit 50`,
+      sql`select (select count(*)::int from vdl_memberships where user_id = ${id}) as servers, (select count(*)::int from vdl_messages where author_id = ${id}) as messages, (select count(*)::int from vbb_objects where owner_id = ${id}) as files`,
+    ]);
+    return { user: u, history, counts };
+  },
+
+  async sync({ me }) {
+    need(isTopStaff(me), 403, 'top staff only');
+    const { rows } = await sql`select * from vdl_sync_runs order by started_at desc limit 20`;
+    return { configured: Boolean(supabaseAdminConfig()), runs: rows };
   },
 
   async servers({ me, q }) {
@@ -175,6 +215,47 @@ const GETS = {
   },
 };
 
+const USER_SORTS = {
+  newest: 'created_at desc, id',
+  oldest: 'created_at asc, id',
+  recent_sign_in: 'last_sign_in_at desc nulls last, id',
+  username: 'username asc',
+  email: 'email asc nulls last, id',
+};
+
+/** Build a parameterised WHERE clause from the explorer's filters. */
+function userFilters(q) {
+  const params = [];
+  const where = [];
+  const add = (v) => { params.push(v); return `$${params.length}`; };
+  const term = (q.get('q') || '').trim().slice(0, 100);
+  if (term) {
+    if (UUID_RE.test(term)) where.push(`id = ${add(term)}::uuid`);
+    else {
+      const t = add(`%${term.replace(/[\\%_]/g, (c) => '\\' + c)}%`);
+      where.push(`(username ilike ${t} or display_name ilike ${t} or email ilike ${t} or id::text ilike ${t})`);
+    }
+  }
+  const status = q.get('status');
+  if (status === 'banned') where.push(`(account_status = 'banned' or banned_until > now())`);
+  else if (status === 'limited') where.push(`account_status in ('limited', 'very_limited')`);
+  else if (status === 'active') where.push(`account_status = 'active'`);
+  const source = q.get('source');
+  if (source === 'supabase') where.push(`source = 'supabase'`);
+  else if (source === 'vdl') where.push(`source <> 'supabase'`);
+  const kind = q.get('kind');
+  if (kind === 'unverified') where.push(`email_verified_at is null and not is_anonymous`);
+  else if (kind === 'verified') where.push(`email_verified_at is not null`);
+  else if (kind === 'anonymous') where.push(`(is_anonymous or disposable)`);
+  else if (kind === 'staff') where.push(`(platform_role <> 'user' or cardinality(badges) > 0)`);
+  else if (kind === 'mfa') where.push(`mfa_enabled`);
+  else if (kind === 'upstream_deleted') where.push(`upstream_deleted_at is not null`);
+  else if (kind === 'active_30d') where.push(`last_sign_in_at > now() - interval '30 days'`);
+  const since = q.get('created_after');
+  if (since && !Number.isNaN(Date.parse(since))) where.push(`created_at >= ${add(since)}::timestamptz`);
+  return { where: where.length ? 'where ' + where.join(' and ') : '', params };
+}
+
 function verifyChain(rows) {
   let prev = '0'.repeat(64);
   for (let i = 0; i < rows.length; i++) {
@@ -216,7 +297,7 @@ const POSTS = {
       const hash = await bcrypt.hash(password, 11);
       let user;
       try {
-        ({ rows: [user] } = await sql.query(`insert into vdl_users (email, password_hash, username, display_name) values ($1, $2, $3, $4) returning ${USER_COLUMNS}`, [email, hash, username, display]));
+        ({ rows: [user] } = await sql.query(`insert into vdl_users (email, password_hash, password_scheme, username, display_name) values ($1, $2, 'derived', $3, $4) returning ${USER_COLUMNS}`, [email, hash, username, display]));
       } catch (e) {
         if (e?.code === '23505') { // raced with another signup
           const field = /email/i.test(e.constraint || e.detail || '') ? 'email' : 'username';
@@ -228,19 +309,45 @@ const POSTS = {
       return withSession({ user }, await signSession(user));
     },
 
+    // `password` is the key the client derives on-device (deriveMasterKeys().authPassword) —
+    // exactly what Supabase Auth stored, so imported accounts keep working unchanged.
+    // `legacy_password` is only accepted for old console-only accounts made with a raw password.
     async signin({ body, request }) {
       need(SECRET, 503, 'VDL_JWT_SECRET is not set on the server');
-      const email = String(body.email || '').trim().toLowerCase();
+      const ident = String(body.email || body.identifier || '').trim().toLowerCase();
       const password = String(body.password || '');
-      need(email && password, 400, 'Email and password required.');
-      if (await rateLimited(`signin:${clientIp(request)}:${email}`, 10, 900)) fail(429, 'Too many attempts. Wait 15 minutes and try again.');
-      const { rows } = await sql`select * from vdl_users where lower(email) = ${email}`;
+      need(ident && password, 400, 'Email (or username) and password required.');
+      if (await rateLimited(`signin:${clientIp(request)}:${ident}`, 10, 900)) fail(429, 'Too many attempts. Wait 15 minutes and try again.');
+      const { rows } = ident.includes('@')
+        ? await sql`select * from vdl_users where lower(email) = ${ident}`
+        : await sql`select * from vdl_users where lower(username) = ${ident}`;
       const user = rows[0];
-      const ok = await bcrypt.compare(password, user?.password_hash || (await getDummyHash()));
-      if (!user || !ok) fail(401, 'That email and password don’t match an account.');
-      if (user.account_status === 'banned') fail(403, 'This account has been banned.');
+      let ok = await bcrypt.compare(password, user?.password_hash || (await getDummyHash()));
+      if (!ok && user?.password_scheme === 'raw' && typeof body.legacy_password === 'string' && user.password_hash) {
+        ok = await bcrypt.compare(body.legacy_password, user.password_hash);
+        if (ok) await sql`update vdl_users set password_hash = ${await bcrypt.hash(password, 11)}, password_scheme = 'derived' where id = ${user.id}`; // upgrade
+      }
+      if (!user || !ok) fail(401, 'That email and password don’t match an account.', user?.password_scheme === 'raw' ? { retry_legacy: true } : undefined);
+      if (isBanned(user)) fail(403, 'This account has been banned.', { banned: true, username: user.username });
+      if (user.upstream_deleted_at) fail(403, 'This account was deleted.');
+      if (user.source === 'supabase' && !user.email_verified_at && !user.is_anonymous) fail(403, 'Confirm your email first — check your inbox for the link.', { unverified: true });
       await sql`update vdl_users set last_sign_in_at = now() where id = ${user.id}`;
+      await audit(user.id, 'signin', { user: user.id });
       return withSession({ user: publicUser(user) }, await signSession(user));
+    },
+
+    // VDL replacement for Supabase's resolve_login(): username -> email (needed because the
+    // client derives the password key from the email), plus a ban flag for a friendly message.
+    async resolve({ body, request }) {
+      const ident = String(body.identifier || '').trim().toLowerCase();
+      need(ident, 400, 'identifier required');
+      if (await rateLimited(`resolve:${clientIp(request)}`, 20, 600)) fail(429, 'Too many login attempts. Please wait a few minutes and try again.');
+      const { rows } = ident.includes('@')
+        ? await sql`select email, username, account_status, banned_until from vdl_users where lower(email) = ${ident}`
+        : USERNAME_RE.test(ident) ? await sql`select email, username, account_status, banned_until from vdl_users where lower(username) = ${ident}` : { rows: [] };
+      const u = rows[0];
+      if (!u) return { found: false };
+      return { found: true, email: u.email, username: u.username, banned: Boolean(isBanned(u)) };
     },
 
     async signout() {
@@ -266,34 +373,51 @@ const POSTS = {
   },
 
   users: {
-    async ban({ me, body }) {
+    // active | limited | very_limited | banned. Mirrored to Supabase so the next sync keeps it.
+    async set_status({ me, body }) {
       need(isTopStaff(me), 403, 'top staff only');
-      const id = uuid(body.id);
-      need(id !== me.id, 400, 'You can’t ban yourself.');
-      const { rows } = await sql`select platform_role, badges from vdl_users where id = ${id}`;
-      need(rows.length, 404, 'user not found');
-      need(!isTopStaff(rows[0]), 403, 'Owners and founders can’t be banned from the console.');
-      await sql`update vdl_users set account_status = 'banned' where id = ${id}`;
-      await audit(me.id, 'ban', { user: id, reason: body.reason || 'storage console' });
-      return { ok: true };
+      const ids = (Array.isArray(body.ids) ? body.ids : [body.id]).slice(0, 500).map((v) => uuid(v));
+      const status = String(body.status || '');
+      need(['active', 'limited', 'very_limited', 'banned'].includes(status), 400, 'status must be active, limited, very_limited or banned');
+      need(!ids.includes(me.id), 400, 'You can’t change your own account status.');
+      const { rows: targets } = await sql.query(`select id, source, platform_role, badges from vdl_users where id = any($1::uuid[])`, [ids]);
+      need(targets.length === ids.length, 404, 'one or more users were not found');
+      need(!targets.some(isTopStaff), 403, 'Owners and founders can’t be changed from the console.');
+      await sql.query(`update vdl_users set account_status = $2, updated_at = now() where id = any($1::uuid[])`, [ids, status]);
+      const warnings = [];
+      for (const t of targets.filter((x) => x.source === 'supabase')) {
+        try { await writeThroughProfile(t.id, { account_status: status }); } catch (e) { warnings.push(e.message); }
+      }
+      for (const id of ids) await audit(me.id, `status:${status}`, { user: id, reason: body.reason || 'storage console' });
+      return { ok: true, updated: ids.length, warnings: warnings.slice(0, 3) };
     },
-    async unban({ me, body }) {
-      need(isTopStaff(me), 403, 'top staff only');
-      const id = uuid(body.id);
-      await sql`update vdl_users set account_status = 'active' where id = ${id}`;
-      await audit(me.id, 'unban', { user: id, reason: body.reason || 'storage console' });
-      return { ok: true };
-    },
+    async ban(ctx) { return POSTS.users.set_status({ ...ctx, body: { ...ctx.body, status: 'banned' } }); },
+    async unban(ctx) { return POSTS.users.set_status({ ...ctx, body: { ...ctx.body, status: 'active' } }); },
     async erase({ me, body }) {
       need(isTopStaff(me), 403, 'top staff only');
       const id = uuid(body.id);
       need(id !== me.id, 400, 'You can’t erase your own account from here.');
-      const { rows } = await sql`select username, platform_role, badges from vdl_users where id = ${id}`;
+      const { rows } = await sql`select username, platform_role, badges, source, upstream_deleted_at from vdl_users where id = ${id}`;
       need(rows.length, 404, 'user not found');
       need(!isTopStaff(rows[0]), 403, 'Owners and founders can’t be erased from the console.');
+      need(rows[0].source !== 'supabase' || rows[0].upstream_deleted_at, 409, 'This account still exists in Supabase, so the next sync would bring it back. Ban it instead, or delete it in Supabase first.');
       await audit(me.id, 'erase', { user: id, detail: rows[0].username, reason: body.reason || 'storage console' });
       await sql`delete from vdl_users where id = ${id}`;
       return { ok: true };
+    },
+  },
+
+  sync: {
+    // console-driven: start (or resume) a run, then call `step` until status is 'done'
+    async start({ me, body }) {
+      need(isTopStaff(me), 403, 'top staff only');
+      const run = await startOrResumeRun({ actor: me.id, trigger: 'manual', fresh: Boolean(body.fresh) });
+      await audit(me.id, 'sync_start', { detail: `run ${run.id}` });
+      return { run: await stepRun(run.id, 25_000) };
+    },
+    async step({ me, body }) {
+      need(isTopStaff(me), 403, 'top staff only');
+      return { run: await stepRun(uuid(body.run_id, 'run_id'), 25_000) };
     },
   },
 
@@ -455,6 +579,18 @@ function errorResponse(e) {
   return json(500, { error: 'Something went wrong on our side. Try again in a moment.' });
 }
 
+// Daily Vercel cron (vercel.json). Vercel sends `Authorization: Bearer $CRON_SECRET`.
+async function cronSync(request) {
+  const secret = process.env.CRON_SECRET;
+  const given = request.headers.get('authorization') || '';
+  const expected = `Bearer ${secret}`;
+  if (!secret || given.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected))) return json(401, { error: 'unauthorized' });
+  if (!supabaseAdminConfig()) return json(200, { skipped: 'supabase sync not configured' });
+  const run = await startOrResumeRun({ trigger: 'cron' });
+  const done = await stepRun(run.id, 50_000); // a later cron resumes if a huge user base doesn't finish
+  return json(200, { run: done });
+}
+
 export function OPTIONS() { return preflight(); }
 
 export async function GET(request) {
@@ -462,10 +598,12 @@ export async function GET(request) {
     await ensureSchema();
     const q = new URL(request.url).searchParams;
     const r = q.get('r') || 'auth';
+    if (r === 'cron') return cronSync(request);
     const handler = Object.hasOwn(GETS, r) ? GETS[r] : null;
     if (!handler) return json(400, { error: `unknown resource “${r}”` });
     const me = await vdlUser(request);
-    return json(200, await handler({ request, q, me }));
+    const out = await handler({ request, q, me });
+    return out instanceof Response ? out : json(200, out);
   } catch (e) { return errorResponse(e); }
 }
 
