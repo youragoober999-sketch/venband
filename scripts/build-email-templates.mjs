@@ -54,8 +54,10 @@ function layout({ preheader, title, body, action, fallbackUrl, footnote }) {
           <tr>
             <td align="center" style="padding:0 0 24px">
               <a href="${SITE}" target="_blank" style="text-decoration:none">
-                <img src="${LOGO}" width="56" height="56" alt="Venband" style="display:block;width:56px;height:56px;border:1px solid ${C.line};border-radius:14px">
+                <!-- if the email app blocks images, the alt text renders as a styled "V" tile instead of a broken icon -->
+                <img src="${LOGO}" width="56" height="56" alt="V" style="display:block;width:56px;height:56px;border:1px solid ${C.line};border-radius:14px;background:#000;color:${C.text};font-family:${FONT};font-size:28px;font-weight:800;line-height:56px;text-align:center">
               </a>
+              <div style="padding-top:10px;font-family:${FONT};font-size:15px;font-weight:700;letter-spacing:.5px;color:${C.text}">Venband</div>
             </td>
           </tr>
           <tr>
