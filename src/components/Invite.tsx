@@ -9,7 +9,7 @@ import { go } from '../lib/router';
 import { inviteUrl, sendToUser } from '../lib/dmSend';
 import { openServer } from '../hooks/data';
 import type { Server } from '../lib/types';
-import { Avatar, initials, Modal } from './ui';
+import { Avatar, Icon, initials, Modal } from './ui';
 import { VerifiedMark } from './Badges';
 
 
@@ -131,13 +131,14 @@ export function InvitePage({ code }: { code: string }) {
     loadPreview(code).then(setP);
   }, [code, status]);
   const signedIn = status === 'ready';
+  // bare slugs (venband.com/whatever) are tried as vanity invites; if nothing matches it's just a missing page
+  if (p === null) return <NotFoundPage kind={window.location.pathname.startsWith('/invite/') ? 'invite' : 'page'} />;
   return (
     <div className="invite-page">
       <div className="invite-card">
         {p?.banner_url ? <div className="invite-banner" style={{ backgroundImage: `url(${p.banner_url})` }} /> : <div className="invite-banner" style={{ background: p?.banner_color ?? p?.icon_color ?? 'var(--bg-3)' }} />}
         <div className="invite-card-body">
           {p === undefined && <div className="spinner" />}
-          {p === null && <WrongTurn />}
           {p && (
             <>
               <ServerBadge p={p} size={84} />
@@ -467,16 +468,67 @@ export function ServerPreviewModal({ serverId, onClose }: { serverId: string; on
   );
 }
 
-export function WrongTurn() {
+const KNOWN_PAGES: { path: string; label: string; icon: string }[] = [
+  { path: '/', label: 'Home', icon: 'home' },
+  { path: '/discover', label: 'Discover servers', icon: 'compass' },
+  { path: '/download', label: 'Download the app', icon: 'download' },
+  { path: '/bots', label: 'Bots & developers', icon: 'bot' },
+  { path: '/status', label: 'Status', icon: 'globe' },
+  { path: '/privacy', label: 'Privacy', icon: 'lock' },
+  { path: '/tos', label: 'Terms', icon: 'file' },
+  { path: '/guidelines', label: 'Guidelines', icon: 'shield' },
+];
+
+/** small edit distance, to suggest "did you mean /privacy?" */
+function distance(a: string, b: string) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+
+/** Venband's own "nothing here" page: shows the exact path, a best guess, and real ways out. */
+export function NotFoundPage({ kind = 'page' }: { kind?: 'page' | 'invite' }) {
+  const path = decodeURIComponent(window.location.pathname);
+  const slug = path.replace(/^\/+(invite\/)?/, '').toLowerCase();
+  const guess = kind === 'page' && slug
+    ? KNOWN_PAGES.filter((p) => p.path !== '/').map((p) => ({ ...p, d: distance(slug, p.path.slice(1)) })).sort((a, b) => a.d - b.d)[0]
+    : undefined;
+  const close = guess && guess.d <= Math.max(2, Math.floor(slug.length / 3)) ? guess : undefined;
   return (
-    <div className="wrong-turn">
-      <div className="wrong-turn-body">
-        <h1>Oops, this is an invalid subdomain.</h1>
-        <p className="muted">Click below to go to the main page.</p>
-        <a className="btn primary" href="https://www.venband.com/" onClick={(e) => { e.preventDefault(); window.location.href = 'https://www.venband.com/'; }}>
-          Go to www.venband.com
-        </a>
-      </div>
+    <div className="nf-page">
+      <div className="nf-orbit" aria-hidden="true"><span /><span /><span /></div>
+      <main className="nf-card">
+        <div className="nf-code" aria-hidden="true">{kind === 'invite' ? '∅' : '404'}</div>
+        <h1>{kind === 'invite' ? 'This invite doesn’t work' : 'Nothing lives here'}</h1>
+        <p className="nf-path"><Icon name="link" size={13} /> <span>venband.com{path}</span></p>
+        <p className="muted">
+          {kind === 'invite'
+            ? 'It may have expired, hit its use limit, or been deleted. Ask whoever sent it for a fresh link.'
+            : 'That page doesn’t exist, or it moved. Nothing is broken on your end.'}
+        </p>
+        {close && (
+          <a className="nf-guess" href={close.path}>
+            Did you mean <b>venband.com{close.path}</b>? <Icon name="chevron" size={14} />
+          </a>
+        )}
+        <div className="nf-actions">
+          <a className="btn primary" href="/">Take me home</a>
+          <button className="btn ghost" onClick={() => (history.length > 1 ? history.back() : (window.location.href = '/'))}>Go back</button>
+        </div>
+        <nav className="nf-links" aria-label="Popular pages">
+          {KNOWN_PAGES.slice(1).map((p) => (
+            <a key={p.path} href={p.path}><Icon name={p.icon} size={14} /> {p.label}</a>
+          ))}
+        </nav>
+      </main>
+      <footer className="nf-foot small muted">Venband · open source, end-to-end encrypted</footer>
     </div>
   );
+}
+
+/** kept for older imports */
+export function WrongTurn() {
+  return <NotFoundPage kind="invite" />;
 }

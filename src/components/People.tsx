@@ -19,6 +19,8 @@ import { openGlobalModal } from './GlobalModals';
 import { reportUser } from '../lib/reports';
 import { Markdown } from './Markdown';
 import { startDm } from './Modals';
+import { MemoriesStrip, MemoryRing, MemoryViewer } from './Memories';
+import type { Memory } from '../lib/memories';
 
 export const NAMEPLATES: { id: string; label: string }[] = [
   { id: 'none', label: 'None' },
@@ -298,6 +300,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
   const [fp, setFp] = useState<string | null>(null);
   const [keyId, setKeyId] = useState<string | null>(null);
   const [note, setNote] = useState(relations[userId]?.note ?? '');
+  const [ringList, setRingList] = useState<Memory[] | null>(null);
   const trust = trustState(userId);
   const f = friends[userId];
   const rel = relations[userId];
@@ -327,8 +330,13 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
       <div className={`profile-card nameplate-${shown?.nameplate ?? 'none'}`} style={nameplateVars(shown)}>
         <div className="profile-banner" style={bannerStyle(shown)} />
         <div className="profile-head">
-          <div className="profile-avatar">
-            <Avatar profile={shown} size={88} />
+          <div className="profile-avatar-wrap">
+            <div className="profile-avatar">
+              <MemoryRing userId={userId} onOpen={setRingList}>
+                <Avatar profile={shown} size={88} />
+              </MemoryRing>
+            </div>
+            {!!(shown?.status_text || shown?.status_emoji) && <StatusCloud text={shown?.status_text ?? ''} emoji={shown?.status_emoji ?? ''} />}
           </div>
           <div className="profile-actions">
             {self ? (
@@ -367,12 +375,9 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
               {shown?.pronouns ? ` · ${shown.pronouns}` : ''}
               <ServerTag tag={shown?.server_tag} serverId={shown?.tag_server_id} />
             </div>
-            {!!shown?.status_text && (
-              <div className="status-bubble" role="note" aria-label="Status">
-                {shown.status_text}
-              </div>
-            )}
             <ActivityCard userId={userId} />
+            <MemoriesStrip userId={userId} self={self} />
+            {ringList && <MemoryViewer list={ringList} self={self} onClose={() => setRingList(null)} />}
             {rel?.blocked && <div className="notice small">You blocked this person.</div>}
             {shown?.account_status && shown.account_status !== 'active' && (shown.platform_role === 'user' || !shown.platform_role) && me.platform_role !== 'user' && (
               <div className="notice small">Account status: {shown.account_status.replace('_', ' ')}</div>
@@ -499,4 +504,24 @@ export function ProfileHost({ data }: { data?: ServerData }) {
   if (!open) return null;
   const close = () => uiStore.set({ profile: null });
   return <ProfileModal key={open.userId} userId={open.userId} data={data && (!open.serverId || open.serverId === data.server?.id) ? data : undefined} onClose={close} />;
+}
+
+
+/** The custom status as a real speech bubble floating beside the avatar. Long ones expand on click. */
+function StatusCloud({ text, emoji }: { text: string; emoji: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > 60;
+  return (
+    <button
+      type="button"
+      className={`status-cloud${open ? ' open' : ''}${long ? ' long' : ''}`}
+      onClick={() => long && setOpen((v) => !v)}
+      aria-label={`Status: ${emoji} ${text}`.trim()}
+      title={long && !open ? 'Click to read it all' : undefined}
+    >
+      {emoji && <span className="status-cloud-emoji">{emoji}</span>}
+      {text && <span className="status-cloud-text">{text}</span>}
+      <span className="status-cloud-tail" aria-hidden="true"><i /><i /></span>
+    </button>
+  );
 }

@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { sql, json, preflight, readJson, ensureSchema, cookieHeader } from '../lib/vdl-db.js';
 import { vdlUser, isTopStaff, isBanned, signSession, rateLimited, clientIp, SECRET, SECRET_WEAK, SESSION_TTL, USER_COLUMNS } from '../lib/vdl-auth.js';
-import { supabaseAdminConfig, startOrResumeRun, stepRun, writeThroughProfile } from '../lib/vdl-sync.js';
+import { supabaseAdminConfig, startOrResumeRun, stepRun, writeThroughProfile, importAccountByEmail } from '../lib/vdl-sync.js';
 
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
 const USERNAME_RE = /^[a-z0-9_.]{2,32}$/;
@@ -318,9 +318,12 @@ const POSTS = {
       const password = String(body.password || '');
       need(ident && password, 400, 'Email (or username) and password required.');
       if (await rateLimited(`signin:${clientIp(request)}:${ident}`, 10, 900)) fail(429, 'Too many attempts. Wait 15 minutes and try again.');
-      const { rows } = ident.includes('@')
-        ? await sql`select * from vdl_users where lower(email) = ${ident}`
-        : await sql`select * from vdl_users where lower(username) = ${ident}`;
+      const lookup = () => (ident.includes('@')
+        ? sql`select * from vdl_users where lower(email) = ${ident}`
+        : sql`select * from vdl_users where lower(username) = ${ident}`);
+      let { rows } = await lookup();
+      // not mirrored yet: pull just this account from Supabase, then retry
+      if (!rows[0] && ident.includes('@') && (await importAccountByEmail(ident))) ({ rows } = await lookup());
       const user = rows[0];
       let ok = await bcrypt.compare(password, user?.password_hash || (await getDummyHash()));
       if (!ok && user?.password_scheme === 'raw' && typeof body.legacy_password === 'string' && user.password_hash) {
@@ -575,6 +578,15 @@ async function suggestUsername(base) {
 function errorResponse(e) {
   if (e instanceof HttpError) return json(e.status, { error: e.message, ...(e.extra || {}) });
   if (e?.status && e.message) return json(e.status, { error: e.message });
+  const msg = String(e?.message || e);
+  if (/missing_connection_string|POSTGRES_URL|connection string|invalid_connection_string/i.test(msg) || e?.code === 'missing_connection_string') {
+    console.error('[vdl] database not configured', msg);
+    return json(503, { error: 'The VDL database isn’t connected. In Vercel → Storage, create/connect a Postgres (Neon) database to this project so POSTGRES_URL is set, then redeploy.', code: 'db_not_configured' });
+  }
+  if (/ECONNREFUSED|ENOTFOUND|getaddrinfo|terminating connection|password authentication failed|endpoint .* (?:is disabled|not found)/i.test(msg)) {
+    console.error('[vdl] database unreachable', msg);
+    return json(503, { error: 'The VDL database can’t be reached right now (check the Postgres connection in Vercel → Storage).', code: 'db_unreachable' });
+  }
   console.error('[vdl]', e);
   return json(500, { error: 'Something went wrong on our side. Try again in a moment.' });
 }

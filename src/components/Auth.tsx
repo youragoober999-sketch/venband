@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { currentPath, go, parseRoute, useRoute } from '../lib/router';
 import { supabase } from '../lib/supabase';
+import { vdlResolve } from '../lib/vdl';
 import { passwordStrength } from '../lib/crypto';
 import {
   canUsePasskey,
@@ -166,8 +167,20 @@ function Login({ email, setEmail, setMode }: FormProps) {
       // Resolves a username or an email to the account, and flags a ban so the
       // form can say "You are banned on @username" before any password check.
       const { data, error } = await supabase.rpc('resolve_login', { p_identifier: raw });
-      if (error) throw error;
-      const hit = data?.[0];
+      let hit = data?.[0] as { email?: string; username?: string; banned?: boolean } | undefined;
+      if (error) {
+        // The lookup is only a convenience. If the database function is missing (migration not
+        // run yet) or the lookup is down, an email still signs in directly; a username can be
+        // resolved through VDL instead.
+        const missing = /could not find the function|schema cache|does not exist/i.test(error.message);
+        if (!missing && !/fetch|network/i.test(error.message)) throw error;
+        if (raw.includes('@')) hit = { email: raw, username: raw.split('@')[0], banned: false };
+        else {
+          const v = await vdlResolve(raw).catch(() => null);
+          if (!v?.found || !v.email) throw new Error('Username sign-in is unavailable right now — please sign in with your email address.');
+          hit = { email: v.email, username: v.username, banned: v.banned };
+        }
+      }
       if (!hit?.email) throw new Error('No account with that username or email.');
       if (hit.banned) return setBanned({ username: (hit.username as string) || raw.replace(/@.*$/, '') });
       await signIn(hit.email as string, password, remember);

@@ -2715,3 +2715,87 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 @keyframes su-fade { from { opacity: 0; } }
 @keyframes su-slide { from { transform: translateX(24px); opacity: 0; } }
 @media (max-width: 700px) { .su-grid { grid-template-columns: 1fr; } .su-sync-actions { width: 100%; } }
+
+/* ---- not-found page ---- */
+.nf-page { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 32px 16px; position: relative; overflow: hidden; background: radial-gradient(ellipse at 50% 0%, var(--bg-3), var(--bg-0) 65%); }
+.nf-orbit { position: absolute; inset: 0; pointer-events: none; display: grid; place-items: center; }
+.nf-orbit span { position: absolute; border: 1px solid var(--line-2); border-radius: 50%; animation: nf-spin 40s linear infinite; }
+.nf-orbit span:nth-child(1) { width: 420px; height: 420px; }
+.nf-orbit span:nth-child(2) { width: 640px; height: 640px; animation-duration: 70s; animation-direction: reverse; border-style: dashed; }
+.nf-orbit span:nth-child(3) { width: 900px; height: 900px; animation-duration: 110s; opacity: .5; }
+.nf-orbit span::after { content: ''; position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; border-radius: 50%; background: var(--text-2); box-shadow: 0 0 12px var(--text-2); }
+.nf-card { position: relative; width: min(480px, 100%); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 32px 28px 26px; background: color-mix(in srgb, var(--bg-1) 88%, transparent); backdrop-filter: blur(14px); border: 1px solid var(--line-2); border-radius: 22px; box-shadow: 0 30px 80px #000a; animation: pop-in .3s var(--spring); }
+.nf-code { font-family: var(--mono); font-size: 64px; font-weight: 800; line-height: 1; letter-spacing: -.04em; background: linear-gradient(180deg, var(--text), var(--bg-4)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nf-card h1 { margin: 4px 0 0; font-size: 26px; line-height: 1.2; overflow-wrap: anywhere; }
+.nf-card p { margin: 0; line-height: 1.5; }
+.nf-path { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; font-family: var(--mono); font-size: 12px; color: var(--text-2); background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 4px 10px; }
+.nf-path span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nf-guess { display: inline-flex; align-items: center; gap: 6px; color: var(--text); text-decoration: none; background: var(--accent-soft); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 12px; font-size: 14px; transition: transform .15s var(--spring), background .15s; }
+.nf-guess:hover { transform: translateY(-1px); background: var(--bg-3); }
+.nf-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+.nf-actions .btn { text-decoration: none; }
+.nf-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--line-2); width: 100%; }
+.nf-links a { display: inline-flex; align-items: center; gap: 5px; color: var(--text-2); text-decoration: none; font-size: 13px; padding: 5px 9px; border-radius: 8px; transition: background .15s, color .15s; }
+.nf-links a:hover { background: var(--bg-3); color: var(--text); }
+.nf-foot { position: relative; }
+@keyframes nf-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .nf-orbit span { animation: none; } }
+
+/* ---- status speech bubble on the profile ---- */
+.profile-avatar-wrap { position: relative; display: flex; align-items: flex-end; gap: 10px; min-width: 0; }
+.status-cloud { position: relative; align-self: flex-start; margin-top: -54px; margin-left: -6px; z-index: 1; display: inline-flex; align-items: flex-start; gap: 6px; max-width: 230px; padding: 9px 14px; border-radius: 20px; background: var(--bg-3); color: var(--text); border: 1px solid var(--line-2); font: inherit; font-size: 13.5px; line-height: 1.35; text-align: left; box-shadow: 0 10px 24px #0007; cursor: default; animation: cloud-pop .35s var(--spring) both; }
+.status-cloud.long { cursor: pointer; }
+.status-cloud-emoji { font-size: 17px; line-height: 1.1; flex: none; }
+.status-cloud-text { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.status-cloud.open { max-width: 300px; }
+.status-cloud.open .status-cloud-text { -webkit-line-clamp: unset; }
+.status-cloud-tail { position: absolute; left: 6px; bottom: -14px; width: 20px; height: 18px; pointer-events: none; }
+.status-cloud-tail i { position: absolute; border-radius: 50%; background: var(--bg-3); border: 1px solid var(--line-2); }
+.status-cloud-tail i:first-child { width: 11px; height: 11px; left: 6px; top: 0; }
+.status-cloud-tail i:last-child { width: 6px; height: 6px; left: 1px; top: 11px; }
+.status-cloud:hover { transform: translateY(-1px); transition: transform .2s var(--spring); }
+@keyframes cloud-pop { from { opacity: 0; transform: translateY(6px) scale(.85); } }
+@media (prefers-reduced-motion: reduce) { .status-cloud { animation: none; } }
+
+/* ---- memories ---- */
+.mem-strip { margin-top: 14px; }
+.mem-strip-head { display: flex; align-items: baseline; justify-content: space-between; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); margin-bottom: 8px; }
+.mem-strip .tiny { font-size: 11px; letter-spacing: 0; text-transform: none; font-weight: 500; }
+.mem-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x proximity; }
+.mem-tile { position: relative; flex: none; width: 64px; height: 96px; border-radius: 12px; overflow: hidden; padding: 0; border: 1px solid var(--line-2); background: var(--bg-3); cursor: pointer; scroll-snap-align: start; transition: transform .2s var(--spring), border-color .2s; }
+.mem-tile:hover { transform: translateY(-3px) scale(1.03); border-color: var(--text-2); }
+.mem-tile:active { transform: scale(.96); }
+.mem-tile img, .mem-tile video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.mem-dur { position: absolute; right: 4px; bottom: 4px; font-size: 10px; font-weight: 700; background: #000a; color: #fff; border-radius: 4px; padding: 0 4px; }
+.mem-add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text-2); font-size: 11px; border-style: dashed; }
+.mem-ring { display: block; padding: 3px; border: 0; border-radius: 50%; background: var(--bg-4); cursor: pointer; transition: transform .2s var(--spring); }
+.mem-ring.unseen { background: conic-gradient(from 210deg, #ff5f6d, #ffc371, #47e891, #4facfe, #b066ff, #ff5f6d); animation: mem-spin 6s linear infinite; }
+.mem-ring:hover { transform: scale(1.04); }
+.mem-ring > * { display: block; border-radius: 50%; box-shadow: 0 0 0 3px var(--bg-2); }
+.mem-ring.unseen > * { animation: mem-spin 6s linear infinite reverse; }
+@keyframes mem-spin { to { transform: rotate(360deg); } }
+.mem-viewer { position: fixed; inset: 0; z-index: 1000; background: #000e; backdrop-filter: blur(20px); display: grid; place-items: center; animation: su-fade .15s ease; }
+.mem-stage { position: relative; width: min(420px, 100vw); height: min(760px, 100dvh); display: flex; flex-direction: column; border-radius: 18px; overflow: hidden; background: #000; box-shadow: 0 30px 90px #000; animation: pop-in .25s var(--spring); }
+.mem-bars { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 3; display: flex; gap: 4px; }
+.mem-bars span { flex: 1; height: 3px; border-radius: 3px; background: #ffffff40; overflow: hidden; }
+.mem-bars i { display: block; height: 100%; background: #fff; }
+.mem-top { position: absolute; top: 20px; left: 12px; right: 8px; z-index: 3; display: flex; align-items: center; gap: 10px; color: #fff; text-shadow: 0 1px 4px #000a; }
+.mem-who { display: flex; align-items: baseline; gap: 8px; flex: 1; min-width: 0; }
+.mem-who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mem-who span { font-size: 12px; opacity: .75; }
+.mem-tools { display: flex; gap: 2px; }
+.mem-tools button { position: relative; display: flex; background: none; border: 0; color: #fff; padding: 6px; border-radius: 8px; cursor: pointer; }
+.mem-tools button:hover { background: #ffffff22; }
+.mem-tools s { position: absolute; left: 7px; right: 7px; top: 50%; height: 2px; background: #fff; transform: rotate(-45deg); }
+.mem-media { position: relative; flex: 1; display: grid; place-items: center; background: #000; touch-action: manipulation; user-select: none; }
+.mem-media img, .mem-media video { max-width: 100%; max-height: 100%; object-fit: contain; animation: su-fade .2s ease; }
+.mem-tap { position: absolute; top: 0; bottom: 0; width: 35%; background: none; border: 0; cursor: pointer; }
+.mem-tap.left { left: 0; } .mem-tap.right { right: 0; width: 65%; }
+.mem-caption { position: absolute; left: 0; right: 0; bottom: 56px; margin: 0; padding: 14px 18px; color: #fff; font-size: 15px; text-align: center; background: linear-gradient(transparent, #000c); overflow-wrap: anywhere; }
+.mem-seen { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px; background: #ffffff1f; color: #fff; border: 1px solid #ffffff30; border-radius: 99px; padding: 6px 14px; cursor: pointer; font: inherit; font-size: 13px; }
+.mem-viewers { position: absolute; left: 0; right: 0; bottom: 0; max-height: 55%; overflow-y: auto; z-index: 4; background: var(--bg-1); color: var(--text); border-radius: 16px 16px 0 0; padding: 14px 16px; animation: su-slide .2s ease; }
+.mem-viewers-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.mem-viewers-head button { background: none; border: 0; color: var(--text-2); cursor: pointer; display: flex; }
+.mem-viewer-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.mem-viewer-row span:nth-child(2) { flex: 1; }
+@media (prefers-reduced-motion: reduce) { .mem-ring.unseen, .mem-ring.unseen > * { animation: none; } }
