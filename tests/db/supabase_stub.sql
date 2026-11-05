@@ -14,7 +14,11 @@ create schema storage;
 grant usage on schema public, auth, realtime, storage, extensions to anon, authenticated;
 
 create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb,
-                         banned_until timestamptz);
+                         banned_until timestamptz,
+                         -- the rest of the real Supabase auth.users columns that migrations touch
+                         instance_id uuid, aud text, role text, encrypted_password text, email_confirmed_at timestamptz,
+                         phone text, last_sign_in_at timestamptz, raw_app_meta_data jsonb, is_anonymous boolean default false,
+                         created_at timestamptz default now(), updated_at timestamptz default now(), deleted_at timestamptz);
 create table auth.sessions (id uuid primary key, user_id uuid not null references auth.users (id) on delete cascade,
                             created_at timestamptz default now(), updated_at timestamptz, refreshed_at timestamp,
                             user_agent text, ip inet);

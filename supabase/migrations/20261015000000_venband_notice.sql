@@ -130,6 +130,9 @@ grant execute on function public.venband_notice(uuid, text, text, uuid) to authe
 -- an account funnels through mod_set_account_status; mod_server_action 'reject'
 -- closes a server and limits its owner.
 -- -----------------------------------------------------------------------------
+-- replaces the 3-argument version from 20261002000000_platform.sql; keeping both made every
+-- 3-argument call (Settings → Moderation) fail as ambiguous
+drop function if exists public.mod_set_account_status(uuid, text, text);
 create or replace function public.mod_set_account_status(p_user uuid, p_status text, p_reason text default '', p_server uuid default null)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
@@ -147,6 +150,8 @@ begin
   end if;
 end;
 $$;
+revoke execute on function public.mod_set_account_status(uuid, text, text, uuid) from public, anon;
+grant execute on function public.mod_set_account_status(uuid, text, text, uuid) to authenticated;
 
 create or replace function public.mod_server_action(p_server uuid, p_action text, p_reason text default '')
 returns void language plpgsql security definer set search_path = '' as $$

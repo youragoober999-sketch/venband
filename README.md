@@ -94,7 +94,7 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 
 1. Create a free project at <https://supabase.com/dashboard>.
 2. Load the database schema. Use **either** option:
-   - **Dashboard:** open **SQL Editor** and run each file in `supabase/migrations/` **in order**: paste the whole file, click **Run**, then do the next one (`20260928000000_venband_schema.sql`, `20260929000000_explicit_grants.sql`, `20260930000000_profile_self_heal.sql`, `20261001000000_group_chats.sql`, then `20261002000000_platform.sql`). Or simply run `supabase/repair.sql` after the first file — it contains all the later ones.
+   - **Dashboard (easiest):** open **SQL Editor → New query**, paste the whole of [`supabase/setup.sql`](supabase/setup.sql), and click **Run**. It contains every migration in order and sets up the whole database in one go. (It's generated: run `node scripts/build-setup-sql.mjs` after adding a migration.)
    - **CLI:** `npx supabase login && npx supabase link --project-ref <ref> && npx supabase db push`
 3. **Authentication → Sign In / Providers → Email:** check that **Confirm email** is **on**.
 4. **Authentication → URL Configuration:**
@@ -103,8 +103,8 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 5. **Authentication → Emails → SMTP Settings:** turn on **custom SMTP** (for example Resend: host `smtp.resend.com`, port `465`, user `resend`, password = your API key). Supabase's built-in mailer is only for testing: it sends a handful of emails per hour, and only to your own team's addresses.
 6. **Authentication → Policies / Password:** set the minimum length to **32**. This is optional hardening: Venband always sends a 64-character derived key, so plain passwords can't be used against the API directly.
 7. **Realtime → Settings:** turn **off** "Allow public access" so only authorized private channels work.
-8. **Authentication → Hooks → Before User Created:** choose **Postgres** and the function `public.before_user_created`. This limits sign-ups to 6 accounts per IP address (IPs are stored only as salted hashes). One account per email is always enforced by Supabase.
-9. **Make yourself the owner:** sign up with the username `sl` (or whichever account should run the platform; change the name in the SQL), then run `supabase/repair.sql` again. The first time it runs with that account present, it becomes the platform **owner** with every badge. After that, staff roles are only changed from **Settings → Moderation**.
+8. **Authentication → Hooks → Before User Created:** choose **Postgres** and the function `public.before_user_created`. This limits sign-ups to 25 accounts per IP address (IPs are stored only as salted hashes). One account per email is always enforced by Supabase.
+9. **Make yourself the owner:** sign up on the site and confirm your email, sign in once, then open [`supabase/make-owner.sql`](supabase/make-owner.sql), put your username on the marked line, and run it in the **SQL Editor**. It only works while nobody is owner yet. After that, staff roles are only changed from **Settings → Moderation**.
 10. **Project Settings → API:** copy the **Project URL** and the **anon / publishable key**.
 
 ### 2. Publish the app (GitHub Pages)
@@ -129,7 +129,7 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 
 ### Something says "missing database permission"?
 
-Run [`supabase/repair.sql`](supabase/repair.sql) in the Supabase **SQL Editor**. It's safe to run any time: it re-applies every permission the app needs and ends with a checklist that should say `ok` on every row.
+The database is missing part of the schema. On a **new** project, run [`supabase/setup.sql`](supabase/setup.sql) in the Supabase **SQL Editor**. On a project that's already set up, run the newer files from `supabase/migrations/` (each is safe to re-run). An error like *“Could not find the function … in the schema cache”* means the same thing.
 
 ### Deploy on Vercel instead (or as well)
 

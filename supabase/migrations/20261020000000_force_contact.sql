@@ -19,6 +19,7 @@ returns uuid language plpgsql security definer set search_path = '' as $$
 declare
   v_uid uuid := auth.uid();
   v_channel uuid;
+  v_request uuid;
 begin
   if v_uid is null then raise exception 'not authenticated'; end if;
   if p_other = v_uid then raise exception 'cannot DM yourself'; end if;
@@ -39,7 +40,14 @@ begin
           or (public.account_can('send') and public.are_friends(p_other, v_uid))) then
     raise exception 'your account can only message friends right now';
   end if;
-  insert into public.channels (type, name) values ('dm', 'dm') returning id into v_channel;
+  -- strangers (no friendship, no shared server) start as a message request
+  -- (kept from 20261003000000_reports_requests_assets.sql; this file used to drop it)
+  if not public.are_friends(p_other, v_uid) and not public.is_staff(v_uid) and not public.can_force_contact(v_uid)
+     and not exists (select 1 from public.server_members a join public.server_members b on a.server_id = b.server_id
+                     where a.user_id = v_uid and b.user_id = p_other) then
+    v_request := p_other;
+  end if;
+  insert into public.channels (type, name, request_to) values ('dm', 'dm', v_request) returning id into v_channel;
   insert into public.dm_participants (channel_id, user_id) values (v_channel, v_uid), (v_channel, p_other);
   return v_channel;
 end;

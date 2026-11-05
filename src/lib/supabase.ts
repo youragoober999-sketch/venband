@@ -29,6 +29,6 @@ export function errorMessage(e: unknown): string {
   else if (typeof e === 'object' && e && 'message' in e) msg = String((e as { message: unknown }).message);
   else msg = String(e);
   if (/bucket not found/i.test(msg))
-    return 'File storage isn’t set up on this server yet. If you run this site, run supabase/repair.sql in the Supabase SQL editor.';
+    return 'File storage isn’t set up on this server yet. If you run this site, run supabase/setup.sql (new project) or the newest supabase/migrations/ files in the Supabase SQL editor.';
   return msg;
 }

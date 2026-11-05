@@ -440,17 +440,17 @@ do $t$ begin
 end $t$;
 select pg_temp.must_fail($$update public.reports set status = 'dismissed'$$);
 
--- signup limit: 6 accounts per IP
+-- signup limit: 25 accounts per IP (raised from 6 in 20261031000000_relax_signup_limit.sql)
 reset role;
 do $t$
 declare i int; r jsonb;
 begin
-  for i in 1..6 loop
+  for i in 1..25 loop
     r := public.before_user_created('{"metadata": {"ip_address": "203.0.113.9"}, "user": {}}');
-    assert r = '{}'::jsonb, 'first six are allowed';
+    assert r = '{}'::jsonb, 'first 25 are allowed';
   end loop;
   r := public.before_user_created('{"metadata": {"ip_address": "203.0.113.9"}, "user": {}}');
-  assert r ? 'error', 'seventh is refused';
+  assert r ? 'error', '26th is refused';
   assert public.before_user_created('{"metadata": {"ip_address": "198.51.100.1"}, "user": {}}') = '{}'::jsonb;
   assert not exists (select 1 from public.signup_ips where ip_hash like '%203.0.113%'), 'IPs are hashed';
 end $t$;
@@ -630,8 +630,12 @@ do $t$ begin
   assert exists (select 1 from public.channels where server_id = current_setting('t.gs')::uuid and type = 'forum'), 'template includes a forum';
   assert (select welcome_channel_id from public.servers where id = current_setting('t.gs')::uuid) is not null;
 end $t$;
--- vanity links need 500+ members or verification
-select pg_temp.must_fail($$select public.set_vanity(current_setting('t.gs')::uuid, 'gamers')$$);
+-- vanity links: the server owner may claim one (otherwise 500+ members or verification);
+-- bad formats and reserved words are still refused
+do $t$ begin
+  assert public.set_vanity(current_setting('t.gs')::uuid, 'gamers') = 'gamers', 'owner can claim a vanity link';
+end $t$;
+select pg_temp.must_fail($$select public.set_vanity(current_setting('t.gs')::uuid, 'x')$$);
 -- nobody sets discovery approval or vanity directly
 select pg_temp.must_fail($$update public.servers set discovery_status = 'approved' where id = current_setting('t.gs')::uuid$$);
 select pg_temp.must_fail($$update public.servers set vanity = 'sneaky' where id = current_setting('t.gs')::uuid$$);
@@ -843,7 +847,7 @@ do $t$ declare r record; begin
 end $t$;
 select public.handle_server_report((select id from public.server_reports(current_setting('t.gs')::uuid, 'open') limit 1), 'actioned', 'handled');
 -- deleted servers can be restored by the owner within 7 days
-select pg_temp.must_fail($$select public.request_account_deletion()$$);  -- owns servers
+select pg_temp.must_fail($$select public.delete_my_account('I want to delete my account')$$);  -- owns servers
 select public.delete_server(current_setting('t.gs')::uuid);
 do $t$ begin
   assert (select status from public.servers where id = current_setting('t.gs')::uuid) = 'deleted';
@@ -853,10 +857,10 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2
 select pg_temp.must_fail($$select public.restore_server(current_setting('t.gs')::uuid)$$);
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
 select public.restore_server(current_setting('t.gs')::uuid);
--- account deletion can be requested and cancelled; export works
+-- account deletion needs the exact confirmation phrase (the 14-day grace path was
+-- replaced by immediate deletion in 20261016000000_account_deletion.sql); export works
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
-select public.request_account_deletion();
-select public.cancel_account_deletion();
+select pg_temp.must_fail($$select public.delete_my_account('delete it')$$);
 do $t$ begin
   assert (public.export_my_data() -> 'profile' ->> 'username') = 'alttwo', 'export includes your profile';
 end $t$;
