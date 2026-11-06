@@ -288,7 +288,6 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "mfa_ok",
       "purge_deleted",
       "restore_server",
-      "save_custom_badge",
       "server_reports",
       "timeout_member",
       "warn_member"
@@ -643,6 +642,20 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     "bodies": {
       "revoke_device": "6c4d072cec081644e1a9306e53f009ad",
       "venband_notice": "a0e355c711d2e943f943901cc4279aa3"
+    }
+  },
+  {
+    "migration": "20261106020000_badge_catalog.sql",
+    "tables": [],
+    "functions": [
+      "guard_badge_changes",
+      "notify_badge_awarded",
+      "protected_badges",
+      "save_custom_badge",
+      "set_badge_display"
+    ],
+    "bodies": {
+      "save_custom_badge": "15bb0436832d864d32b360edc788a695"
     }
   }
 ];

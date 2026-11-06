@@ -1,7 +1,7 @@
 // Caches for profiles and public identity keys, plus trust-on-first-use
 // tracking of other users' keys.
 import { supabase } from './supabase';
-import { PROFILE_COLUMNS, type Profile, type UserKey } from './types';
+import { PROFILE_COLUMNS, PROFILE_COLUMNS_RECENT, type Profile, type UserKey } from './types';
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -32,12 +32,20 @@ export function putProfile(p: Profile) {
   emit();
 }
 
+let profileColumns = PROFILE_COLUMNS;
+
 export async function loadProfiles(ids: Iterable<string>, force = false): Promise<void> {
   const missing = [...new Set(ids)].filter((id) => force || (!profiles.has(id) && !pendingProfiles.has(id)));
   const waits = [...new Set(ids)].map((id) => pendingProfiles.get(id)).filter(Boolean) as Promise<void>[];
   if (missing.length) {
     const p = (async () => {
-      const { data } = await supabase.from('profiles').select(PROFILE_COLUMNS).in('id', missing);
+      let { data, error } = await supabase.from('profiles').select(profileColumns).in('id', missing);
+      // a column from a migration this database hasn't run yet: load without it
+      // instead of failing every profile in the app
+      if (error && /column .* does not exist|schema cache/i.test(error.message) && profileColumns === PROFILE_COLUMNS) {
+        profileColumns = PROFILE_COLUMNS.split(',').map((c) => c.trim()).filter((c) => !PROFILE_COLUMNS_RECENT.includes(c)).join(', ');
+        ({ data, error } = await supabase.from('profiles').select(profileColumns).in('id', missing));
+      }
       for (const row of (data ?? []) as unknown as Profile[]) profiles.set(row.id, row);
       missing.forEach((id) => pendingProfiles.delete(id));
       emit();

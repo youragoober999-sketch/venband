@@ -24,6 +24,7 @@ import { VERSION } from '../lib/version';
 import { connectBot, deleteApp as deleteAppRpc, disconnectBot, listMyBots, type MyBotRow } from '../lib/bots';
 import { ServerUpdateCard } from './Apps';
 import { Badges } from './Badges';
+import { BadgeDisplayPicker } from './BadgePicker';
 import { accountAge, bannerStyle, NAMEPLATES, ServerTag } from './People';
 import { askConfirm } from './Dialogs';
 import { BadgeDesigner, DiscoveryQueue, ModerationCenter, ReportCentre } from './Moderation';
@@ -508,7 +509,7 @@ function AccountTab() {
           <Avatar profile={me} size={80} />
           <div>
             <h3>
-              {me.display_name} <Badges ids={me.badges} size={18} />
+              {me.display_name} <Badges ids={me.badges} display={me.badge_display} size={18} />
             </h3>
             <span className="muted">@{me.username}</span>
           </div>
@@ -956,6 +957,7 @@ function ProfileTab() {
               ))}
             </div>
           </Field>
+          <BadgeDisplayPicker />
           <div className={`save-bar${dirty ? ' show' : ''}`}>
             <span>You have unsaved changes</span>
             <button className="btn link" onClick={() => { setDraft({}); setUsernameDraft(null); }}>
@@ -977,7 +979,7 @@ function ProfileTab() {
             </div>
             <div className="profile-body">
               <h2>
-                <StyledName style={preview.name_style}>{preview.display_name}</StyledName> <Badges ids={me.badges} size={16} />
+                <StyledName style={preview.name_style}>{preview.display_name}</StyledName> <Badges ids={me.badges} display={me.badge_display} size={16} />
               </h2>
               <div className="muted">
                 @{me.username}

@@ -1664,7 +1664,7 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
                     <StyledName style={p?.name_style} fallbackColor={top?.color}>
                       {displayName(m.user_id, m.nickname)}
                     </StyledName>
-                    <Badges ids={p?.badges} max={2} size={13} />
+                    <Badges ids={p?.badges} display={p?.badge_display} max={2} size={13} />
                     <ServerTag tag={p?.server_tag} serverId={p?.tag_server_id} />
                   </span>
                   {p?.status_text && (

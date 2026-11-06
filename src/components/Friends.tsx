@@ -117,7 +117,7 @@ function FriendRow({ id, sub, pinned, children }: { id: string; sub?: string; pi
       <Avatar profile={p} size={36} />
       <div className="grow">
         <div className="friend-name">
-          {displayName(id)} <span className="muted small">@{p?.username}</span> <Badges ids={p?.badges} max={3} size={14} />
+          {displayName(id)} <span className="muted small">@{p?.username}</span> <Badges ids={p?.badges} display={p?.badge_display} max={3} size={14} />
           {pinned && <Icon name="pin" size={13} />}
         </div>
         <div className="small muted">{sub ?? (p?.status_text ? p.status_text : p?.pronouns || '')}</div>

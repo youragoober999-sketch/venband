@@ -12,6 +12,8 @@ export interface Profile {
   pronouns?: string;
   status_text?: string;
   status_emoji?: string;
+  /** which badges this person shows, in order (null = all); staff badges always show */
+  badge_display?: string[] | null;
   presence?: PresenceStatus;
   banner_color?: string | null;
   banner_color2?: string | null;
@@ -49,7 +51,10 @@ export interface NameplateStyle {
 
 /** Columns other people may read (keep in sync with directory.loadProfiles). */
 export const PROFILE_COLUMNS =
-  'id, username, display_name, avatar_color, about, created_at, pronouns, status_text, status_emoji, presence, banner_color, banner_color2, accent_color, nameplate, tag_server_id, server_tag, badges, platform_role, account_status, avatar_url, banner_url, avatar_frame, name_style, nameplate_style';
+  'id, username, display_name, avatar_color, about, created_at, pronouns, status_text, status_emoji, presence, banner_color, banner_color2, accent_color, nameplate, tag_server_id, server_tag, badges, badge_display, platform_role, account_status, avatar_url, banner_url, avatar_frame, name_style, nameplate_style';
+
+/** Columns added by recent migrations. If the database hasn't run them yet, profiles load without them. */
+export const PROFILE_COLUMNS_RECENT = ['badge_display'];
 
 export type ServerStatus = 'active' | 'review' | 'closed' | 'banned' | 'deleted';
 

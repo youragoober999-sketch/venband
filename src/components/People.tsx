@@ -368,7 +368,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
             <h2>
               <StyledName style={shown?.name_style}>{name}</StyledName>
               {!self && data?.server?.owner_id === userId && <OwnerCrown size={16} label="Server owner" />}
-              <Badges ids={shown?.badges} size={18} />
+              <Badges ids={shown?.badges} display={shown?.badge_display} size={18} />
             </h2>
             <div className="muted">
               @{shown?.username}

@@ -2901,3 +2901,18 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .official-message { position: relative; }
 .official-message::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 3px; background: linear-gradient(#5865f2, #8b5cf6); }
 @media (max-width: 520px) { .notif-panel { top: 56px; right: 8px; width: calc(100vw - 16px); } }
+
+/* ---- badges: medallions + picker ---- */
+.badge-icon.medallion { display: inline-block; overflow: visible; filter: drop-shadow(0 1px 1px #0006); }
+.badge-icon.medallion.rarity-legendary { filter: drop-shadow(0 0 2px #ffd76a88) drop-shadow(0 1px 1px #0006); }
+.badge-icon.custom.rarity-legendary { box-shadow: 0 0 0 1px #ffd76a, 0 0 4px #ffd76a88; }
+.badge-pick { display: flex; flex-direction: column; gap: 8px; }
+.badge-pick-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.badge-pick-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; background: var(--bg-1); border: 1px solid var(--line); }
+.badge-pick-row .grow { display: flex; flex-direction: column; min-width: 0; }
+.badge-pick-row .grow .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge-pick-row .icon-btn:disabled { opacity: .3; }
+.badge-pick-row .icon-btn svg { transform: rotate(180deg); }
+.badge-pick-row .badge-pick-down svg { transform: none; }
+.hidden-badges .badge-pick-row { opacity: .6; }
+.badge-pick-sub { margin-top: 4px; }

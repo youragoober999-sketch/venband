@@ -1276,7 +1276,7 @@ function MessageItem({
               </button>
               {serverOwner && <OwnerCrown size={15} label="Server owner" />}
               {groupOwner && <OwnerCrown size={15} label="Group owner" />}
-              <Badges ids={author?.badges} max={4} size={15} />
+              <Badges ids={author?.badges} display={author?.badge_display} max={4} size={15} />
               <ServerTag tag={author?.server_tag} serverId={author?.tag_server_id} />
               {trust === 'changed' && (
                 <span className="trust-warn" title="This user's security key changed. Verify their fingerprint.">
