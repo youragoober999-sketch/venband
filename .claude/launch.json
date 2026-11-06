@@ -4,14 +4,38 @@
     {
       "name": "venband-web",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--port", "5173", "--strictPort"],
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
       "port": 5173
     },
     {
       "name": "venband-prod-preview",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "preview", "--port", "4173", "--strictPort"],
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--port",
+        "4173",
+        "--strictPort"
+      ],
       "port": 4173
+    },
+    {
+      "name": "venband-localstack",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "5174",
+        "--strictPort",
+        "--mode",
+        "localstack"
+      ],
+      "port": 5174
     }
   ]
 }

@@ -53,6 +53,7 @@ import { DialogHost, askConfirm, askText } from './Dialogs';
 import { NotificationBell } from './NotificationCenter';
 import { ProfileHost, ServerTag, openProfile, userMenu } from './People';
 import { NameplateArt } from './Cosmetics';
+import { MacDock } from './MacDock';
 import { Badges, OwnerCrown, RoleIcon, ServerBadge, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
 import { DiscoveryView, DonateView, FriendsView, MessageRequestsView, RequestBanner } from './Friends';
@@ -353,7 +354,7 @@ export function Shell() {
   const dockPosition = useSettings((s) => s.dockPosition);
 
   return (
-    <div className={`shell${drawer ? ` drawer-${drawer}` : ''}`}>
+    <div className={`shell${drawer ? ` drawer-${drawer}` : ''}${dockStyle === 'macos' ? ` has-dock dock-at-${dockPosition === 'custom' ? 'bottom' : dockPosition}` : ''}`}>
       <AppBanner />
       <SafeModeBanner />
       <WarningsNotice />
@@ -390,79 +391,6 @@ export function Shell() {
       <ContextMenuHost />
       <DialogHost />
       {dockStyle === 'macos' && <MacDock servers={servers} dms={dms} current={serverId} onAdd={() => setModal('create-join')} discover={discover} onDiscover={() => nav.set({ serverId: null, discover: !discover })} position={dockPosition} />}
-    </div>
-  );
-}
-
-function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position }: { servers: Server[]; dms: DmChannel[]; current: string | null; onAdd: () => void; discover: boolean; onDiscover: () => void; position: 'top' | 'left' | 'right' | 'bottom' | 'custom' }) {
-  const unreadState = unreadStore.use((s) => s);
-  const dmUnread = dms.reduce((n, d) => n + (unreadState.counts[d.channel.id] ?? 0), 0);
-  const dockRef = useRef<HTMLDivElement>(null);
-  const railOrder = useSettings((s) => s.rail.order);
-  const sortedServers = [...servers].sort((a, b) => {
-    const ra = railOrder.indexOf(a.id); const rb = railOrder.indexOf(b.id);
-    return (ra === -1 ? 9999 : ra) - (rb === -1 ? 9999 : rb);
-  });
-  const vertical = position === 'left' || position === 'right';
-  const moveInDock = (id: string, target: string, where: DropWhere) => {
-    const ids = sortedServers.map((s) => s.id).filter((x) => x !== id);
-    const i = ids.indexOf(target);
-    if (i === -1) return;
-    ids.splice(where === 'before' ? i : i + 1, 0, id);
-    // keep folder / other keys in the saved order, servers in their new order
-    const rest = getSettings().rail.order.filter((k) => !ids.includes(k));
-    updateSettings((st) => ({ rail: { ...st.rail, order: [...ids, ...rest] } }));
-  };
-  const dockSort = useDragSort({
-    axis: vertical ? 'y' : 'x',
-    where: (_d, t, rel) => (t.kind === 'dock' ? (rel < 0.5 ? 'before' : 'after') : null),
-    onDrop: (d, t, where) => moveInDock(d.id, t.id, where),
-    onKeyMove: (k, dir) => {
-      const ids = sortedServers.map((s) => s.id);
-      const n = ids[ids.indexOf(k.id) + dir];
-      if (n) moveInDock(k.id, n, dir < 0 ? 'before' : 'after');
-    },
-  });
-  const leftItems = [
-    { key: 'home', node: (
-      <button className="mac-dock-item" onClick={() => openServer(null)} title="Home / DMs">
-        <Icon name="message" size={20} />
-        {dmUnread > 0 && <span className="mac-dock-badge">{dmUnread}</span>}
-        <span className="mac-dock-label">Home / DMs</span>
-      </button>
-    ) },
-  ];
-  const middleItems = sortedServers.map((s) => ({ key: s.id, node: (
-    <button key={s.id} className={`mac-dock-item${s.id === current ? ' active' : ''}${dockSort.classFor(s.id, 'dock')}`} {...dockSort.bind(s.id, 'dock')} onKeyDown={(e) => dockSort.keyDown(e, s.id, 'dock')} onClick={() => openServer(s.id)} title={s.name}>
-      {s.icon_url ? <img src={s.icon_url} alt="" className="mac-dock-img" /> : <span className="mac-dock-icon" style={{ background: s.icon_color }}>{s.name.slice(0, 1).toUpperCase()}</span>}
-      <span className="mac-dock-label">{s.name}</span>
-    </button>
-  ) }));
-  const rightItems = [
-    { key: 'discover', node: (
-      <button className={`mac-dock-item${discover ? ' active' : ''}`} onClick={onDiscover} title="Discover">
-        <Icon name="compass" size={20} />
-        <span className="mac-dock-label">Discover</span>
-      </button>
-    ) },
-    { key: 'create', node: (
-      <button className="mac-dock-item" onClick={onAdd} title="Create / Join server">
-        <Icon name="plus" size={20} />
-        <span className="mac-dock-label">Create / Join</span>
-      </button>
-    ) },
-  ];
-  return (
-    <div className={`mac-dock mac-dock-${position}`} ref={dockRef}>
-      <div className="mac-dock-section mac-dock-left-section">
-        {leftItems.map((it) => <div key={it.key} className="mac-dock-slot">{it.node}</div>)}
-      </div>
-      <div className="mac-dock-section mac-dock-middle-section">
-        {middleItems.map((it) => <div key={it.key} className="mac-dock-slot">{it.node}</div>)}
-      </div>
-      <div className="mac-dock-section mac-dock-right-section">
-        {rightItems.map((it) => <div key={it.key} className="mac-dock-slot">{it.node}</div>)}
-      </div>
     </div>
   );
 }

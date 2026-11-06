@@ -691,8 +691,7 @@ html[data-glass='true'] .dropdown,
 html[data-glass='true'] .ctx-menu,
 html[data-glass='true'] .toast,
 html[data-glass='true'] .topnav-inner,
-html[data-glass='true'] .auth-card,
-html[data-glass='true'] .mac-dock {
+html[data-glass='true'] .auth-card {
   backdrop-filter: blur(32px) saturate(180%) brightness(1.05);
   -webkit-backdrop-filter: blur(32px) saturate(180%) brightness(1.05);
 }
@@ -2578,14 +2577,6 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .sp-search { display: flex; align-items: center; gap: 6px; padding: 6px 10px; margin: 8px 8px 4px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); }
 .sp-search input { background: none; border: 0; color: var(--text); font-size: 13px; width: 100%; outline: none; }
 
-.mac-dock { position: fixed; bottom: 0; left: 0; right: 0; transform: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 24px; background: rgba(255,255,255,0.18); backdrop-filter: blur(40px) saturate(200%) brightness(1.08); -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(1.08); border-radius: 0; border: 0; border-top: 1px solid rgba(255,255,255,0.22); z-index: 9999; transition: padding .3s, gap .3s, background .3s; box-shadow: 0 -4px 24px rgba(0,0,0,.08); }
-.mac-dock-item { width: 40px; height: 40px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform .35s cubic-bezier(.25,.8,.25,1), background .3s, box-shadow .3s; font-size: 13px; }
-.mac-dock-item:hover { transform: scale(1.4) translateY(-8px); background: var(--accent); box-shadow: 0 10px 24px rgba(88,101,242,.4); }
-.mac-dock-item.active { box-shadow: 0 0 0 2px var(--accent); }
-.mac-dock-section { display: flex; gap: 10px; align-items: center; }
-.mac-dock-item:hover { transform: scale(1.35) translateY(-8px); background: var(--accent); }
-.mac-dock-item.active { box-shadow: 0 0 0 2px var(--accent); }
-.mac-dock-icon { font-size: 13px; font-weight: 700; color: var(--text); }
 
 .settings-search-results { padding: 8px 0; }
 .settings-search-results h2 { margin-bottom: 4px; }
@@ -2615,19 +2606,9 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .account-switcher-current { font-size: 11px; color: var(--accent); font-weight: 600; }
 .account-switcher-actions { display: flex; gap: 6px; }
 
-.mac-dock-badge { position: absolute; top: -4px; right: -4px; background: #e5484d; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 999px; min-width: 16px; text-align: center; }
-.mac-dock-item { position: relative; }
 
-.mac-dock-label { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); background: var(--bg-2); color: var(--text); padding: 4px 8px; border-radius: 6px; font-size: 11px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; transform: translateX(-50%) translateY(4px); }
-.mac-dock-item:hover .mac-dock-label { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-.mac-dock-top { top: 8px; bottom: auto; left: 50%; transform: translateX(-50%); flex-direction: row; }
-.mac-dock-left { left: 8px; right: auto; top: 50%; transform: translateY(-50%); flex-direction: column; }
-.mac-dock-right { right: 8px; left: auto; top: 50%; transform: translateY(-50%); flex-direction: column; }
-.mac-dock-bottom { bottom: 8px; top: auto; left: 50%; transform: translateX(-50%); }
 
-.mac-dock-img { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; display: block; }
-.mac-dock-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
 
 /* ---- storage console: accounts explorer ---- */
 .su { display: flex; flex-direction: column; gap: 12px; }
@@ -2916,11 +2897,6 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .channel-group.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .channel-group.dragging { opacity: .4; }
 .category[data-sortable] { cursor: grab; }
-.mac-dock-item.dragging { opacity: .35; }
-.mac-dock-item.drop-before { box-shadow: -3px 0 0 var(--accent); }
-.mac-dock-item.drop-after { box-shadow: 3px 0 0 var(--accent); }
-.mac-dock-left .mac-dock-item.drop-before, .mac-dock-right .mac-dock-item.drop-before { box-shadow: 0 -3px 0 var(--accent); }
-.mac-dock-left .mac-dock-item.drop-after, .mac-dock-right .mac-dock-item.drop-after { box-shadow: 0 3px 0 var(--accent); }
 .folder-panel .rail-item.drop-before { box-shadow: 0 -4px 0 -1px var(--accent); }
 .folder-panel .rail-item.drop-after { box-shadow: 0 4px 0 -1px var(--accent); }
 
@@ -2955,3 +2931,132 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .mem-meta { margin: 4px 0 0; font-size: 12px; color: #fffb; text-align: center; }
 .mem-new { display: flex; flex-direction: column; gap: 10px; }
 .mem-new-preview { width: 100%; max-height: 260px; object-fit: contain; border-radius: 10px; background: #000; }
+
+/* =========================================================== macOS-style dock
+   Floating glass dock (MacDock.tsx). --m is the magnification set by the pointer;
+   the app reserves room for the dock so it never covers the composer. */
+.shell.has-dock { --dock-reserve: 78px; }
+.shell.has-dock.dock-at-bottom { padding-bottom: var(--dock-reserve); }
+.shell.has-dock.dock-at-top { padding-top: var(--dock-reserve); }
+.shell.has-dock.dock-at-left { padding-left: var(--dock-reserve); }
+.shell.has-dock.dock-at-right { padding-right: var(--dock-reserve); }
+
+.vb-dock {
+  --dock-size: 46px;
+  position: fixed; z-index: 900; display: flex; align-items: flex-end; gap: 6px; padding: 7px 9px;
+  border-radius: 24px; width: max-content; max-width: calc(100vw - 24px);
+  background: color-mix(in srgb, var(--bg-1) 58%, transparent);
+  backdrop-filter: blur(26px) saturate(190%); -webkit-backdrop-filter: blur(26px) saturate(190%);
+  border: 1px solid color-mix(in srgb, var(--text) 13%, transparent);
+  box-shadow: 0 18px 50px -12px #000c, 0 2px 6px #0006, inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+  animation: dock-in .5s var(--spring) both;
+}
+.vb-dock.dock-bottom { bottom: 10px; left: 50%; transform: translateX(-50%); }
+/* the shelf keeps its size; magnified icons rise out of it, like on a Mac */
+.vb-dock.dock-bottom, .vb-dock.dock-top { height: calc(var(--dock-size) + 16px); }
+.vb-dock.dock-left, .vb-dock.dock-right { width: calc(var(--dock-size) + 16px); }
+.vb-dock.dock-top .dock-item { align-self: flex-start; }
+.vb-dock.dock-bottom .dock-item { align-self: flex-end; }
+.vb-dock.dock-top { top: 10px; left: 50%; transform: translateX(-50%); align-items: flex-start; animation-name: dock-in-top; }
+.vb-dock.dock-left, .vb-dock.dock-right { top: 50%; transform: translateY(-50%); flex-direction: column; align-items: flex-start; max-height: calc(100vh - 24px); padding: 9px 7px; }
+.vb-dock.dock-left { left: 10px; animation-name: dock-in-left; }
+.vb-dock.dock-right { right: 10px; align-items: flex-end; animation-name: dock-in-right; }
+@keyframes dock-in { from { opacity: 0; translate: 0 24px; scale: .94; } }
+@keyframes dock-in-top { from { opacity: 0; translate: 0 -24px; scale: .94; } }
+@keyframes dock-in-left { from { opacity: 0; translate: -24px 0; scale: .94; } }
+@keyframes dock-in-right { from { opacity: 0; translate: 24px 0; scale: .94; } }
+
+.dock-item {
+  --m: 1;
+  position: relative; flex: none; padding: 0; border: 0; background: none; cursor: pointer;
+  width: calc(var(--dock-size) * var(--m)); height: calc(var(--dock-size) * var(--m));
+  transition: width .14s cubic-bezier(.2, .8, .3, 1), height .14s cubic-bezier(.2, .8, .3, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.vb-dock.still .dock-item { transition: none; }
+.dock-icon {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  border-radius: 27%; color: #fff; background: linear-gradient(160deg, #3a3d4a, #20222b);
+  box-shadow: 0 6px 14px -4px #000b, inset 0 1px 0 #ffffff26, inset 0 -1px 0 #0005;
+  transition: filter .2s, transform .18s var(--spring);
+}
+.dock-icon::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, #ffffff2e 0%, #ffffff08 38%, transparent 55%);
+}
+.dock-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dock-icon svg { width: 52%; height: 52%; }
+.dock-initials { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: calc(var(--dock-size) * var(--m) * .34); letter-spacing: -.02em; text-shadow: 0 1px 2px #0006; }
+.dock-home .dock-icon { background: linear-gradient(150deg, #8b9bff, #5865f2 50%, #3b2bc9); }
+.dock-home .dock-icon svg { width: 60%; height: 60%; }
+.dock-discover .dock-icon { background: linear-gradient(150deg, #34d399, #0ea5e9 60%, #2563eb); }
+.dock-add .dock-icon { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 22%, transparent); }
+.dock-add .dock-icon::after { display: none; }
+.dock-item:hover .dock-icon { filter: brightness(1.08); }
+.dock-item:active .dock-icon { filter: brightness(.8); transform: scale(.93); }
+.dock-item:focus-visible { outline: none; }
+.dock-item:focus-visible .dock-icon { box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--accent); }
+
+/* opening something: the classic bounce */
+.dock-item.launching .dock-icon { animation: dock-bounce .8s cubic-bezier(.3, .7, .4, 1); }
+@keyframes dock-bounce { 0%, 100% { translate: 0 0; } 22% { translate: 0 -38%; } 44% { translate: 0 0; } 60% { translate: 0 -14%; } 76% { translate: 0 0; } 86% { translate: 0 -4%; } }
+.dock-top .dock-item.launching .dock-icon { animation-name: dock-bounce-down; }
+@keyframes dock-bounce-down { 0%, 100% { translate: 0 0; } 22% { translate: 0 38%; } 44% { translate: 0 0; } 60% { translate: 0 14%; } 76% { translate: 0 0; } }
+.dock-left .dock-item.launching .dock-icon { animation-name: dock-bounce-right; }
+@keyframes dock-bounce-right { 0%, 100% { translate: 0 0; } 22% { translate: 38% 0; } 44% { translate: 0 0; } 60% { translate: 14% 0; } 76% { translate: 0 0; } }
+.dock-right .dock-item.launching .dock-icon { animation-name: dock-bounce-left; }
+@keyframes dock-bounce-left { 0%, 100% { translate: 0 0; } 22% { translate: -38% 0; } 44% { translate: 0 0; } 60% { translate: -14% 0; } 76% { translate: 0 0; } }
+
+/* open / unread indicator */
+.dock-dot { position: absolute; left: 50%; bottom: -5px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: transparent; transition: background .2s, box-shadow .2s; }
+.dock-dot.on { background: var(--text); box-shadow: 0 0 6px var(--accent), 0 0 2px var(--text); }
+.dock-dot.unread { background: color-mix(in srgb, var(--text) 55%, transparent); }
+.dock-top .dock-dot { bottom: auto; top: -5px; }
+.dock-left .dock-dot { left: -6px; top: 50%; bottom: auto; margin: -2px 0 0; }
+.dock-right .dock-dot { left: auto; right: -6px; top: 50%; bottom: auto; margin: -2px 0 0; }
+
+.dock-badge {
+  position: absolute; top: -4px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: #ff3b30; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+  box-shadow: 0 2px 6px #0007, 0 0 0 2px color-mix(in srgb, var(--bg-1) 80%, transparent); animation: dock-badge .35s var(--spring);
+}
+@keyframes dock-badge { from { scale: .2; } }
+
+/* label bubble */
+.dock-tip {
+  position: absolute; left: 50%; bottom: calc(100% + 12px); transform: translateX(-50%) translateY(4px); white-space: nowrap; pointer-events: none;
+  padding: 5px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--text);
+  background: color-mix(in srgb, var(--bg-2) 88%, transparent); border: 1px solid var(--line-2);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 6px 18px #0008;
+  opacity: 0; transition: opacity .12s, transform .16s var(--spring);
+}
+.dock-item:hover .dock-tip, .dock-item:focus-visible .dock-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+.dock-top .dock-tip { bottom: auto; top: calc(100% + 12px); }
+.dock-left .dock-tip, .dock-right .dock-tip { bottom: auto; top: 50%; transform: translateY(-50%) translateX(-4px); }
+.dock-left .dock-tip { left: calc(100% + 14px); }
+.dock-right .dock-tip { left: auto; right: calc(100% + 14px); transform: translateY(-50%) translateX(4px); }
+.dock-left .dock-item:hover .dock-tip, .dock-right .dock-item:hover .dock-tip,
+.dock-left .dock-item:focus-visible .dock-tip, .dock-right .dock-item:focus-visible .dock-tip { transform: translateY(-50%) translateX(0); }
+
+.dock-sep { flex: none; align-self: stretch; width: 1px; margin: 6px 3px; background: color-mix(in srgb, var(--text) 16%, transparent); }
+.dock-left .dock-sep, .dock-right .dock-sep { width: auto; height: 1px; margin: 3px 6px; }
+
+/* dragging to reorder */
+.dock-item.dragging { opacity: .35; }
+.dock-item.drop-before::before, .dock-item.drop-after::before {
+  content: ""; position: absolute; top: 10%; bottom: 10%; width: 3px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent);
+}
+.dock-item.drop-before::before { left: -5px; }
+.dock-item.drop-after::before { right: -5px; }
+.dock-left .dock-item.drop-before::before, .dock-right .dock-item.drop-before::before,
+.dock-left .dock-item.drop-after::before, .dock-right .dock-item.drop-after::before { top: auto; bottom: auto; left: 10%; right: 10%; width: auto; height: 3px; }
+.dock-left .dock-item.drop-before::before, .dock-right .dock-item.drop-before::before { top: -5px; }
+.dock-left .dock-item.drop-after::before, .dock-right .dock-item.drop-after::before { bottom: -5px; }
+
+@media (max-width: 720px) {
+  .shell.has-dock { --dock-reserve: 66px; }
+  .vb-dock { --dock-size: 40px; overflow-x: auto; scrollbar-width: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vb-dock, .dock-item.launching .dock-icon, .dock-badge { animation: none; }
+}

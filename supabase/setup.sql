@@ -7029,7 +7029,7 @@ revoke execute on function public.force_accept_friend_request(uuid) from public,
 grant execute on function public.force_accept_friend_request(uuid) to authenticated;
 
 -- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
--- 20261021000000_set_username.sql
+-- 20261021000001_set_username.sql
 -- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 -- Change your username anytime. Same rules as signup: 2-32 lowercase letters,

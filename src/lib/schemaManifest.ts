@@ -416,7 +416,7 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     "bodies": {}
   },
   {
-    "migration": "20261021000000_set_username.sql",
+    "migration": "20261021000001_set_username.sql",
     "tables": [],
     "functions": [
       "set_username"
