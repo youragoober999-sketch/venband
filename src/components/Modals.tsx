@@ -1,3 +1,4 @@
+import { CommunityTemplatePicker } from './ServerTemplates';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
@@ -37,8 +38,10 @@ async function uploadServerPicture(serverId: string, kind: 'icon' | 'banner', bl
   if (e2) throw e2;
 }
 
-export function CreateJoinModal({ onClose }: { onClose: () => void }) {
+export function CreateJoinModal({ onClose, initialTemplate }: { onClose: () => void; initialTemplate?: string }) {
   const [tab, setTab] = useState<'create' | 'join'>('create');
+  // a shared template's code (venband.com/template/CODE), instead of a built-in layout
+  const [communityCode, setCommunityCode] = useState<string | null>(initialTemplate ?? null);
   const [step, setStep] = useState(0);
   const [template, setTemplate] = useState<string>('default');
   const [name, setName] = useState('');
@@ -58,7 +61,10 @@ export function CreateJoinModal({ onClose }: { onClose: () => void }) {
   async function create() {
     setBusy(true);
     setError(null);
-    const { data, error } = await supabase.rpc('create_server', { p_name: name.trim() || `${me.display_name}'s server`, p_icon_color: color, p_template: template });
+    const serverName = name.trim() || `${me.display_name}'s server`;
+    const { data, error } = communityCode
+      ? await supabase.rpc('create_server_from_template', { p_code: communityCode, p_name: serverName, p_icon_color: color })
+      : await supabase.rpc('create_server', { p_name: serverName, p_icon_color: color, p_template: template });
     if (error) {
       setBusy(false);
       return setError(errorMessage(error));
@@ -139,13 +145,14 @@ export function CreateJoinModal({ onClose }: { onClose: () => void }) {
               <p className="muted">Pick a starting point. You can change every channel later.</p>
               <div className="template-grid" role="radiogroup" aria-label="Template">
                 {SERVER_TEMPLATES.map((t) => (
-                  <button key={t.id} type="button" role="radio" aria-checked={template === t.id} className={`template-card${template === t.id ? ' selected' : ''}`} onClick={() => setTemplate(t.id)}>
+                  <button key={t.id} type="button" role="radio" aria-checked={!communityCode && template === t.id} className={`template-card${!communityCode && template === t.id ? ' selected' : ''}`} onClick={() => (setTemplate(t.id), setCommunityCode(null))}>
                     <span className="tpl-emoji">{t.emoji}</span>
                     <b>{t.name}</b>
                     <span className="tpl-desc">{t.desc}</span>
                   </button>
                 ))}
               </div>
+              <CommunityTemplatePicker selected={communityCode} onSelect={setCommunityCode} initialCode={initialTemplate} />
               <div className="modal-actions">
                 <button className="btn primary" onClick={() => setStep(1)}>
                   Next

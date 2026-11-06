@@ -13,9 +13,10 @@ import { showUndo } from './Undo';
 import { DiscoveryTab, ExpressionsTab, InvitesTab, JoiningTab, ThemeTab } from './ServerSettingsExtra';
 import { Select } from './Select';
 import { RoleIcon } from './Badges';
+import { TemplatesTab } from './ServerTemplates';
 import { useDragSort } from '../lib/useDragSort';
 
-type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'expressions' | 'theme' | 'joining' | 'discovery' | 'integrations' | 'voogle' | 'reports' | 'audit';
+type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'expressions' | 'theme' | 'joining' | 'discovery' | 'integrations' | 'templates' | 'voogle' | 'reports' | 'audit';
 
 export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClose: () => void }) {
   const p = data.myPermissions;
@@ -29,6 +30,7 @@ export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClo
     ['invites', 'Invites', has(p, P.MANAGE_SERVER)],
     ['discovery', 'Discovery', has(p, P.MANAGE_SERVER)],
     ['integrations', 'Integrations & Bots', has(p, P.MANAGE_INTEGRATIONS) || has(p, P.MANAGE_SERVER) || isTopStaff(sessionStore.get().me)],
+    ['templates', 'Templates', has(p, P.MANAGE_SERVER)],
     ['voogle', 'Voogle', has(p, P.MANAGE_SERVER)],
     ['bans', 'Bans', has(p, P.BAN_MEMBERS)],
     ['reports', 'Reports', has(p, P.MODERATE_MEMBERS) || has(p, P.MANAGE_MESSAGES) || has(p, P.KICK_MEMBERS)],
@@ -54,6 +56,7 @@ export function ServerSettingsModal({ data, onClose }: { data: ServerData; onClo
           {tab === 'expressions' && <ExpressionsTab data={data} />}
           {tab === 'theme' && <ThemeTab data={data} />}
           {tab === 'integrations' && <IntegrationsTab data={data} />}
+          {tab === 'templates' && <TemplatesTab data={data} />}
           {tab === 'reports' && <ServerReportsTab data={data} onClose={onClose} />}
           {tab === 'audit' && <AuditLogTab data={data} />}
           {tab === 'voogle' && <VoogleTab data={data} />}

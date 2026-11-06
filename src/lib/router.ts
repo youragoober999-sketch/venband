@@ -53,6 +53,7 @@ export type Route =
   | { kind: 'discover' }
   | { kind: 'callback' }
   | { kind: 'invite'; code: string }
+  | { kind: 'template'; code: string }
   | { kind: 'group-invite'; code: string }
   | { kind: 'page'; page: PublicPage; id?: string }
   | { kind: 'root' }
@@ -90,6 +91,7 @@ export function parseRoute(path = currentPath()): Route {
   if (parts[0] === 'callback') return { kind: 'callback' };
   if (parts[0] === 'storage') return { kind: 'storage' };
   if (parts[0] === 'invite' && parts[1]) return { kind: 'invite', code: parts[1] };
+  if (parts[0] === 'template' && parts[1]) return { kind: 'template', code: parts[1] };
   if (parts[0] === 'join-group' && parts[1]) return { kind: 'group-invite', code: parts[1] };
   const page = parts[0] ? PAGES[parts[0].toLowerCase()] : undefined;
   if (page) return { kind: 'page', page, id: parts[1] };

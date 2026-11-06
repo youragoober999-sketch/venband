@@ -283,6 +283,15 @@ export function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId]);
   const [modal, setModal] = useState<null | 'create-join'>(null);
+  const [templateCode, setTemplateCode] = useState<string | undefined>();
+  // venband.com/template/CODE → "Create a server" with that template picked
+  useEffect(() => {
+    const r = parseRoute();
+    if (r.kind !== 'template') return;
+    setTemplateCode(r.code);
+    setModal('create-join');
+    go('channels/@me');
+  }, []);
   const drawer = uiStore.use((s) => s.drawer);
   const switcher = uiStore.use((s) => s.switcher);
   const search = uiStore.use((s) => s.search);
@@ -386,7 +395,7 @@ export function Shell() {
             <IncomingCall key={d.channel.id} dm={d} />
           ))}
       </div>
-      {modal === 'create-join' && <CreateJoinModal onClose={() => setModal(null)} />}
+      {modal === 'create-join' && <CreateJoinModal initialTemplate={templateCode} onClose={() => (setModal(null), setTemplateCode(undefined))} />}
       <SettingsPage />
       <ContextMenuHost />
       <DialogHost />

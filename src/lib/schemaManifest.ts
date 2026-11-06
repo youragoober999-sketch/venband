@@ -723,5 +723,20 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "my_gif_count"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261106110000_server_templates.sql",
+    "tables": [
+      "server_templates"
+    ],
+    "functions": [
+      "create_server_from_template",
+      "create_template",
+      "server_snapshot",
+      "sync_template",
+      "template_gallery",
+      "template_preview"
+    ],
+    "bodies": {}
   }
 ];
