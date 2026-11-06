@@ -451,10 +451,88 @@ me), reporting. **Privacy fix:** memory media was readable per folder, so anyone
 who could see a profile could list archived / friends-only files; now only
 media of memories the viewer may see is served.
 
-## 17. Not done
+## 17. Since Phase H (done 2026-11-06)
 
-* **Phase I (design pass of the signed-in app)** needs a test account on a test
-  environment; venband.com is production, so it wasn't done.
-* **Phase J (VDL migration)** — long-running infrastructure work, not started.
-* Features from the brief beyond A–H (Worlds, Friend Spaces, automation…) were
+All verified on the local Supabase stack (`npm run dev:local`, seeded accounts)
+and with `npm run test:db:local` (14 database suites) plus `npm test`.
+
+* **Server templates** (`20261106110000`): share a server's layout as a link
+  (`/template/CODE`), sync it, preview, gallery, "Start from" in Create a server.
+* **Built-in commands**: `/avatar`, `/banner`, `/gif` (reply to an image),
+  `/roll`, `/coin`, `/8ball`, `/choose`, `/shrug`, `/tableflip`, `/unflip`, `/me`,
+  `/spoiler`. `@<user id>` turns into a mention.
+* **GIF library** (`20261106090000`): Save as GIF / Download as GIF on images,
+  favourites stored privately.
+* **Sounds**: 17 synthesized sounds (calls, mute, deafen, screen share, pings,
+  soundboard), all generated in code — no third-party audio.
+* **Built-in bots** on App Discovery with their own art (`public/bots/`); the
+  official bot uses the Venband logo and banner.
+* **Playing on profiles** (desktop): game detection, live timer, recent
+  activity, a privacy switch and "Clear my activity history".
+* **Stackdown** (`20261106130000`): an original multiplayer falling-blocks game
+  played together in a channel (gamepad button in the header).
+* **Slowmode and reminders** (`20261106140000`): per-channel slowmode enforced
+  by the database; "Remind me" on any message, shown in Saved Messages.
+* **No browser pop-ups**: every alert / confirm / prompt is an in-app dialog.
+
+Originality ("court free"): every name, picture, sound and game here is our
+own. Nothing copies another product's trademarks, artwork, sounds or levels;
+the falling-blocks game has its own name, colours, rules text and look.
+
+## 18. Not done
+
+* **Phase I (design pass of the signed-in app)**: the mobile fixes are done;
+  a full visual pass at four sizes is still open.
+* **Phase J (VDL migration)**: plan below, not started. It needs your
+  decisions first.
+* Larger ideas from the brief (Worlds, Friend Spaces, automation engine) were
   not started.
+
+## 19. Phase J — VDL migration plan
+
+**Where things stand.** Supabase is the real backend: 59 migrations, ~380
+schema objects, row-level security on every table, private realtime channels,
+storage buckets with policies, and 57 source files that call it directly. VDL
+(`api/vdl.js`, `vdl/schema.sql`, `lib/vdl-sync.js`) is a small parallel layer:
+Vercel Postgres, cookie JWTs, bcrypt, account sync from Supabase, and basic
+users / servers / messages. Moving everything onto VDL as it is built today
+would mean rewriting every query, every policy and realtime — months of work
+with a high risk of security regressions.
+
+**Decisions you need to make:**
+
+1. **Realtime host.** Vercel functions can't hold WebSockets, so calls,
+   typing, presence, Stackdown and live messages need a server that stays up.
+   * (a) Keep Supabase Realtime for now (no work).
+   * (b) Self-host one small VPS (about $5–10 a month) running a realtime
+     server. This is the recommended choice.
+   * (c) Use a paid managed service. Billed per message; content is already
+     end-to-end encrypted, so the provider sees only metadata.
+2. **Where Postgres lives.** The schema is plain Postgres. Its policies call
+   `auth.uid()`, which reads the caller's JWT, so it runs unchanged on any
+   Postgres (Neon / Vercel Postgres, a VPS) behind an API that sets those
+   claims.
+   * (a) Run PostgREST next to it: the client code stays almost the same.
+   * (b) Rewrite queries into `/api/vdl` routes. That means 57 files, and the
+     Hobby plan's 12-function limit.
+   * Recommended: (a).
+3. **Sign-in.** Venband sends Auth a key derived from the password (Argon2),
+   never the password itself. Auth stores a bcrypt hash of that key, which VDL
+   can verify directly. Exporting `auth.users` therefore moves every account
+   with no password reset. Decide whether MFA (TOTP) moves too; it needs the
+   factor secrets exported.
+4. **Files.** Choose one: VBB (Postgres-backed, already built, fine for small
+   files), an S3-compatible bucket such as Cloudflare R2 (cheap, no egress
+   fees), or stay on Supabase Storage. The bucket policies become signed-URL
+   checks in the API.
+
+**Stages, each shippable and reversible:**
+
+| Stage | Work | Done when |
+|---|---|---|
+| J1 Database copy | Restore a nightly `pg_dump` of Supabase into the new Postgres; add the `auth.uid()` shim; run `tests/db` there | All 14 suites pass on the new host |
+| J2 Read path | PostgREST (or `/api/vdl`) in front of the copy; a flag sends reads there for staff accounts only | Staff use the app for a week on it with no regressions |
+| J3 Auth | Import accounts (`lib/vdl-sync.js` already pulls them); VDL issues the JWTs that PostgREST checks | New sign-ins go to VDL; old sessions still work |
+| J4 Realtime | Bring up the chosen realtime host; port `realtime_topic_allowed` into its auth hook | Calls, presence, typing and Stackdown work on it |
+| J5 Files | Copy buckets; signed-URL checks mirror the storage policies | Uploads and downloads served from the new store |
+| J6 Cut-over | Make the new host primary; Supabase becomes a read-only backup for 30 days | Supabase can be turned off |
