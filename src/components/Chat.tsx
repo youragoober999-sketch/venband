@@ -27,6 +27,7 @@ import { has, P } from '../lib/permissions';
 import { isSaved, loadSavedIds, setPinned, setSaved, useChannelExtras, type PollState, type ReactionGroup, type ThreadInfo } from '../lib/chatExtras';
 import { Avatar, Icon, LogoGlyph, StyledName } from './ui';
 import { BUILTIN_APP, BUILTIN_COMMANDS, isBuiltin, runBuiltin } from '../lib/builtinCommands';
+import { Stackdown } from './Stackdown';
 import { Badges, OwnerCrown, RoleIcon } from './Badges';
 import { copyText, openMenu, type Entry } from './ContextMenu';
 import { askConfirm, askText, showAlert } from './Dialogs';
@@ -176,6 +177,7 @@ export function ChatView({
   const dmCommands = useDmCommands(!isThread && channel.type === 'dm' ? channel.id : null);
   const dmBot = useDmBot(!isThread && channel.type === 'dm' ? channel.id : null);
   const [replyTo, setReplyTo] = useState<DecryptedMessage | null>(null);
+  const [playing, setPlaying] = useState(false);
   const [quote, setQuote] = useState<DecryptedMessage | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [panel, setPanel] = useState<null | 'pins' | 'threads'>(null);
@@ -587,6 +589,12 @@ export function ChatView({
                 <Icon name="thread" />
               </button>
             )}
+            {!isThread && (
+              <button className={`icon-btn${playing ? ' on' : ''}`} title="Play Stackdown together" aria-label="Activities: play Stackdown together" onClick={() => setPlaying(true)}>
+                <Icon name="gamepad" />
+              </button>
+            )}
+            {playing && <Stackdown channelId={channel.id} onClose={() => setPlaying(false)} />}
             {!isThread && (
               <button className={`icon-btn${panel === 'pins' ? ' on' : ''}`} title="Pinned messages" aria-label="Pinned messages" onClick={() => setPanel(panel === 'pins' ? null : 'pins')}>
                 <Icon name="pin" />

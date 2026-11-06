@@ -748,5 +748,13 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "track_activity_history"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261106130000_activities_realtime.sql",
+    "tables": [],
+    "functions": [],
+    "bodies": {
+      "realtime_topic_allowed": "8d7bbda0e6750093ba14768521fb8905"
+    }
   }
 ];
