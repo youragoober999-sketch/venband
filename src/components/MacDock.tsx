@@ -142,6 +142,7 @@ export function MacDock({
     <nav
       ref={ref}
       className={`vb-dock dock-${pos}${still ? ' still' : ''}`}
+      style={{ ['--dock-count' as string]: sorted.length + 3 }}
       aria-label="Dock"
       onPointerMove={(e) => !dragging && e.pointerType === 'mouse' && magnify(e.clientX, e.clientY)}
       onPointerLeave={rest}

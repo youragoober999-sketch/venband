@@ -6,7 +6,7 @@ import { sessionStore } from '../lib/session';
 import { go } from '../lib/router';
 import { appQuery, apiBase, connectBot, isRpcMissing, normalizeTags, PRESETS, type Application, type BotCommandResponse, type BotCommandRow, type BotTemplate, type Preset, type ServerBot } from '../lib/bots';
 import { Field, Icon } from './ui';
-import { askConfirm, askText } from './Dialogs';
+import { askConfirm, askText, showAlert } from './Dialogs';
 import { Select } from './Select';
 import { PublicLayout, SignInCard } from './PublicPages';
 import { downloadZip } from '../lib/zip';
@@ -285,7 +285,7 @@ function AppDashboard({ id }: { id: string }) {
       const channel = await connectBot(appId);
       go(`channels/@me/${channel}`);
     } catch (e) {
-      alert(errorMessage(e));
+      showAlert(errorMessage(e));
     } finally {
       setDmBusy(false);
     }

@@ -8,7 +8,7 @@ import { has, P, PERMISSION_GROUPS, PERMISSION_INFO } from '../lib/permissions';
 import type { Ban, Role } from '../lib/types';
 import { openServer, type ServerData } from '../hooks/data';
 import { Avatar, ColorPicker, Field, Icon, Modal } from './ui';
-import { askConfirm, askText } from './Dialogs';
+import { askConfirm, askText, showAlert } from './Dialogs';
 import { showUndo } from './Undo';
 import { DiscoveryTab, ExpressionsTab, InvitesTab, JoiningTab, ThemeTab } from './ServerSettingsExtra';
 import { Select } from './Select';
@@ -219,13 +219,13 @@ function Roles({ data }: { data: ServerData }) {
   async function create() {
     const maxBelow = Math.max(0, ...data.roles.filter((r) => r.position < myTop).map((r) => r.position));
     const position = Math.min(maxBelow + 1, myTop === Infinity ? maxBelow + 1 : myTop - 1);
-    if (position < 1) return alert('You cannot create roles above your own highest role.');
+    if (position < 1) return showAlert('You cannot create roles above your own highest role.');
     const { data: r, error } = await supabase
       .from('roles')
       .insert({ server_id: data.server!.id, name: 'new role', color: '#99aab5', permissions: 0, position })
       .select()
       .single();
-    if (error) return alert(errorMessage(error));
+    if (error) return showAlert(errorMessage(error));
     data.reload();
     setSelected(r.id);
   }
@@ -253,7 +253,7 @@ function Roles({ data }: { data: ServerData }) {
     list.splice(i, 0, drag);
     const before = sorted.filter(movable).map((r) => r.id);
     const { error } = await supabase.rpc('reorder_roles', { p_server: data.server!.id, p_ids: list });
-    if (error) return alert(errorMessage(error));
+    if (error) return showAlert(errorMessage(error));
     data.reload();
     showUndo('Role order changed', async () => {
       await supabase.rpc('reorder_roles', { p_server: data.server!.id, p_ids: before });
@@ -489,14 +489,14 @@ function Members({ data }: { data: ServerData }) {
     const res = on
       ? await supabase.from('member_roles').insert({ server_id: data.server!.id, user_id: userId, role_id: roleId })
       : await supabase.from('member_roles').delete().eq('server_id', data.server!.id).eq('user_id', userId).eq('role_id', roleId);
-    if (res.error) alert(errorMessage(res.error));
+    if (res.error) showAlert(errorMessage(res.error));
     data.reload();
   }
 
   async function kick(userId: string) {
     if (!(await askConfirm({ title: `Kick ${displayName(userId)}`, body: 'They can come back with a new invite.', confirm: 'Kick', danger: true }))) return;
     const { error } = await supabase.from('server_members').delete().eq('server_id', data.server!.id).eq('user_id', userId);
-    if (error) alert(errorMessage(error));
+    if (error) showAlert(errorMessage(error));
     data.reload();
   }
 
@@ -504,7 +504,7 @@ function Members({ data }: { data: ServerData }) {
     const reason = await askText({ title: `Ban ${displayName(userId)}`, label: 'Reason (optional, shown to them if they try to rejoin)', maxLength: 500 });
     if (reason === null) return;
     const { error } = await supabase.from('bans').insert({ server_id: data.server!.id, user_id: userId, banned_by: me.id, reason });
-    if (error) alert(errorMessage(error));
+    if (error) showAlert(errorMessage(error));
     data.reload();
   }
 

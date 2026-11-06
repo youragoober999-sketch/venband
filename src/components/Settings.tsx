@@ -17,7 +17,7 @@ import { PHRASEBOOK_LANGS, PHRASEBOOK_SIZE } from '../lib/phrasebook';
 import type { AvatarFrame, NameEffect, NameFont, PresenceStatus, Profile, Server } from '../lib/types';
 import { Avatar, ColorPicker, Field, Icon, nameplateVars, StyledName } from './ui';
 import { ImageCropper } from './ImageCropper';
-import { askText } from './Dialogs';
+import { askText, showAlert } from './Dialogs';
 import { Select } from './Select';
 import { go } from '../lib/router';
 import { VERSION } from '../lib/version';
@@ -475,7 +475,7 @@ function AccountTab() {
       }, 2000);
       // stop polling after 5 min
       setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
-    } catch (e) { alert(String((e as Error).message)); }
+    } catch (e) { showAlert(String((e as Error).message)); }
     finally { setQrBusy(false); }
   }
 

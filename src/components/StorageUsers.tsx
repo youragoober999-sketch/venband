@@ -8,6 +8,7 @@ import {
   vdlQueryUsers, vdlGetUser, vdlSetStatus, vdlEraseUser, vdlExportUrl, vdlSyncStatus, vdlSyncFromSupabase,
   type VdlUser, type VdlUserDetail, type VdlUserFacets, type VdlUserQuery, type VdlSyncRun,
 } from '../lib/vdl';
+import { showAlert, askText } from './Dialogs';
 
 const PAGE_SIZES = [25, 50, 100, 250];
 
@@ -174,14 +175,14 @@ export function UsersExplorer() {
   const bulk = async (status: 'active' | 'banned' | 'limited') => {
     const ids = [...selected];
     if (!ids.length) return;
-    const reason = prompt(`Set ${ids.length} account${ids.length === 1 ? '' : 's'} to “${status}”. Reason (saved to the audit log):`, 'storage console');
+    const reason = await askText({ title: `Set ${ids.length} account${ids.length === 1 ? '' : 's'} to “${status}”`, label: 'Reason (saved to the audit log)', initial: 'storage console', maxLength: 500, confirm: 'Apply' });
     if (reason === null) return;
     try {
       const r = await vdlSetStatus(ids, status, reason);
       setNotice(`Updated ${r.updated} account${r.updated === 1 ? '' : 's'}.${r.warnings.length ? ` ${r.warnings[0]}` : ''}`);
       setSelected(new Set());
       load();
-    } catch (e) { alert((e as Error).message); }
+    } catch (e) { showAlert((e as Error).message); }
   };
 
   const copySelected = (field: 'id' | 'email' | 'username') => {
@@ -336,18 +337,18 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
   const u: VdlUserDetail | undefined = data?.user;
   const setStatus = async (status: 'active' | 'limited' | 'very_limited' | 'banned') => {
     if (!u) return;
-    const reason = prompt(`Set @${u.username} to “${status.replace('_', ' ')}”. Reason:`, 'storage console');
+    const reason = await askText({ title: `Set @${u.username} to “${status.replace('_', ' ')}”`, label: 'Reason (saved to the audit log)', initial: 'storage console', maxLength: 500, confirm: 'Apply' });
     if (reason === null) return;
     try {
       const r = await vdlSetStatus(u.id, status, reason);
-      if (r.warnings.length) alert(r.warnings[0]);
+      if (r.warnings.length) showAlert(r.warnings[0]);
       await load(); onChanged();
-    } catch (e) { alert((e as Error).message); }
+    } catch (e) { showAlert((e as Error).message); }
   };
   const erase = async () => {
     if (!u) return;
-    if (prompt(`Type ${u.username} to permanently erase this VDL account.`) !== u.username) return;
-    try { await vdlEraseUser(u.id); onChanged(); onClose(); } catch (e) { alert((e as Error).message); }
+    if ((await askText({ title: 'Erase this account for good?', label: `Type ${u.username} to confirm`, maxLength: 64, confirm: 'Erase' })) !== u.username) return;
+    try { await vdlEraseUser(u.id); onChanged(); onClose(); } catch (e) { showAlert((e as Error).message); }
   };
 
   const linked = u ? `id: ${u.id}\nusername: @${u.username}\nemail: ${u.email ?? '(none)'}` : '';

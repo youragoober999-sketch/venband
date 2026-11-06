@@ -7,7 +7,7 @@ import { useApps, useServerBots } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
 import { isTopStaff, sessionStore, signOut, updateMyProfile } from '../lib/session';
 import { ActivityMini } from './ActivityCard';
-import { supabase, errorMessage } from '../lib/supabase';
+import { supabase, errorMessage, isOldSchema } from '../lib/supabase';
 import { activeCallVersion, getActiveCall, joinCall, leaveCall, leftRecently, subscribeActiveCall } from '../lib/call';
 import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
 import { has, P } from '../lib/permissions';
@@ -49,7 +49,7 @@ import { CallAudio, VoiceView } from './Voice';
 import { CategorySettingsModal, ChannelSettingsModal, CreateChannelModal, CreateJoinModal, createCategory, GroupSettingsModal, InviteModal, NewDmModal, NewGroupModal, startDm } from './Modals';
 import { ServerSettingsModal } from './ServerSettings';
 import { ContextMenuHost, copyText, openMenu, type Entry } from './ContextMenu';
-import { DialogHost, askConfirm, askText } from './Dialogs';
+import { DialogHost, askConfirm, askText, showAlert } from './Dialogs';
 import { NotificationBell } from './NotificationCenter';
 import { ProfileHost, ServerTag, openProfile, userMenu } from './People';
 import { NameplateArt } from './Cosmetics';
@@ -203,7 +203,7 @@ function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
       const code = r.code;
       go('channels/@me', { replace: true });
       supabase.rpc('join_group', { p_code: code }).then(({ data, error }) => {
-        if (error) return alert(errorMessage(error));
+        if (error) return showAlert(errorMessage(error));
         openChannel('@me', data as string);
       });
     } else {
@@ -344,7 +344,7 @@ export function Shell() {
     if (!code) return;
     window.history.replaceState(null, '', window.location.pathname);
     supabase.rpc('join_server', { p_code: code }).then(({ data, error }) => {
-      if (error) alert(`Could not join: ${errorMessage(error)}`);
+      if (error) showAlert(`Could not join: ${errorMessage(error)}`);
       else if (data) openServer(data as string);
     });
   }, []);
@@ -440,7 +440,7 @@ function ServerRail({
         onClick: async () => {
           if (!(await askConfirm({ title: `Leave ${s.name}`, body: 'You won’t be able to rejoin unless you’re invited again.', confirm: 'Leave Server', danger: true }))) return;
           const { error } = await supabase.from('server_members').delete().eq('server_id', s.id).eq('user_id', me.id);
-          if (error) alert(errorMessage(error));
+          if (error) showAlert(errorMessage(error));
           else {
             if (current === s.id) openServer(null);
             reload();
@@ -1217,7 +1217,7 @@ function ServerHeader({ data }: { data: ServerData }) {
   async function leave() {
     if (!(await askConfirm({ title: `Leave ${server.name}`, body: 'You won’t be able to rejoin unless you’re invited again.', confirm: 'Leave Server', danger: true }))) return;
     const { error } = await supabase.from('server_members').delete().eq('server_id', server.id).eq('user_id', me.id);
-    if (error) alert(errorMessage(error));
+    if (error) showAlert(errorMessage(error));
     else openServer(null);
   }
 
@@ -1258,7 +1258,7 @@ function ServerHeader({ data }: { data: ServerData }) {
               onClick={async () => {
                 setOpen(false);
                 const name = await askText({ title: 'Create Category', label: 'Category name', placeholder: 'Gaming', maxLength: 100 });
-                if (name?.trim()) createCategory(data, name).catch((e) => alert(errorMessage(e)));
+                if (name?.trim()) createCategory(data, name).catch((e) => showAlert(errorMessage(e)));
               }}
             >
               Create Category <Icon name="plus" size={16} />
@@ -1298,14 +1298,26 @@ function ChannelList({ data, selected, presence }: { data: ServerData; selected:
   const groups = useMemo(() => {
     const m = new Map<string, Channel[]>();
     for (const c of data.channels) m.set(c.category, [...(m.get(c.category) ?? []), c]);
-    // categories with no channels yet still show (so you can fill them)
-    for (const cat of data.server?.categories ?? []) if (!m.has(cat)) m.set(cat, []);
-    return [...m.entries()];
+    // Categories with channels keep their channel order. Empty ones (which still
+    // show, so you can fill them) go next to their neighbours in the saved
+    // category order — so they can be dragged anywhere, not just the bottom.
+    const order = [...m.keys()];
+    const saved = (data.server?.categories ?? []).filter((c) => c !== '');
+    saved.forEach((cat, i) => {
+      if (m.has(cat)) return;
+      m.set(cat, []);
+      const prev = saved.slice(0, i).reverse().find((c) => order.includes(c));
+      const next = saved.slice(i + 1).find((c) => order.includes(c));
+      if (prev !== undefined) order.splice(order.indexOf(prev) + 1, 0, cat);
+      else if (next !== undefined) order.splice(order.indexOf(next), 0, cat);
+      else order.push(cat);
+    });
+    return order.map((c) => [c, m.get(c)!] as [string, Channel[]]);
   }, [data.channels, data.server?.categories]);
 
   async function newCategory() {
     const name = await askText({ title: 'Create Category', label: 'Category name', placeholder: 'Gaming', maxLength: 100 });
-    if (name?.trim()) createCategory(data, name).catch((e) => alert(errorMessage(e)));
+    if (name?.trim()) createCategory(data, name).catch((e) => showAlert(errorMessage(e)));
   }
 
   function listMenu(e: React.MouseEvent, category?: string) {
@@ -1382,14 +1394,22 @@ custom &&
     names.splice(where === 'before' ? at : at + 1, 0, from);
     const byCat = new Map(groups);
     const ordered = names.flatMap((c) => byCat.get(c) ?? []);
-    if (!(byCat.get(from) ?? []).length) return alert('Add a channel to this category first — empty categories always sit at the bottom.');
     const before = data.channels.map((c) => ({ id: c.id, position: c.position, category: c.category }));
+    const beforeNames = groups.map(([c]) => c).filter((c) => c !== '');
     const items = ordered.map((c, i) => ({ id: c.id, position: i, category: c.category }));
-    const { error } = await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: items });
-    if (error) return alert(errorMessage(error));
+    // the category order itself (empty categories too) …
+    const cat = await supabase.rpc('reorder_categories', { p_server: data.server!.id, p_names: names.filter((c) => c !== '') });
+    if (cat.error && !isOldSchema(cat.error)) return showAlert(errorMessage(cat.error));
+    if (cat.error && !(byCat.get(from) ?? []).length) return showAlert(errorMessage(cat.error)); // older database: empty categories can't move yet
+    // … and the channels, so each category's channels follow it
+    if (items.length) {
+      const { error } = await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: items });
+      if (error) return showAlert(errorMessage(error));
+    }
     data.reload();
     showUndo(`Moved ${from || 'channels'}`, async () => {
-      await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: before });
+      await supabase.rpc('reorder_categories', { p_server: data.server!.id, p_names: beforeNames });
+      if (before.length) await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: before });
       data.reload();
     });
   }
@@ -1430,7 +1450,7 @@ custom &&
       }
     }
     const { error } = await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: items });
-    if (error) return alert(errorMessage(error));
+    if (error) return showAlert(errorMessage(error));
     data.reload();
     showUndo(`Moved #${moving.name}`, async () => {
       await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: before });
@@ -1462,7 +1482,7 @@ custom &&
         onClick: async () => {
           if (!(await askConfirm({ title: `Delete #${c.name}`, body: 'All of its encrypted messages are deleted too. This can’t be undone.', confirm: 'Delete Channel', danger: true }))) return;
           const { error } = await supabase.from('channels').delete().eq('id', c.id);
-          if (error) alert(errorMessage(error));
+          if (error) showAlert(errorMessage(error));
         },
       },
       { type: 'sep' },
@@ -1755,7 +1775,7 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
         type: 'check' as const,
         label: PRESENCE_LABEL[p],
         checked: (me.presence ?? 'online') === p,
-        onChange: () => updateMyProfile({ presence: p }).catch((err) => alert(errorMessage(err))),
+        onChange: () => updateMyProfile({ presence: p }).catch((err) => showAlert(errorMessage(err))),
       })),
       { type: 'sep' },
       {
@@ -1764,7 +1784,7 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
         onClick: async () => {
           const v = await askText({ title: 'Custom status', label: 'What’s up?', initial: me.status_text ?? '', maxLength: 128 });
           if (v === null) return;
-          updateMyProfile({ status_text: v.trim() }).catch((err) => alert(errorMessage(err)));
+          updateMyProfile({ status_text: v.trim() }).catch((err) => showAlert(errorMessage(err)));
         },
       },
       { label: 'View Profile', icon: 'user', onClick: () => openProfile(me.id) },
@@ -1871,7 +1891,7 @@ function QuickSwitcher({ servers, dms, onClose, onCreateServer }: { servers: Ser
       for (const d of dms)
         out.push({ key: d.channel.id, label: d.other ? displayName(d.other.id) : d.title, sub: d.channel.is_group ? 'Group' : 'Direct message', icon: <ConvoAvatar dm={d} size={24} />, go: () => openChannel('@me', d.channel.id), kind: 'place' });
       for (const f of Object.values(friends).filter((x) => x.accepted && !dms.some((d) => d.other?.id === x.other)))
-        out.push({ key: f.other, label: displayName(f.other), sub: 'Friend', icon: <Avatar profile={getProfile(f.other)} size={24} />, go: () => startDm(f.other).catch((e) => alert(errorMessage(e))), kind: 'place' });
+        out.push({ key: f.other, label: displayName(f.other), sub: 'Friend', icon: <Avatar profile={getProfile(f.other)} size={24} />, go: () => startDm(f.other).catch((e) => showAlert(errorMessage(e))), kind: 'place' });
     }
     if (!only || only === 'server')
       for (const sv of servers)

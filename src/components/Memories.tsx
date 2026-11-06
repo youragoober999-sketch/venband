@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { Avatar, Field, Icon, Modal } from './ui';
-import { askConfirm, askText } from './Dialogs';
+import { askConfirm, askText, showAlert } from './Dialogs';
 import { Select } from './Select';
 import { reportItem } from '../lib/staff';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
@@ -222,7 +222,7 @@ export function MemoryViewer({ list, start = 0, self, onClose }: { list: Memory[
       else await updateMemory(m, { active: true, expires_at: null });
       onClose();
     } catch (e) {
-      alert(errorMessage(e));
+      showAlert(errorMessage(e));
     }
   };
   const report = async () => {
@@ -231,9 +231,9 @@ export function MemoryViewer({ list, start = 0, self, onClose }: { list: Memory[
     if (reason?.trim()) {
       try {
         await reportItem('memory', m.id, reason.trim());
-        alert('Reported — Venband staff will take a look.');
+        showAlert('Reported — Venband staff will take a look.');
       } catch (e) {
-        alert(errorMessage(e));
+        showAlert(errorMessage(e));
       }
     }
     setPaused(false);
@@ -241,7 +241,7 @@ export function MemoryViewer({ list, start = 0, self, onClose }: { list: Memory[
   const remove = async () => {
     setPaused(true);
     if (!(await askConfirm({ title: 'Delete this memory?', body: 'It’s removed for everyone right away.', confirm: 'Delete', danger: true }))) return setPaused(false);
-    try { await deleteMemory(m); onClose(); } catch (e) { alert(errorMessage(e)); }
+    try { await deleteMemory(m); onClose(); } catch (e) { showAlert(errorMessage(e)); }
   };
 
   if (!m) return null;

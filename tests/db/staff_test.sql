@@ -1,9 +1,13 @@
 -- Staff permissions, appeals, theme / bot reports, audit search
 -- (20261106050000_staff_permissions_appeals.sql). Runs after all migrations.
 create function pg_temp.st_must_fail(p_sql text, p_expect text default null) returns void language plpgsql as $$
+declare n bigint;
 begin
   begin
     execute p_sql;
+    -- real Supabase: row-level security filters the rows instead of raising
+    get diagnostics n = row_count;
+    if n = 0 and p_expect is null and p_sql ~* '^\s*(update|delete)\s' then return; end if;
   exception when others then
     if p_expect is not null and position(lower(p_expect) in lower(sqlerrm)) = 0 then
       raise exception 'failed for the wrong reason: % (wanted "%") — %', sqlerrm, p_expect, p_sql;

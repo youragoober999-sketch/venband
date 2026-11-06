@@ -12,6 +12,7 @@ import type { MessageRow } from '../lib/types';
 import { EmojiPicker } from './EmojiPicker';
 import { Markdown, type MentionContext } from './Markdown';
 import { Icon, Modal } from './ui';
+import { showAlert } from './Dialogs';
 
 /** Quick reactions plus my two most recent (no duplicates). */
 export function quickReactionSet(recent: string[]): string[] {
@@ -86,7 +87,7 @@ export function QuickReactBar({ row, groups, onMore, compact }: { row: MessageRo
       {set.map((e) => {
         const mine = groups.find((g) => g.emoji === e)?.mine ?? null;
         return (
-          <button key={e} type="button" className={mine ? 'on' : ''} title={`React with :${nameOfEmoji(e)}:`} onClick={() => toggleReaction(row, e, mine).catch((err) => alert(errorMessage(err)))}>
+          <button key={e} type="button" className={mine ? 'on' : ''} title={`React with :${nameOfEmoji(e)}:`} onClick={() => toggleReaction(row, e, mine).catch((err) => showAlert(errorMessage(err)))}>
             {e}
           </button>
         );

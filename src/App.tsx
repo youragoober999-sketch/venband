@@ -8,7 +8,7 @@ import { Logo } from './components/ui';
 import { ContextMenuHost } from './components/ContextMenu';
 import { Landing } from './components/Landing';
 import { parseRoute, go, useRoute, type Route } from './lib/router';
-import { DialogHost } from './components/Dialogs';
+import { DialogHost, showAlert, askConfirm } from './components/Dialogs';
 import { openSettings, isAndroid } from './lib/ui';
 import { compareVersions, VERSION } from './lib/version';
 
@@ -64,7 +64,7 @@ export default function App() {
     void import('./lib/connections').then(({ handleSteamRedirect, handleSpotifyRedirect, handleYouTubeRedirect, handleTikTokRedirect }) => {
       const report = (service: string) => (msg: string | null) => {
         if (!msg) return;
-        if (msg.startsWith(`${service} link failed`)) alert(msg);
+        if (msg.startsWith(`${service} link failed`)) showAlert(msg);
         else openSettings('connections');
       };
       void handleSteamRedirect().then(report('Steam'));
@@ -89,10 +89,9 @@ export default function App() {
         // (It used to be hard-coded to '1.0.3', so every newer install was told to
         // update to the version it already had.)
         if (typeof latest === 'string' && compareVersions(latest, VERSION) > 0) {
-          // eslint-disable-next-line no-alert
-          if (confirm(`A new version (${latest}) is available. Download now?`)) {
-            window.location.href = j.android.url;
-          }
+          void askConfirm({ title: 'Update available', body: `Venband ${latest} is out. Download it now?`, confirm: 'Download' }).then((yes) => {
+            if (yes) window.location.href = j.android.url;
+          });
         }
       } catch {}
     })();

@@ -707,5 +707,13 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "guard_memory": "19657bceecce4939145236a78df81b3b",
       "report_item": "63b4e3cf2b1d20ffc4bf9e5136e2b640"
     }
+  },
+  {
+    "migration": "20261106070000_category_order.sql",
+    "tables": [],
+    "functions": [
+      "reorder_categories"
+    ],
+    "bodies": {}
   }
 ];

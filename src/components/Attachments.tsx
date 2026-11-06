@@ -1,7 +1,7 @@
 import { sanitizeHtml } from '../lib/sanitize';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { isRiskyFile } from '../lib/metadata';
-import { askConfirm } from './Dialogs';
+import { askConfirm, showAlert } from './Dialogs';
 import type { Attachment } from '../lib/crypto';
 import { CODE_LANGS, downloadDecrypted, extOf, fileIcon, fileKind, saveDecrypted } from '../lib/files';
 import { LANGUAGE_OPTIONS } from '../lib/codeLanguages';
@@ -74,7 +74,7 @@ function DownloadButton({ a, small }: { a: Attachment; small?: boolean }) {
         try {
           await saveDecrypted(a, setP);
         } catch (err) {
-          if ((err as Error)?.name !== 'AbortError') alert(errorMessage(err));
+          if ((err as Error)?.name !== 'AbortError') showAlert(errorMessage(err));
         } finally {
           setP(null);
         }
@@ -175,7 +175,7 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
             const u = URL.createObjectURL(gif);
             const a2 = document.createElement('a'); a2.href = u; a2.download = a.name.replace(/\\.[^.]+$/, '') + '.gif'; a2.click();
             setTimeout(() => URL.revokeObjectURL(u), 1000);
-          } catch (e) { console.error(e); alert('Could not make GIF: ' + String((e as Error)?.message || e)); }
+          } catch (e) { console.error(e); showAlert('Could not make GIF: ' + String((e as Error)?.message || e)); }
         } },
       ])} />
       {big && (

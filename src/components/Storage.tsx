@@ -10,6 +10,7 @@ import { vdlListUsers, vdlListServers, vdlBanUser, vdlUnbanUser, vdlEraseUser, v
 import { vbbList, vbbUpload, vbbDelete, vbbPublish, vbbDownloadUrl, vbbListShards } from '../lib/vbb';
 import { vdlSignin } from '../lib/vdl';
 import { UsersExplorer, SyncPanel } from './StorageUsers';
+import { showAlert, askConfirm, askText } from './Dialogs';
 
 function decodePayload(p: string): string {
   try {
@@ -240,18 +241,18 @@ function TableTab() {
               <td className="storage-row-actions">
                 {u.account_status === 'banned' ? (
                   <button className="btn ghost small" onClick={async () => {
-                    try { await vdlUnbanUser(u.id, 'storage console'); load(); } catch (e) { alert(String((e as Error).message)); }
+                    try { await vdlUnbanUser(u.id, 'storage console'); load(); } catch (e) { showAlert(String((e as Error).message)); }
                   }}>Unban</button>
                 ) : (
                   <button className="btn ghost small" onClick={async () => {
-                    const reason = prompt('Ban this account? Reason (saved to the audit log):', 'storage console');
+                    const reason = await askText({ title: 'Ban this account?', label: 'Reason (saved to the audit log)', initial: 'storage console', maxLength: 500, confirm: 'Ban' });
                     if (reason === null) return;
-                    try { await vdlBanUser(u.id, reason); load(); } catch (e) { alert(String((e as Error).message)); }
+                    try { await vdlBanUser(u.id, reason); load(); } catch (e) { showAlert(String((e as Error).message)); }
                   }}>Ban</button>
                 )}
                 <button className="btn ghost small danger" onClick={async () => {
-                  if (!confirm('Permanently erase this account?')) return;
-                  try { await vdlEraseUser(u.id); load(); } catch (e) { alert(String((e as Error).message)); }
+                  if (!(await askConfirm({ title: 'Erase this account?', body: 'This permanently deletes the account. There is no undo.', confirm: 'Erase', danger: true }))) return;
+                  try { await vdlEraseUser(u.id); load(); } catch (e) { showAlert(String((e as Error).message)); }
                 }}>Erase</button>
               </td>
             </tr>
@@ -345,7 +346,7 @@ function BlockchainTab() {
     finally { setBusy(false); }
   };
   const rebuild = async () => {
-    if (!confirm('Rebuild the ledger from current user stats?')) return;
+    if (!(await askConfirm({ title: 'Rebuild the ledger?', body: 'Recalculates the ledger from current user stats.', confirm: 'Rebuild' }))) return;
     setBusy(true);
     try {
       await vdlRebuildLedger();
@@ -447,7 +448,7 @@ function VbbTab() {
     finally { setTimeout(() => setProgress(0), 1000); }
   };
   const remove = async (id: string) => {
-    if (!confirm('Delete this object?')) return;
+    if (!(await askConfirm({ title: 'Delete this file?', body: 'It is removed from storage for good.', confirm: 'Delete', danger: true }))) return;
     try { await vbbDelete(id); setFiles((p) => p.filter((f) => f.id !== id)); } catch (e) { setErr(String((e as Error).message)); }
   };
   const togglePublic = async (id: string, pub: boolean) => {

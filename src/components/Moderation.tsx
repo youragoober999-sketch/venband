@@ -12,7 +12,7 @@ import { Avatar, Field, Icon, Modal } from './ui';
 import { ImageCropper } from './ImageCropper';
 import { Select } from './Select';
 import { BadgeIcon, Badges, CATEGORY_LABEL, loadCustomBadges, RARITY_LABEL, useAllBadges, VerifiedMark, type BadgeCategory, type BadgeDef, type BadgeRarity } from './Badges';
-import { askConfirm, askText } from './Dialogs';
+import { askConfirm, askText, showAlert } from './Dialogs';
 import { startDm } from './Modals';
 import { openProfile } from './People';
 import { openGlobalModal } from './GlobalModals';
@@ -729,7 +729,7 @@ export function DiscoveryQueue() {
     const note = await askText({ title: approve ? `Approve ${r.name}` : `Reject ${r.name}`, label: 'Note for the server owner (optional)', maxLength: 500 });
     if (note === null) return;
     const { error: e } = await supabase.rpc('review_discovery', { p_application: r.id, p_approve: approve, p_note: note.trim() || null });
-    if (e) return alert(errorMessage(e));
+    if (e) return showAlert(errorMessage(e));
     load();
   }
 

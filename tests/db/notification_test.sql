@@ -1,9 +1,13 @@
 -- Official notifications, security alerts and impersonation guards
 -- (20261106010000_official_notifications.sql). Runs after all migrations.
 create function pg_temp.nt_must_fail(p_sql text, p_expect text default null) returns void language plpgsql as $$
+declare n bigint;
 begin
   begin
     execute p_sql;
+    -- real Supabase: row-level security filters the rows instead of raising
+    get diagnostics n = row_count;
+    if n = 0 and p_expect is null and p_sql ~* '^\s*(update|delete)\s' then return; end if;
   exception when others then
     if p_expect is not null and position(lower(p_expect) in lower(sqlerrm)) = 0 then
       raise exception 'failed for the wrong reason: % (wanted "%") — %', sqlerrm, p_expect, p_sql;
@@ -14,7 +18,9 @@ begin
 end $$;
 create function pg_temp.nt_as(p_id uuid, p_session uuid default null) returns void language sql as $$
   select set_config('request.jwt.claim.sub', p_id::text, false),
-         set_config('request.jwt.claim.session_id', coalesce(p_session::text, ''), false);
+         set_config('request.jwt.claim.session_id', coalesce(p_session::text, ''), false),
+         -- real Supabase builds auth.jwt() from the full claims
+         set_config('request.jwt.claims', json_build_object('sub', p_id, 'session_id', p_session)::text, false);
 $$;
 create function pg_temp.nt_count(p_user uuid, p_kind text) returns integer language sql as $$
   select count(*)::int from public.notifications where user_id = p_user and kind = p_kind;
@@ -75,7 +81,7 @@ end $t$;
 update auth.users set encrypted_password = 'hash-1b' where id = 'a0000000-0000-4000-8000-000000000001';
 update auth.users set email = 'old2@example.com' where id = 'a0000000-0000-4000-8000-000000000001';
 update auth.users set raw_user_meta_data = raw_user_meta_data where id = 'a0000000-0000-4000-8000-000000000001'; -- unrelated change
-insert into auth.mfa_factors (id, user_id, status) values ('c0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'unverified');
+insert into auth.mfa_factors (id, user_id, status, factor_type, created_at, updated_at) values ('c0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'unverified', 'totp', now(), now());
 update auth.mfa_factors set status = 'verified' where id = 'c0000000-0000-4000-8000-000000000001';
 delete from auth.mfa_factors where id = 'c0000000-0000-4000-8000-000000000001';
 do $t$ begin

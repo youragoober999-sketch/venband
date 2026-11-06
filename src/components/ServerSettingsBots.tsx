@@ -11,7 +11,7 @@ import type { VoogleSettings } from '../lib/voogle';
 import { BotInstallSettings, PresetLogo } from './Apps';
 import { VoogleLogo } from './Voogle';
 import { Select } from './Select';
-import { askConfirm, askText } from './Dialogs';
+import { askConfirm, askText, showAlert } from './Dialogs';
 import { reportItem } from '../lib/staff';
 import { Field, Icon } from './ui';
 
@@ -174,7 +174,7 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
                         try {
                           await reportItem('app', a.id, reason.trim());
                           setError(null);
-                          alert('Reported — Venband staff will take a look.');
+                          showAlert('Reported — Venband staff will take a look.');
                         } catch (e) {
                           setError(errorMessage(e));
                         }

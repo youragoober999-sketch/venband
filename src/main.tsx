@@ -6,9 +6,13 @@ import '@fontsource/jetbrains-mono/400.css';
 import './styles.css';
 import { restoreTheme } from './lib/themes';
 import { initPlatform } from './lib/ui';
+import { showAlert } from './components/Dialogs';
 
 restoreTheme();
 initPlatform();
+// Never the browser's own "www.venband.com says…" box: a stray alert() (ours or
+// a library's) opens Venband's in-app dialog instead.
+window.alert = (message?: unknown) => void showAlert(String(message ?? ''));
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };

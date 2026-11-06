@@ -8,7 +8,7 @@ import { openChannel, openServer, type ServerData } from '../hooks/data';
 import { Avatar, ColorPicker, Field, Icon, Modal, randomColor } from './ui';
 import { Select } from './Select';
 import { ImageCropper } from './ImageCropper';
-import { askConfirm } from './Dialogs';
+import { askConfirm, showAlert } from './Dialogs';
 import { InviteFriendsList } from './Invite';
 import { inviteCodeFrom, inviteUrl } from '../lib/dmSend';
 import { OwnerCrown } from './Badges';
@@ -78,7 +78,7 @@ export function CreateJoinModal({ onClose }: { onClose: () => void }) {
     }
     setBusy(false);
     openServer(id);
-    if (problems.length) alert(`Your server was created, but: ${problems.join('; ')}`);
+    if (problems.length) showAlert(`Your server was created, but: ${problems.join('; ')}`);
     onClose();
   }
 

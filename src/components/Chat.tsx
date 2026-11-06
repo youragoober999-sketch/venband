@@ -28,7 +28,7 @@ import { isSaved, loadSavedIds, setPinned, setSaved, useChannelExtras, type Poll
 import { Avatar, Icon, StyledName } from './ui';
 import { Badges, OwnerCrown, RoleIcon } from './Badges';
 import { copyText, openMenu, type Entry } from './ContextMenu';
-import { askConfirm, askText } from './Dialogs';
+import { askConfirm, askText, showAlert } from './Dialogs';
 import { loadMyReports, myReports, reportMessage } from '../lib/reports';
 import { Embed, findEmbeds, isBareGif, Markdown, mentionsMe, type MentionContext } from './Markdown';
 import { FavoriteStar, toggleGifFavorite } from './GifPicker';
@@ -241,7 +241,7 @@ export function ChatView({
           .then(({ data: row }) => {
             if (!row) {
               uiStore.set({ jump: null });
-              alert('That message was deleted, or you don’t have permission to view it.');
+              showAlert('That message was deleted, or you don’t have permission to view it.');
             } else if (row.thread_root) setOpenThread(row.thread_root);
           });
       }
@@ -402,7 +402,7 @@ export function ChatView({
   async function remove(m: DecryptedMessage, skipConfirm = false) {
     if (!skipConfirm && !(await askConfirm({ title: 'Delete message', body: 'Delete this message for everyone?', confirm: 'Delete', danger: true }))) return;
     const { error } = await supabase.from('messages').delete().eq('id', m.row.id);
-    if (error) return alert(errorMessage(error));
+    if (error) return showAlert(errorMessage(error));
     for (const a of m.payload?.attachments ?? []) removeAttachment(a);
     removeLocal(m.row.id);
   }
@@ -413,7 +413,7 @@ export function ChatView({
     const name = await askText({ title: 'Create thread', label: 'Thread name', initial: (m.payload?.text ?? '').replace(/\s+/g, ' ').slice(0, 60) || 'New thread', maxLength: 100 });
     if (!name?.trim()) return;
     const { error } = await supabase.from('threads').insert({ root_id: m.row.id, channel_id: channel.id, name: name.trim() });
-    if (error) return alert(errorMessage(error));
+    if (error) return showAlert(errorMessage(error));
     await extras.reloadThreads();
     setOpenThread(m.row.id);
   }
@@ -468,7 +468,7 @@ export function ChatView({
           title="Rename thread"
           onClick={async () => {
             const name = await askText({ title: 'Rename thread', label: 'Name', initial: thread.name, maxLength: 100 });
-            if (name?.trim()) supabase.from('threads').update({ name: name.trim() }).eq('root_id', thread.root_id).then(({ error }) => error && alert(errorMessage(error)));
+            if (name?.trim()) supabase.from('threads').update({ name: name.trim() }).eq('root_id', thread.root_id).then(({ error }) => error && showAlert(errorMessage(error)));
           }}
         >
           <Icon name="edit" size={16} />
@@ -478,7 +478,7 @@ export function ChatView({
         <button
           className={`icon-btn${thread.locked ? ' on' : ''}`}
           title={thread.locked ? 'Unlock thread' : 'Lock thread (only moderators can post)'}
-          onClick={() => supabase.from('threads').update({ locked: !thread.locked }).eq('root_id', thread.root_id).then(({ error }) => error && alert(errorMessage(error)))}
+          onClick={() => supabase.from('threads').update({ locked: !thread.locked }).eq('root_id', thread.root_id).then(({ error }) => error && showAlert(errorMessage(error)))}
         >
           <Icon name={thread.locked ? 'lockOpen' : 'lock'} size={16} />
         </button>
@@ -487,7 +487,7 @@ export function ChatView({
         <button
           className={`icon-btn${thread.archived ? ' on' : ''}`}
           title={thread.archived ? 'Unarchive' : 'Archive thread'}
-          onClick={() => supabase.from('threads').update({ archived: !thread.archived }).eq('root_id', thread.root_id).then(({ error }) => error && alert(errorMessage(error)))}
+          onClick={() => supabase.from('threads').update({ archived: !thread.archived }).eq('root_id', thread.root_id).then(({ error }) => error && showAlert(errorMessage(error)))}
         >
           <Icon name="archive" size={16} />
         </button>
@@ -500,7 +500,7 @@ export function ChatView({
             if (!(await askConfirm({ title: 'Delete thread', body: `Delete “${thread.name}”? Replies in it are deleted too.`, confirm: 'Delete', danger: true }))) return;
             const { error } = await supabase.from('messages').delete().eq('thread_root', thread.root_id);
             const { error: e2 } = error ? { error } : await supabase.from('threads').delete().eq('root_id', thread.root_id);
-            if (e2) alert(errorMessage(e2));
+            if (e2) showAlert(errorMessage(e2));
             else onCloseThread?.();
           }}
         >
@@ -729,7 +729,7 @@ export function ChatView({
                     try {
                       await reportMessage(m, messages, reason.trim(), data?.server?.id ?? null);
                     } catch (e) {
-                      alert(errorMessage(e));
+                      showAlert(errorMessage(e));
                     }
                   }}
                 />
@@ -939,7 +939,7 @@ function PinnedPanel({
                 Jump
               </button>
               {canUnpin && (
-                <button className="btn link small" onClick={() => setPinned(m.row, false).catch((e) => alert(errorMessage(e)))}>
+                <button className="btn link small" onClick={() => setPinned(m.row, false).catch((e) => showAlert(errorMessage(e)))}>
                   Unpin
                 </button>
               )}
@@ -1117,7 +1117,7 @@ function MessageItem({
   const isStaff = sessionStore.use((s) => ['moderator', 'admin', 'owner'].includes(s.me?.platform_role ?? 'user'));
   const shownText = translation && !showOriginal ? translation.text : text;
   const link = linkTo(`channels/${data?.server?.id ?? '@me'}/${m.row.channel_id}/${m.row.id}`);
-  const react = (emoji: string) => toggleReaction(m.row, emoji, reactions.find((g) => g.emoji === emoji)?.mine ?? null).catch((e) => alert(errorMessage(e)));
+  const react = (emoji: string) => toggleReaction(m.row, emoji, reactions.find((g) => g.emoji === emoji)?.mine ?? null).catch((e) => showAlert(errorMessage(e)));
 
 
   function menu(e: React.MouseEvent) {
@@ -1144,14 +1144,14 @@ function MessageItem({
       m.row.edited_at && { label: 'View Edit History', icon: 'history', onClick: () => setHistory(true) },
       m.payload && { label: 'Forward', icon: 'share', onClick: () => setForwarding(true) },
       canThread && m.payload && { label: thread ? 'Open Thread' : 'Create Thread', icon: 'thread', onClick: thread ? onOpenThread : onCreateThread },
-      canPin && m.payload && { label: pinned ? 'Unpin Message' : 'Pin Message', icon: 'pin', onClick: () => setPinned(m.row, !pinned).catch((err) => alert(errorMessage(err))) },
+      canPin && m.payload && { label: pinned ? 'Unpin Message' : 'Pin Message', icon: 'pin', onClick: () => setPinned(m.row, !pinned).catch((err) => showAlert(errorMessage(err))) },
       m.payload && {
         label: saved ? 'Remove from Saved' : 'Save Message',
         icon: 'bookmark',
         onClick: () =>
           setSaved(m.row, !saved)
             .then(() => setSavedState(!saved))
-            .catch((err) => alert(errorMessage(err))),
+            .catch((err) => showAlert(errorMessage(err))),
       },
       !mine && { label: 'Mark Unread', icon: 'unread', onClick: onMarkUnread },
       m.payload && text && { label: 'Copy Text', icon: 'copy', onClick: () => copyText(text) },
@@ -1172,14 +1172,14 @@ function MessageItem({
             icon: 'block',
             danger: true,
             hint: 'everyone sees a notice instead',
-            onClick: () => setMediaRemoved(url, data.server!.id, true).catch((err) => alert(errorMessage(err))),
+            onClick: () => setMediaRemoved(url, data.server!.id, true).catch((err) => showAlert(errorMessage(err))),
           },
         isStaff && {
           label: 'Remove GIF Everywhere',
           icon: 'block',
           danger: true,
           hint: 'Venband staff',
-          onClick: () => setMediaRemoved(url, null, true).catch((err) => alert(errorMessage(err))),
+          onClick: () => setMediaRemoved(url, null, true).catch((err) => showAlert(errorMessage(err))),
         },
       ]),
       { type: 'sep' },

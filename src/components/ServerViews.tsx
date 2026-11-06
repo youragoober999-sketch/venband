@@ -14,7 +14,7 @@ import { useActiveCall } from './Shell';
 import { ChatView } from './Chat';
 import { VoiceView } from './Voice';
 import { Markdown } from './Markdown';
-import { askText } from './Dialogs';
+import { askText, showAlert } from './Dialogs';
 import { Avatar, Field, Icon, Modal } from './ui';
 import type { ThreadInfo } from '../lib/chatExtras';
 import { voogleVerify } from '../lib/voogle';
@@ -392,7 +392,7 @@ export function StageView({ channel, data }: { channel: Channel; data: ServerDat
 
   const set = (userId: string, state: StageRow['state'] | null) =>
     (state ? supabase.from('stage_members').upsert({ channel_id: channel.id, user_id: userId, state, updated_at: new Date().toISOString() }) : supabase.from('stage_members').delete().eq('channel_id', channel.id).eq('user_id', userId)).then(({ error }) => {
-      if (error) alert(errorMessage(error));
+      if (error) showAlert(errorMessage(error));
       load();
     });
 

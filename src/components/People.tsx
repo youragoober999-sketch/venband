@@ -15,7 +15,7 @@ import { ProfileEffect } from './Cosmetics';
 import { Badges, OwnerCrown, RoleIcon } from './Badges';
 import { ActivityCard } from './ActivityCard';
 import { copyText, type Entry } from './ContextMenu';
-import { askConfirm, askText } from './Dialogs';
+import { askConfirm, askText, showAlert } from './Dialogs';
 import { openGlobalModal } from './GlobalModals';
 import { reportUser } from '../lib/reports';
 import { Markdown } from './Markdown';
@@ -74,7 +74,7 @@ async function callUser(userId: string) {
 }
 
 function report(e: unknown) {
-  alert(errorMessage(e));
+  showAlert(errorMessage(e));
 }
 
 /** Everything you can do to a person, for right-click menus and "…" buttons. */
@@ -256,7 +256,7 @@ export function userMenu(userId: string, opts: { data?: ServerData; onProfile?: 
         });
         try {
           const n = await reportUser(userId, reason.trim(), includeDms);
-          alert(`Thanks. Your report is under review${n ? ` (with ${n} messages as evidence)` : ''}.`);
+          showAlert(`Thanks. Your report is under review${n ? ` (with ${n} messages as evidence)` : ''}.`);
         } catch (e) {
           report(e);
         }

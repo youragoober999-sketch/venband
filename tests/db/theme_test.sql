@@ -1,9 +1,13 @@
 -- Theme ownership, versions, drafts, validation and install counts
 -- (20261106000000_theme_versions.sql). Runs after all migrations; self-contained.
 create function pg_temp.tt_must_fail(p_sql text, p_expect text default null) returns void language plpgsql as $$
+declare n bigint;
 begin
   begin
     execute p_sql;
+    -- real Supabase: row-level security filters the rows instead of raising
+    get diagnostics n = row_count;
+    if n = 0 and p_expect is null and p_sql ~* '^\s*(update|delete)\s' then return; end if;
   exception when others then
     if p_expect is not null and position(lower(p_expect) in lower(sqlerrm)) = 0 then
       raise exception 'failed for the wrong reason: % (wanted "%") — %', sqlerrm, p_expect, p_sql;
@@ -78,7 +82,18 @@ select pg_temp.tt_must_fail($$select public.theme_save(current_setting('tt.theme
 select pg_temp.tt_must_fail($$select public.theme_publish(current_setting('tt.theme')::uuid, 'x')$$, 'only the creator');
 select pg_temp.tt_must_fail($$select public.theme_rollback(current_setting('tt.theme')::uuid, 1)$$, 'only the creator');
 select pg_temp.tt_must_fail($$select public.theme_set_status(current_setting('tt.theme')::uuid, 'unpublished')$$, 'only the creator');
-select pg_temp.tt_must_fail($$update public.themes set name = 'Hijacked' where id = current_setting('tt.theme')::uuid$$);
+-- no UPDATE policy: the stub refuses it, real Supabase changes 0 rows; either way it isn't changed
+do $t$ begin
+  begin
+    update public.themes set name = 'Hijacked' where id = current_setting('tt.theme')::uuid;
+  exception when insufficient_privilege then null;
+  end;
+end $t$;
+reset role;
+do $t$ begin
+  assert (select name from public.themes where id = current_setting('tt.theme')::uuid) <> 'Hijacked', 'others can''t edit a theme';
+end $t$;
+set role authenticated;
 select pg_temp.tt_must_fail($$insert into public.theme_versions (theme_id, version, name, data) values (current_setting('tt.theme')::uuid, 99, 'Fake', '{}'::jsonb)$$);
 select pg_temp.tt_must_fail($$insert into public.theme_drafts (theme_id, name, data) values (current_setting('tt.theme')::uuid, 'Fake', '{}'::jsonb)$$);
 do $t$ begin

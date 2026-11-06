@@ -10,6 +10,7 @@ import { Badges, ServerBadge, VerifiedMark } from './Badges';
 import { openMenu } from './ContextMenu';
 import { openProfile, userMenu } from './People';
 import { startDm } from './Modals';
+import { showAlert } from './Dialogs';
 
 type Tab = 'all' | 'pending' | 'blocked' | 'add';
 
@@ -55,7 +56,7 @@ export function FriendsView() {
             <div className="members-title">All friends — {shown.length}</div>
             {shown.map((f) => (
               <FriendRow key={f.other} id={f.other} pinned={pinned(f.other)}>
-                <button className="round-icon" title="Message" onClick={() => startDm(f.other).catch((e) => alert(errorMessage(e)))}>
+                <button className="round-icon" title="Message" onClick={() => startDm(f.other).catch((e) => showAlert(errorMessage(e)))}>
                   <Icon name="message" size={18} />
                 </button>
                 <button className="round-icon" title="More" onClick={(e) => openMenu(e, userMenu(f.other))}>
@@ -341,12 +342,12 @@ export function MessageRequestsView({ requests, onOpen }: { requests: DmChannel[
 
 export async function acceptRequest(channelId: string) {
   const { error } = await supabase.rpc('accept_message_request', { p_channel: channelId });
-  if (error) alert(errorMessage(error));
+  if (error) showAlert(errorMessage(error));
 }
 
 export async function declineRequest(channelId: string) {
   const { error } = await supabase.rpc('decline_message_request', { p_channel: channelId });
-  if (error) alert(errorMessage(error));
+  if (error) showAlert(errorMessage(error));
   else openFriends();
 }
 

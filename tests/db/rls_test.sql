@@ -5,9 +5,13 @@
 
 -- helper: assert a statement fails
 create function pg_temp.must_fail(p_sql text) returns void language plpgsql as $$
+declare n bigint;
 begin
   begin
     execute p_sql;
+    -- real Supabase: row-level security filters the rows instead of raising
+    get diagnostics n = row_count;
+    if n = 0 and p_sql ~* '^\s*(update|delete)\s' then return; end if;
   exception when others then
     return;
   end;
@@ -304,6 +308,8 @@ insert into auth.sessions (id, user_id) values
 set role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
 select set_config('request.jwt.claim.session_id', '00000000-0000-0000-0000-0000000005e2', false);
+-- real Supabase builds auth.jwt() from the full claims
+select set_config('request.jwt.claims', '{"sub": "00000000-0000-0000-0000-00000000000a", "session_id": "00000000-0000-0000-0000-0000000005e2"}', false);
 do $t$ begin
   assert jsonb_array_length(public.mod_search('bob') -> 'users') = 1;
   assert jsonb_array_length(public.mod_search('Test') -> 'servers') = 1;
@@ -873,13 +879,14 @@ end $t$;
 reset role;
 insert into public.user_keys (key_id, user_id, enc_public, sign_public) values ('mfaKey00000000000003', '00000000-0000-0000-0000-0000000000b3', 'e', 's');
 insert into public.user_private_keys (user_id, key_id, iv, ciphertext) values ('00000000-0000-0000-0000-0000000000b3', 'mfaKey00000000000003', 'iv', 'ct');
-insert into auth.mfa_factors (user_id, status) values ('00000000-0000-0000-0000-0000000000b3', 'verified');
+insert into auth.mfa_factors (id, user_id, status, factor_type, created_at, updated_at) values (gen_random_uuid(), '00000000-0000-0000-0000-0000000000b3', 'verified', 'totp', now(), now());
 set role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
 do $t$ begin
   assert (select count(*) from public.user_private_keys) = 0, 'aal1 session can''t read the private key';
 end $t$;
 select set_config('request.jwt.claim.aal', 'aal2', false);
+select set_config('request.jwt.claims', '{"sub": "00000000-0000-0000-0000-0000000000b3", "aal": "aal2"}', false);
 do $t$ begin
   assert (select count(*) from public.user_private_keys) = 1, 'aal2 session can';
 end $t$;
@@ -917,3 +924,10 @@ do $t$ begin
   assert (select owner_id from public.channels where id = current_setting('t.grp')::uuid) = '00000000-0000-0000-0000-0000000000b2', 'ownership passed on';
   assert (select count(*) from public.channels where id = current_setting('t.grp')::uuid and key_rotation_needed) = 1, 'removal rotates the key';
 end $t$;
+
+-- column limits hold even where the project grants whole tables by default
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
+select pg_temp.must_fail($$select token_hash from public.applications limit 1$$);
+select pg_temp.must_fail($$update public.profiles set platform_role = 'owner' where id = auth.uid()$$);
+reset role;

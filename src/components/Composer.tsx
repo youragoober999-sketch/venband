@@ -13,7 +13,7 @@ import { formatSize } from './Attachments';
 import { EmojiPicker } from './EmojiPicker';
 import { GifPicker } from './GifPicker';
 import { openMenu, openMenuAt, type Entry } from './ContextMenu';
-import { askText } from './Dialogs';
+import { askText, showAlert } from './Dialogs';
 import { Avatar, Field, Icon, Modal } from './ui';
 import { Select } from './Select';
 
@@ -684,7 +684,7 @@ export function Composer({
                     setRecSeconds(0);
                     setWave([]);
                     if (file) setFiles((prev) => [...prev, { id: crypto.randomUUID(), file, spoiler: false, alt: '', waveform: w }]);
-                  } catch (e) { console.error(e); alert('Recording failed: ' + String((e as Error)?.message || e)); }
+                  } catch (e) { console.error(e); showAlert('Recording failed: ' + String((e as Error)?.message || e)); }
                 }} title="Stop & attach" aria-label="Stop recording">
                   <Icon name="check" />
                 </button>
@@ -700,7 +700,7 @@ export function Composer({
                   setRecSeconds(0);
                   setWave([]);
                   recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
-                } catch { alert('Microphone access denied'); }
+                } catch { showAlert('Microphone access denied'); }
               }} title="Voice message" aria-label="Voice message">
                 <Icon name="mic" />
               </button>

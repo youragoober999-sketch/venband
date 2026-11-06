@@ -28,7 +28,8 @@ create function auth.jwt() returns jsonb language sql stable as
                                'aal', coalesce(nullif(current_setting('request.jwt.claim.aal', true), ''), 'aal1')) $$;
 grant execute on function auth.jwt() to anon, authenticated;
 create table auth.mfa_factors (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users (id) on delete cascade,
-                               factor_type text not null default 'totp', status text not null default 'unverified');
+                               factor_type text not null default 'totp', status text not null default 'unverified',
+                               created_at timestamptz not null default now(), updated_at timestamptz not null default now());
 create function auth.uid() returns uuid language sql stable as
   $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 grant execute on function auth.uid() to anon, authenticated;

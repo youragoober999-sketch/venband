@@ -1,3 +1,4 @@
+import { askText } from './Dialogs';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { currentPath, go, parseRoute, useRoute } from '../lib/router';
 import { supabase } from '../lib/supabase';
@@ -539,7 +540,7 @@ function QrLogin({ setMode }: { setMode: (m: Mode) => void }) {
       }, 500);
       setTimeout(() => { clearInterval(interval); stream.getTracks().forEach((t) => t.stop()); }, 30000);
     } catch {
-      const t = window.prompt('Paste the QR token (or scan failed):');
+      const t = await askText({ title: 'Couldn’t scan the code', label: 'Paste the sign-in token instead', maxLength: 400, confirm: 'Sign in' });
       if (t) { await poll(t); }
     }
   }
