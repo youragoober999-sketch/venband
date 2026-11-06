@@ -501,7 +501,16 @@ with a high risk of security regressions.
 
 **Decisions you need to make:**
 
-1. **Realtime host: decided 2026-11-06, self-host on a VPS (b).** Vercel
+**Rule: free services only.** Venband has no budget, so every option below
+has to run on a free tier.
+
+1. **Realtime host: decided 2026-11-06, stay on Supabase Realtime (free).**
+   The free tier allows 200 people connected at once and 2 million messages a
+   month, and it is what the app already uses. A VPS was considered and
+   dropped because it costs money. The server built for it (below) stays in
+   the repo, switched off. If Venband outgrows the free tier, the free next
+   step is porting that server to Cloudflare Workers + Durable Objects (free
+   plan, no card). Vercel
    functions can't hold WebSockets, so calls, typing, presence, Stackdown and
    live messages need a server that stays up.
    * (a) Keep Supabase Realtime for now (no work).
@@ -536,8 +545,10 @@ with a high risk of security regressions.
 | J3 Auth | Import accounts (`lib/vdl-sync.js` already pulls them); VDL issues the JWTs that PostgREST checks | New sign-ins go to VDL; old sessions still work |
 | J4 Realtime | Bring up the chosen realtime host; port `realtime_topic_allowed` into its auth hook | Calls, presence, typing and Stackdown work on it |
 
-**J4, first part, built (2026-11-06).** The server is `realtime/server.mjs`,
-deployed with `deploy/realtime/` (Docker + Caddy; guide in its README).
+**J4, first part, built and parked (2026-11-06).** The server is
+`realtime/server.mjs`; `deploy/realtime/` holds its Docker + Caddy files. It
+is not deployed, because a VPS isn't free. Its logic is the part to reuse if
+it moves to Cloudflare's free plan.
 
 * **Topics it carries:** the live ones (`chan` typing, `scope` presence,
   `call` signalling, `act` games), and only when the site has

@@ -1,5 +1,9 @@
 # Venband Realtime on your own VPS
 
+> **Not in use.** A VPS costs money, so Venband stays on Supabase Realtime's
+> free tier. Leave `VITE_REALTIME_URL` unset. This guide is kept for later,
+> if a free server becomes available (see `docs/AUDIT.md` §19).
+
 This moves Venband's live traffic off Supabase Realtime and onto a server you
 control: typing indicators, who's online, call signalling, and games like
 Stackdown. Messages, database change feeds, sign-in and files stay on Supabase
