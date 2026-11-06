@@ -181,6 +181,9 @@ function Login({ email, setEmail, setMode }: FormProps) {
           hit = { email: v.email, username: v.username, banned: v.banned };
         }
       }
+      // An email the lookup didn't find may still be a real login (e.g. one whose profile was
+      // never created). Let Supabase Auth decide; my_profile() repairs the profile on sign-in.
+      if (!hit?.email && raw.includes('@')) hit = { email: raw, username: raw.split('@')[0], banned: false };
       if (!hit?.email) throw new Error('No account with that username or email.');
       if (hit.banned) return setBanned({ username: (hit.username as string) || raw.replace(/@.*$/, '') });
       await signIn(hit.email as string, password, remember);
