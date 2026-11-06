@@ -738,5 +738,15 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "template_preview"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261106120000_activity_history.sql",
+    "tables": [
+      "activity_history"
+    ],
+    "functions": [
+      "track_activity_history"
+    ],
+    "bodies": {}
   }
 ];

@@ -32,6 +32,7 @@ import { BadgeDesigner, DiscoveryQueue, ModerationCenter, ReportCentre } from '.
 import { AppealsQueue } from './Appeals';
 import { setShareGames, shareGames } from '../lib/activity';
 import { SoundSettings } from './SoundSettings';
+import { showToast } from './Undo';
 import { useStaffPerms, type StaffPerm } from '../lib/staff';
 import { Markdown } from './Markdown';
 import { SecurityTab } from './Security';
@@ -1070,6 +1071,17 @@ function ShareGamesSection() {
           setOn(v);
         }}
       />
+      <button
+        className="btn link small"
+        onClick={async () => {
+          if (!(await askConfirm({ title: 'Clear your activity history?', body: 'Removes the games listed under Recent activity on your profile.', confirm: 'Clear', danger: true }))) return;
+          const uid = sessionStore.get().me?.id;
+          if (uid) await supabase.from('activity_history').delete().eq('user_id', uid);
+          showToast('Activity history cleared.');
+        }}
+      >
+        Clear my activity history
+      </button>
     </Section>
   );
 }

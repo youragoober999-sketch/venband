@@ -13,7 +13,7 @@ import { openChannel, openServer, useDirectory, type ServerData } from '../hooks
 import { Avatar, Icon, Modal, nameplateVars, StyledName } from './ui';
 import { ProfileEffect } from './Cosmetics';
 import { Badges, OwnerCrown, RoleIcon } from './Badges';
-import { ActivityCard } from './ActivityCard';
+import { ActivityCard, RecentActivity } from './ActivityCard';
 import { copyText, type Entry } from './ContextMenu';
 import { askConfirm, askText, showAlert } from './Dialogs';
 import { openGlobalModal } from './GlobalModals';
@@ -369,6 +369,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
               <ServerTag tag={shown?.server_tag} serverId={shown?.tag_server_id} />
             </div>
             <ActivityCard userId={userId} />
+            <RecentActivity userId={userId} />
             <MemoriesStrip userId={userId} self={self} />
             {ringList && <MemoryViewer list={ringList} self={self} onClose={() => setRingList(null)} />}
             {rel?.blocked && <div className="notice small">You blocked this person.</div>}
