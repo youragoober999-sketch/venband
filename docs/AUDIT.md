@@ -346,3 +346,44 @@ Limits: the auth-schema triggers are skipped (with a notice) if Supabase refuses
 them on a project — then password/email/2FA alerts don't fire, the rest does.
 Passkey add/remove alerts and "new login location" detection beyond the device's
 self-reported location are not implemented. Appeals arrive with Phase F.
+
+## 12. Phase E — badges (done 2026-11-06)
+
+Migration `20261106020000_badge_catalog.sql`.
+
+* **You choose what shows.** `profiles.badge_display` (NULL = show all) holds
+  which of your badges show next to your name and in what order. It's set only
+  through `set_badge_display`, which accepts only badges you hold (max 20,
+  deduplicated). Nobody can award themselves a badge: `badges` is still changed
+  only by staff. Settings → Profile → **Your badges**: reorder (keyboard-usable
+  up/down buttons), hide/show, "Show all".
+* **Staff badges can't be hidden** (founder, owner, admin, moderator, staff):
+  they always show first, so people can always recognise real staff.
+* **Catalog:** every badge now has a category (Venband team, community,
+  developer, creator, supporter, achievement, event, seasonal, special), a
+  rarity and a description (shown in tooltips and the picker).
+* **New artwork:** built-in badges are drawn as medallions with a shape per
+  category (shield = team, hexagon = achievement/event, circle =
+  supporter/community, rounded square = developer/creator), a lit gradient, a
+  white symbol that still reads at 15 px, and a rim for epic/legendary.
+* **Limited editions:** custom badges can have an "awardable until" date and
+  can be **retired**. Holders keep them; new awards are refused by the
+  database, and the moderator award list shows them as "ended"/"retired".
+  Badge Designer gained category, rarity, end date, Edit, and Retire/Unretire.
+* **Award notification:** getting a badge sends a notification (Phase D
+  center) pointing to the picker. Removing a badge also removes it from the
+  holder's display list.
+* Older databases: the app falls back to the old columns if the migration
+  hasn't run yet (shows all badges, as before).
+
+Verification: `tests/db/badge_test.sql` (new, in `run.sh`) — no self-awarding
+(direct update, display list, mod RPC, designer), one notification per new
+badge, display order kept + deduped + staff badges never stored, unheld and
+>20 refused, removed badge leaves the display list, ended and retired badges
+can't be awarded but stay with holders, category/rarity saved, reset to "show
+all". All database suites, 31 unit tests and the production build pass. UI
+checked on a temporary local page (removed): all 15 medallions at 40 px and
+15 px, name row honours the chosen order and hides hidden badges, picker.
+
+Limits: custom badges keep their uploaded picture (no medallion frame). Moderation
+views still show every badge a person holds, on purpose.

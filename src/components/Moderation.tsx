@@ -11,7 +11,7 @@ import type { AccountStatus, PlatformRole, Profile, ServerStatus } from '../lib/
 import { Avatar, Field, Icon, Modal } from './ui';
 import { ImageCropper } from './ImageCropper';
 import { Select } from './Select';
-import { BadgeIcon, Badges, loadCustomBadges, useAllBadges, VerifiedMark } from './Badges';
+import { BadgeIcon, Badges, CATEGORY_LABEL, loadCustomBadges, RARITY_LABEL, useAllBadges, VerifiedMark, type BadgeCategory, type BadgeDef, type BadgeRarity } from './Badges';
 import { askConfirm, askText } from './Dialogs';
 import { startDm } from './Modals';
 import { openProfile } from './People';
@@ -398,7 +398,12 @@ export function ModerationCenter() {
 function BadgeEditor({ user, myRank, top, onClose, onSave }: { user: ModUser; myRank: number; top: boolean; onClose: () => void; onSave: (ids: string[]) => void }) {
   const [ids, setIds] = useState<string[]>(user.badges);
   const BADGES = useAllBadges();
-  const locked = (id: string) => (top ? false : id === 'owner' || id === 'founder' ? myRank < 3 : ['admin', 'moderator', 'staff'].includes(id) ? myRank < 2 : false);
+  // retired / ended limited badges: holders keep them, nobody new gets them
+  const closed = (id: string) => {
+    const d = BADGES.find((x) => x.id === id);
+    return !!d && (d.retired || (!!d.awardableUntil && new Date(d.awardableUntil) < new Date())) && !user.badges.includes(id);
+  };
+  const locked = (id: string) => closed(id) || (top ? false : id === 'owner' || id === 'founder' ? myRank < 3 : ['admin', 'moderator', 'staff'].includes(id) ? myRank < 2 : false);
   return (
     <Modal title={`Badges for @${user.username}`} onClose={onClose}>
       <div className="badge-editor">
@@ -412,6 +417,7 @@ function BadgeEditor({ user, myRank, top, onClose, onSave }: { user: ModUser; my
             />
             <BadgeIcon def={b} size={20} />
             <span>{b.label}</span>
+            {closed(b.id) && <span className="small muted">{b.retired ? 'retired' : 'ended'}</span>}
           </label>
         ))}
       </div>
@@ -691,10 +697,29 @@ export function BadgeDesigner() {
   const [id, setId] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState<BadgeCategory>('special');
+  const [rarity, setRarity] = useState<BadgeRarity>('rare');
+  const [until, setUntil] = useState('');
+  const [editing, setEditing] = useState<BadgeDef | null>(null);
   const [picture, setPicture] = useState<{ blob: Blob; url: string } | null>(null);
   const [cropping, setCropping] = useState<File | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const reset = () => {
+    setId('');
+    setName('');
+    setDescription('');
+    setCategory('special');
+    setRarity('rare');
+    setUntil('');
+    setEditing(null);
+    setPicture(null);
+  };
+  const save = (b: { id: string; name: string; description: string; image: string; category: BadgeCategory; rarity: BadgeRarity; until: string | null; retired: boolean }) =>
+    supabase.rpc('save_custom_badge', {
+      p_id: b.id, p_name: b.name, p_description: b.description, p_image_url: b.image,
+      p_category: b.category, p_rarity: b.rarity, p_awardable_until: b.until ? new Date(b.until).toISOString() : null, p_retired: b.retired,
+    });
   return (
     <div className="mod-center">
       <div className="mod-head">
@@ -727,12 +752,12 @@ export function BadgeDesigner() {
           }}
           aria-label="Upload badge picture"
         >
-          {picture ? <img src={picture.url} alt="" /> : <Icon name="upload" size={22} />}
+          {picture ? <img src={picture.url} alt="" /> : editing?.image ? <img src={editing.image} alt="" /> : <Icon name="upload" size={22} />}
         </button>
         <div className="grow">
           <div className="row">
             <Field label="Badge ID" hint="letters, numbers and _ (can’t change later)">
-              <input value={id} maxLength={30} onChange={(e) => setId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} placeholder="summer_event" />
+              <input value={id} maxLength={30} disabled={!!editing} onChange={(e) => setId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} placeholder="summer_event" />
             </Field>
             <Field label="Name">
               <input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="Summer Event 2026" />
@@ -741,34 +766,60 @@ export function BadgeDesigner() {
           <Field label="Description">
             <input value={description} maxLength={200} onChange={(e) => setDescription(e.target.value)} placeholder="Took part in the summer event" />
           </Field>
-          <button
-            className="btn primary"
-            disabled={busy || !picture || id.length < 2 || name.trim().length < 2}
-            onClick={async () => {
-              setBusy(true);
-              setMsg(null);
-              try {
-                const path = `${id}-${crypto.randomUUID().slice(0, 8)}.webp`;
-                const { error: up } = await supabase.storage.from('badges').upload(path, picture!.blob, { contentType: 'image/webp' });
-                if (up) throw up;
-                const url = supabase.storage.from('badges').getPublicUrl(path).data.publicUrl;
-                const { error } = await supabase.rpc('save_custom_badge', { p_id: id, p_name: name.trim(), p_description: description.trim(), p_image_url: url });
-                if (error) throw error;
-                await loadCustomBadges(true);
-                setMsg({ ok: true, text: `“${name}” is ready to hand out.` });
-                setId('');
-                setName('');
-                setDescription('');
-                setPicture(null);
-              } catch (e) {
-                setMsg({ ok: false, text: errorMessage(e) });
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Save badge
-          </button>
+          <div className="row">
+            <Field label="Category">
+              <select value={category} onChange={(e) => setCategory(e.target.value as BadgeCategory)}>
+                {(Object.keys(CATEGORY_LABEL) as BadgeCategory[]).filter((c) => c !== 'staff').map((c) => (
+                  <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Rarity">
+              <select value={rarity} onChange={(e) => setRarity(e.target.value as BadgeRarity)}>
+                {(Object.keys(RARITY_LABEL) as BadgeRarity[]).map((r) => (
+                  <option key={r} value={r}>{RARITY_LABEL[r]}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Awardable until" hint="optional — for limited editions">
+              <input type="datetime-local" value={until} onChange={(e) => setUntil(e.target.value)} />
+            </Field>
+          </div>
+          <div className="row-start">
+            <button
+              className="btn primary"
+              disabled={busy || (!picture && !editing) || id.length < 2 || name.trim().length < 2}
+              onClick={async () => {
+                setBusy(true);
+                setMsg(null);
+                try {
+                  let url = editing?.image ?? '';
+                  if (picture) {
+                    const path = `${id}-${crypto.randomUUID().slice(0, 8)}.webp`;
+                    const { error: up } = await supabase.storage.from('badges').upload(path, picture.blob, { contentType: 'image/webp' });
+                    if (up) throw up;
+                    url = supabase.storage.from('badges').getPublicUrl(path).data.publicUrl;
+                  }
+                  const { error } = await save({ id, name: name.trim(), description: description.trim(), image: url, category, rarity, until: until || null, retired: editing?.retired ?? false });
+                  if (error) throw error;
+                  await loadCustomBadges(true);
+                  setMsg({ ok: true, text: editing ? `Saved “${name}”.` : `“${name}” is ready to hand out.` });
+                  reset();
+                } catch (e) {
+                  setMsg({ ok: false, text: errorMessage(e) });
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {editing ? 'Save changes' : 'Save badge'}
+            </button>
+            {editing && (
+              <button className="btn link" disabled={busy} onClick={reset}>
+                Cancel
+              </button>
+            )}
+          </div>
         </div>
       </div>
       <h3>Custom badges</h3>
@@ -779,8 +830,38 @@ export function BadgeDesigner() {
             <BadgeIcon def={b} size={24} />
             <span className="grow">
               <b>{b.label}</b> <span className="muted small">{b.id}</span>
-              {b.description && <div className="small muted">{b.description}</div>}
+              <div className="small muted">
+                {[b.rarity && RARITY_LABEL[b.rarity], b.category && CATEGORY_LABEL[b.category], b.retired && 'Retired', b.awardableUntil && (new Date(b.awardableUntil) < new Date() ? 'Ended' : `Until ${new Date(b.awardableUntil).toLocaleString()}`)].filter(Boolean).join(' · ')}
+                {b.description ? ` — ${b.description}` : ''}
+              </div>
             </span>
+            <button
+              className="btn link small"
+              onClick={() => {
+                setEditing(b);
+                setId(b.id.replace(/^c_/, ''));
+                setName(b.label);
+                setDescription(b.description ?? '');
+                setCategory(b.category ?? 'special');
+                setRarity(b.rarity ?? 'rare');
+                const d = b.awardableUntil ? new Date(b.awardableUntil) : null;
+                setUntil(d ? new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '');
+                setPicture(null);
+              }}
+            >
+              Edit
+            </button>
+            <button
+              className="btn link small"
+              title={b.retired ? 'Let moderators award it again' : 'Holders keep it; nobody new gets it'}
+              onClick={async () => {
+                const { error } = await save({ id: b.id, name: b.label, description: b.description ?? '', image: b.image!, category: b.category ?? 'special', rarity: b.rarity ?? 'rare', until: b.awardableUntil ?? null, retired: !b.retired });
+                if (error) return setMsg({ ok: false, text: errorMessage(error) });
+                loadCustomBadges(true);
+              }}
+            >
+              {b.retired ? 'Unretire' : 'Retire'}
+            </button>
             <button
               className="btn link small danger-text"
               onClick={async () => {
