@@ -3,7 +3,7 @@
 // always matches the version inside the EXE/APK. On desktop it also asks the
 // app what's installed, so running people see "you're up to date".
 import { useEffect, useMemo, useState } from 'react';
-import { DOWNLOAD_URL, VERSION } from '../lib/version';
+import { VERSION } from '../lib/version';
 import { isAndroid } from '../lib/ui';
 import { PublicLayout } from './PublicPages';
 import { Icon } from './ui';
@@ -20,15 +20,18 @@ interface DownloadManifest {
 
 interface DesktopInfo { version: string; platform: Platform; }
 
+// Used only if download.json can't be loaded: point at the real Releases page
+// instead of guessing file names (guessed names produced 404 download buttons).
+const RELEASES = 'https://github.com/youragoober999-sketch/venband/releases/latest';
 const FALLBACK: DownloadManifest = {
   version: VERSION,
-  url: DOWNLOAD_URL,
+  url: RELEASES,
   updatedAt: new Date().toISOString(),
   windows: [
-    { name: `Venband-Setup-${VERSION}.exe`, kind: 'installer', url: `https://github.com/youragoober999-sketch/venband/releases/download/v${VERSION}/Venband-Setup-${VERSION}.exe` },
-    { name: `Venband-Portable-${VERSION}.exe`, kind: 'portable', url: `https://github.com/youragoober999-sketch/venband/releases/download/v${VERSION}/Venband-Portable-${VERSION}.exe` },
+    { name: 'Windows installer (GitHub Releases)', kind: 'installer', url: RELEASES },
+    { name: 'Windows portable (GitHub Releases)', kind: 'portable', url: RELEASES },
   ],
-  android: { name: `Venband-${VERSION}-debug.apk`, kind: 'apk', url: `${DOWNLOAD_URL}Venband-${VERSION}-debug.apk` },
+  android: { name: 'Android APK (GitHub Releases)', kind: 'apk', url: RELEASES },
 };
 
 function useManifest() {

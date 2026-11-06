@@ -6,32 +6,69 @@ import path from 'node:path';
 const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
 const VERSION: string = pkg.version;
 
-// Write dist/download.json so the /download page and the desktop app's updater
-// share one machine-readable source of truth for "what's published right now".
-// The files it lists are named by desktop/package.json's artifactName patterns
-// and live next to latest.yml in the /download folder on the site.
-const DOWNLOAD_URL = '/download/';
-const MAC_NAMES = () => [
-  { name: `Venband-${VERSION}.dmg`, kind: 'dmg' },
-  { name: `Venband-${VERSION}-mac.zip`, kind: 'zip' },
-];
+// Write dist/download.json so the /download page and /api/vdl?r=version share one
+// machine-readable source of truth for "what's published right now".
+//
+// It is built from the LATEST PUBLISHED GITHUB RELEASE and the files actually
+// attached to it — never from package.json's version, which can be ahead of what
+// has been released (that produced 404 download buttons). If GitHub can't be
+// reached at build time, the checked-in public/download.json (already copied to
+// dist/) is kept as-is.
+const REPO = process.env.VENBAND_RELEASE_REPO || 'youragoober999-sketch/venband';
+
+interface GhAsset { name: string; browser_download_url: string; size: number }
+
+function pick(assets: GhAsset[], re: RegExp) {
+  const a = assets.find((x) => re.test(x.name));
+  return a ? { name: a.name, url: a.browser_download_url, size: a.size } : null;
+}
+
+async function latestRelease(): Promise<Record<string, unknown> | null> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 10_000);
+  try {
+    const headers: Record<string, string> = { accept: 'application/vnd.github+json', 'user-agent': 'venband-build' };
+    if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers, signal: ctrl.signal });
+    if (!r.ok) throw new Error(`GitHub answered ${r.status}`);
+    const rel = (await r.json()) as { tag_name: string; published_at: string; html_url: string; assets: GhAsset[] };
+    const assets = rel.assets ?? [];
+    const installer = pick(assets, /^Venband-Setup-.*\.exe$/i);
+    const portable = pick(assets, /^Venband-Portable-.*\.exe$/i);
+    const apk = pick(assets, /\.apk$/i);
+    const appimage = pick(assets, /\.AppImage$/i);
+    const dmg = pick(assets, /\.dmg$/i);
+    if (!installer && !portable && !apk) throw new Error(`release ${rel.tag_name} has no downloadable apps`);
+    return {
+      version: rel.tag_name.replace(/^v/, ''),
+      url: rel.html_url,
+      updatedAt: rel.published_at,
+      windows: [
+        ...(installer ? [{ ...installer, kind: 'installer' }] : []),
+        ...(portable ? [{ ...portable, kind: 'portable' }] : []),
+      ],
+      ...(apk ? { android: { ...apk, kind: 'apk' } } : {}),
+      ...(appimage ? { linux: [{ ...appimage, kind: 'appimage' }] } : {}),
+      ...(dmg ? { mac: [{ ...dmg, kind: 'dmg' }] } : {}),
+      source: 'github-release',
+    };
+  } catch (e) {
+    console.warn(`[download-manifest] keeping public/download.json — could not read the latest release: ${(e as Error).message}`);
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 function downloadManifest(): Plugin {
   return {
     name: 'venband-download-manifest',
     apply: 'build',
-    closeBundle() {
-      const manifest = {
-        version: VERSION,
-        url: DOWNLOAD_URL,
-        updatedAt: new Date().toISOString(),
-        windows: [
-          { name: `Venband-Setup-${VERSION}.exe`, kind: 'installer', url: `${RELEASE_URL}Venband-Setup-${VERSION}.exe` },
-          { name: `Venband-Portable-${VERSION}.exe`, kind: 'portable', url: `${RELEASE_URL}Venband-Portable-${VERSION}.exe` },
-        ],
-        mac: MAC_NAMES().map((f) => ({ ...f, url: `${RELEASE_URL}${f.name}` })),
-        android: { name: `Venband-${VERSION}-debug.apk`, kind: 'apk', url: `${DOWNLOAD_URL}Venband-${VERSION}-debug.apk` },
-      };
+    async closeBundle() {
+      const manifest = await latestRelease();
+      if (!manifest) return;
       fs.writeFileSync(path.join(process.cwd(), 'dist', 'download.json'), JSON.stringify(manifest, null, 2));
+      console.log(`[download-manifest] linked release ${manifest.version} (${REPO})`);
     },
   };
 }
@@ -102,7 +139,6 @@ function csp(env: Record<string, string>): Plugin {
 // Windows installers are too big for the Vercel Hobby deploy (100 MB static
 // upload limit), so they publish to GitHub Releases via desktop.yml and the
 // download page links there. The APK is small and stays on the site.
-const RELEASE_URL = 'https://github.com/youragoober999-sketch/venband/releases/latest/download/';
 // In development, serve the Vercel functions in /api (link previews, media proxy).
 function devApi(env: Record<string, string>): Plugin {
   return {
