@@ -41,9 +41,13 @@ calling. These need a test account to audit visually.
    `package.json`'s version (1.0.6) in `vite.config.ts` / `Download.tsx`, but no
    1.0.6 release or APK exists. Fix: derive links from the latest *published*
    GitHub release (or `public/download.json`), never from the source version.
-2. **Status page is misleading.** It reported "All systems operational" while the
-   database had no schema. Its probes check that services answer, not that the
-   app works. Fix: probe a real RPC (`status_ping`) and a schema check.
+2. **Status page checks are too shallow.** *(Corrected — the first version of this
+   audit said it showed "operational" with an empty database; that screenshot was
+   taken after `setup.sql` had been run, and `status_ping` would in fact have
+   failed on an empty database.)* The real problems: the "Website & app" check
+   discarded the HTTP status (`void (await fetch()).ok`) so it could never fail,
+   and the database check only proves one function exists, so a half-migrated or
+   out-of-date database still showed "Operational". **Fixed in Phase A** (see §8).
 3. **Themes cannot be edited after publishing.** `public.themes` has select /
    insert / delete policies only — **no UPDATE policy**, no versions, no drafts.
 4. **GIF maker** (see §4.4): no video input, uploaded animated GIFs lose their
@@ -79,8 +83,10 @@ calling. These need a test account to audit visually.
 * Outbound fetches (`link-preview`, `media`) use `_lib/net.js`: private ranges
   blocked, DNS checked at connect time (rebinding), redirects re-checked, size and
   time limits, rate limits ✅.
-* `api/translate.js` sends `access-control-allow-origin: *` — any site can use
-  your translation quota with a user's token. *Restrict to venband.com.*
+* `api/translate.js` answered CORS preflights with `access-control-allow-origin: *`.
+  *(Corrected: the original audit overstated this — the POST response itself had
+  no CORS header and other sites can't obtain a user's token, so the real risk was
+  low.)* Tightened anyway in Phase A (§8).
 * VDL (`api/vdl.js`) re-reads role/ban from the DB per request, rate-limits auth ✅.
 
 ### 3.4 Dependencies (`npm audit --omit=dev`)
@@ -173,3 +179,25 @@ Each phase ships on its own, keeps existing data, and is verified before the nex
 
 Larger ideas from the brief (Worlds, Friend Spaces, automation engine, …) should
 be evaluated after A–I; none are started.
+
+## 8. Phase A — stabilise (done 2026-11-06)
+
+Everything below was verified, not just written. "Test DB" = all migrations loaded
+into a throwaway Postgres (PGlite) with `tests/db/supabase_stub.sql`.
+
+| Item | What changed | Verified by |
+|---|---|---|
+| **Download buttons (404)** | `vite.config.ts` builds `download.json` from the **latest published GitHub release** and the files attached to it; if GitHub is unreachable the checked-in `public/download.json` is kept. The page's fallback links to the Releases page instead of guessed names. | Build linked v1.0.5; all 3 links fetched → `206` (real files) |
+| **Status page** | "Website & app" check now fails on HTTP errors (it discarded the status before). New **Database setup** row: `public.schema_missing()` + `src/lib/schemaManifest.ts` (generated per migration: tables/functions created, plus whitespace-insensitive fingerprints of rewritten functions) → names the exact migration files a database is missing. | Test DB: complete DB → 0 of 312 checks flagged (also with CRLF/tab-mangled SQL); DB missing the newest migrations → exactly those files named; live project showed "Needs update" |
+| **Exposed internal functions** | `20261105020000_lock_down_internal.sql` revokes 18 SECURITY DEFINER helpers from the API. Worst: `wordle_command` let **signed-out callers make a bot post into any channel**; `are_friends` / `is_blocked_between` / `shares_server_or_dm` let anyone map friendships and blocks; `venband_notice` let any staff member send official DMs outside the audited flow. Each was checked to be unused by RLS policies, constraints, defaults, caller-privilege functions and the app. | Test DB exploit: anonymous `wordle_command` added a bot message to a private channel **before** (0→1), **blocked after** (0→0); member `/guess` still works; RLS suite now asserts the helpers can't be probed |
+| **Wordle tables** | RLS on, no direct API access (they hold each channel's answer). | Same exploit test |
+| **Dependencies** | `npm audit fix` (dompurify 3.4.17, undici 8.12.4); override `@vercel/cli-config` 0.3.7 (brings zod 4.6.7 — the version Vercel ships upstream); vite 8.3.6 (dev-server CVEs). | `npm audit` → **0 vulnerabilities** (incl. dev); `@vercel/blob`/`@vercel/oidc` load; build OK |
+| **Translate API** | Only Venband origins (+ Capacitor app, + the deployment's own host) get CORS; other sites get 403; `Vary: Origin`. | Handler tested with 6 origin cases |
+| **Navigation** | One shared header (`SiteNav`) on the homepage, sign-in/up and all public pages: Features · Discover · Developers · Download · Status. Phones get a real menu (was: links hidden, no menu). One footer listing every public page; "TOS" → "Terms"; the header's **Privacy link pointed at `privacy.venband.com` (404)** → now `/privacy`. | 375px: one line, no overflow, menu opens/closes (Esc, outside tap); Features from an inner page lands just below the header |
+| **Contrast** | `--muted` raised to `#8a8a92` (and per-theme: Graphite `#94949c`, Daylight `#64646c` — Daylight was 3.81:1). The theme system overrides the stylesheet, so the fix is in `src/lib/themes.ts`. | Measured WCAG ratios on 12 public pages: **291/291 text elements pass AA** (was 37 failing) |
+| CI | Runs `node scripts/build-setup-sql.mjs --check`; `tests/db/run.sh` matches Supabase's `search_path` (it would have failed on `gen_salt`) and runs the generated manifest test. | Not executed in GitHub Actions here (CI only runs on branches/PRs) |
+
+**Must be run on the live Supabase project** (SQL Editor, in order):
+`20261105010000_schema_check.sql`, then `20261105020000_lock_down_internal.sql`
+— plus `20261105000000_backfill_profiles.sql` if not done yet. The lock-down only
+changes permissions, so `/status` cannot detect whether it has been run.

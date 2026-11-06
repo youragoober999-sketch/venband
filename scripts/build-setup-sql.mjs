@@ -1,14 +1,28 @@
-// Concatenates every migration in supabase/migrations/ (in order) into one file,
-// supabase/setup.sql, that can be pasted into the Supabase SQL Editor and run once
-// to create (or bring up to date) the whole Venband database.
-//   node scripts/build-setup-sql.mjs
+// Builds two files from supabase/migrations/ (in order):
+//
+//   supabase/setup.sql          every migration concatenated — paste into the
+//                               Supabase SQL Editor once to set up a new project
+//   src/lib/schemaManifest.ts   for each migration, the public tables/functions it
+//                               creates that still exist after ALL migrations —
+//                               /status uses it to name the migration files a
+//                               database is missing
+//   tests/db/schema_manifest_test.sql
+//                               asserts a fully migrated DB is never flagged
+//
+//   node scripts/build-setup-sql.mjs           write both files
+//   node scripts/build-setup-sql.mjs --check   exit 1 if either file is out of date (CI)
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const DIR = path.resolve('supabase/migrations');
-const OUT = path.resolve('supabase/setup.sql');
+const SETUP = path.resolve('supabase/setup.sql');
+const MANIFEST = path.resolve('src/lib/schemaManifest.ts');
+const check = process.argv.includes('--check');
 const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.sql')).sort();
+const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8').replace(/\r\n/g, '\n');
 
+// ------------------------------------------------------------------ setup.sql --
 let sql = `-- =============================================================================
 -- Venband: complete database setup
 --
@@ -21,7 +35,7 @@ let sql = `-- ==================================================================
 --
 -- Run it ONCE, on a project that doesn't have Venband set up yet. If Venband is
 -- already installed it stops right away (nothing is changed) — then run only the
--- newer files from supabase/migrations/ instead.
+-- newer files from supabase/migrations/ instead (venband.com/status lists them).
 -- =============================================================================
 
 do $$ begin
@@ -32,9 +46,121 @@ end $$;
 
 `;
 for (const f of files) {
-  const body = fs.readFileSync(path.join(DIR, f), 'utf8').replace(/\r\n/g, '\n').trimEnd();
-  sql += `\n-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n-- ${f}\n-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n\n${body}\n`;
+  sql += `\n-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n-- ${f}\n-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n\n${read(f).trimEnd()}\n`;
 }
 sql += `\n-- make the API see everything immediately\nnotify pgrst, 'reload schema';\n`;
-fs.writeFileSync(OUT, sql);
-console.log(`wrote ${path.relative(process.cwd(), OUT)} (${files.length} migrations, ${sql.split('\n').length} lines)`);
+
+// ------------------------------------------------------------- schema manifest --
+// Replay every create/drop of a public table or function, in order. An object's
+// owner is the last migration that (re)created it after a drop; objects that end
+// up dropped are left out, so a fully migrated database never reports anything
+// missing. (Changes to an existing function's body can't be detected this way.)
+const STMT = /\b(create\s+(?:or\s+replace\s+)?function|create\s+table(?:\s+if\s+not\s+exists)?|drop\s+function(?:\s+if\s+exists)?|drop\s+table(?:\s+if\s+exists)?)\s+public\.([a-z0-9_]+)/gi;
+const owner = new Map(); // "t:name" | "f:name" -> migration file
+for (const f of files) {
+  const text = read(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '');
+  for (const m of text.matchAll(STMT)) {
+    const verb = m[1].toLowerCase();
+    const key = `${/table/.test(verb) ? 't' : 'f'}:${m[2].toLowerCase()}`;
+    if (verb.startsWith('drop')) owner.delete(key);
+    else if (!owner.has(key)) owner.set(key, f);
+  }
+}
+// Functions that later migrations rewrite (create or replace) keep existing, so
+// existence alone can't tell an old database from a current one. For those, record
+// a fingerprint of the newest body: md5 of the body with all whitespace removed
+// (so line endings/indentation from copy-pasting never matter). The database
+// compares it with md5 of the same normalisation of pg_proc.prosrc.
+const WS = /[ \t\r\n\f\v]+/g;
+const DEF = /create\s+(?:or\s+replace\s+)?function\s+public\.([a-z0-9_]+)\s*\(/gi;
+const defs = new Map(); // name -> { count, file, body }
+for (const f of files) {
+  const text = read(f);
+  for (const m of text.matchAll(DEF)) {
+    const open = /\$([a-z_]*)\$/i.exec(text.slice(m.index));
+    if (!open) continue;
+    const start = m.index + open.index + open[0].length;
+    const end = text.indexOf(open[0], start);
+    if (end < 0) continue;
+    const name = m[1].toLowerCase();
+    const prev = defs.get(name);
+    defs.set(name, { count: (prev?.count ?? 0) + 1, file: f, body: text.slice(start, end) });
+  }
+}
+const bodies = new Map(); // migration file -> { name: md5 }
+for (const [name, d] of defs) {
+  if (d.count < 2 || !owner.has(`f:${name}`)) continue; // never rewritten, or dropped at the end
+  if (!bodies.has(d.file)) bodies.set(d.file, {});
+  bodies.get(d.file)[name] = createHash('md5').update(d.body.replace(WS, '')).digest('hex');
+}
+
+const byFile = new Map();
+for (const [key, f] of owner) {
+  if (!byFile.has(f)) byFile.set(f, { tables: [], functions: [] });
+  byFile.get(f)[key.startsWith('t:') ? 'tables' : 'functions'].push(key.slice(2));
+}
+const entries = files
+  .filter((f) => byFile.has(f) || bodies.has(f))
+  .map((f) => ({
+    migration: f,
+    tables: (byFile.get(f)?.tables ?? []).sort(),
+    functions: (byFile.get(f)?.functions ?? []).sort(),
+    bodies: Object.fromEntries(Object.entries(bodies.get(f) ?? {}).sort(([a], [b]) => a.localeCompare(b))),
+  }));
+const manifest = `// GENERATED by scripts/build-setup-sql.mjs from supabase/migrations/ — do not edit.
+// For each migration: the public tables/functions it creates that still exist once
+// every migration has run. /status asks the database which are missing
+// (public.schema_missing) to tell admins exactly which files still need running.
+
+export interface SchemaManifestEntry {
+  migration: string;
+  tables: string[];
+  functions: string[];
+  /** function name -> md5 of its newest body (whitespace removed), for rewritten functions */
+  bodies: Record<string, string>;
+}
+
+export const SCHEMA_MANIFEST: SchemaManifestEntry[] = ${JSON.stringify(entries, null, 2)};
+`;
+
+// A database test (run by tests/db/run.sh after all migrations): a fully migrated
+// database must never be flagged, or /status would raise a false alarm.
+const allTables = entries.flatMap((e) => e.tables);
+const allFunctions = entries.flatMap((e) => e.functions);
+const allBodies = Object.assign({}, ...entries.map((e) => e.bodies));
+const arr = (xs) => `array[${xs.map((x) => `'${x}'`).join(', ')}]::text[]`;
+const manifestTest = `-- GENERATED by scripts/build-setup-sql.mjs — do not edit.
+-- A fully migrated database must not be flagged by public.schema_missing() for any
+-- object in src/lib/schemaManifest.ts (otherwise /status would show a false alarm).
+do $t$
+declare r jsonb;
+begin
+  r := public.schema_missing(
+    ${arr(allTables)},
+    ${arr(allFunctions)},
+    $json$${JSON.stringify(allBodies)}$json$::jsonb);
+  assert jsonb_array_length(r -> 'tables') + jsonb_array_length(r -> 'functions') + jsonb_array_length(r -> 'bodies') = 0,
+    'schema manifest flags objects in a fully migrated database: ' || r::text;
+end
+$t$;
+`;
+const MANIFEST_TEST = path.resolve('tests/db/schema_manifest_test.sql');
+
+// ---------------------------------------------------------------------- write --
+const outputs = [
+  [SETUP, sql],
+  [MANIFEST, manifest],
+  [MANIFEST_TEST, manifestTest],
+];
+if (check) {
+  const stale = outputs.filter(([p, c]) => !fs.existsSync(p) || fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n') !== c);
+  if (stale.length) {
+    console.error(`out of date: ${stale.map(([p]) => path.relative(process.cwd(), p)).join(', ')} — run: node scripts/build-setup-sql.mjs`);
+    process.exit(1);
+  }
+  console.log('setup.sql, schemaManifest.ts and schema_manifest_test.sql are up to date');
+} else {
+  for (const [p, c] of outputs) fs.writeFileSync(p, c);
+  const objects = entries.reduce((n, e) => n + e.tables.length + e.functions.length + Object.keys(e.bodies).length, 0);
+  console.log(`wrote ${path.relative(process.cwd(), SETUP)} (${files.length} migrations) and ${path.relative(process.cwd(), MANIFEST)} (${objects} objects from ${entries.length} migrations)`);
+}

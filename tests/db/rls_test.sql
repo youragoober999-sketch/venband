@@ -275,7 +275,12 @@ end $t$;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
 select public.respond_friend_request('00000000-0000-0000-0000-00000000000d', true);
 do $t$ begin
-  assert public.are_friends('00000000-0000-0000-0000-00000000000d'), 'friends after accepting';
+  -- (are_friends() is internal-only now — 20261105020000_lock_down_internal.sql)
+  assert exists (select 1 from public.friendships where accepted
+                 and user_a = '00000000-0000-0000-0000-00000000000b' and user_b = '00000000-0000-0000-0000-00000000000d'), 'friends after accepting';
+  -- nobody can probe other people's relationships through the helpers any more
+  perform pg_temp.must_fail($q$select public.are_friends('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000c')$q$);
+  perform pg_temp.must_fail($q$select public.is_blocked_between('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000c')$q$);
   assert (select count(*) from public.friendships) = 1;
 end $t$;
 

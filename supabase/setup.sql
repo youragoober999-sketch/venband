@@ -6,11 +6,11 @@
 --
 -- How to use: Supabase dashboard → SQL Editor → New query → paste this whole
 -- file → Run. It creates every table, function, policy and storage bucket the
--- app needs, in order (42 migrations).
+-- app needs, in order (44 migrations).
 --
 -- Run it ONCE, on a project that doesn't have Venband set up yet. If Venband is
 -- already installed it stops right away (nothing is changed) — then run only the
--- newer files from supabase/migrations/ instead.
+-- newer files from supabase/migrations/ instead (venband.com/status lists them).
 -- =============================================================================
 
 do $$ begin
@@ -9122,6 +9122,155 @@ $$;
 
 revoke execute on function public.resolve_login(text) from public;
 grant execute on function public.resolve_login(text) to anon, authenticated;
+
+notify pgrst, 'reload schema';
+
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-- 20261105010000_schema_check.sql
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+-- =============================================================================
+-- Schema check (20261105010000)
+--
+-- schema_missing(tables, functions, bodies) reports which public tables and
+-- functions do NOT exist, and which rewritten functions still have an OLD body.
+-- The /status page sends the list from src/lib/schemaManifest.ts (generated
+-- from supabase/migrations/), so it can name exactly which migration files a
+-- database is missing instead of showing "Operational" for a half-set-up one.
+--
+-- bodies: {"function_name": "md5 of the newest body with whitespace removed"}.
+-- A function counts as current if ANY overload with that name matches.
+--
+-- Only reveals existence/fingerprints of objects in the public schema, which is
+-- already public in the open-source repo. Callable signed out (the status page
+-- works without an account). Safe to run more than once.
+-- =============================================================================
+
+drop function if exists public.schema_missing(text[], text[]);
+drop function if exists public.schema_missing(text[], text[], jsonb);
+create function public.schema_missing(p_tables text[] default '{}', p_functions text[] default '{}', p_bodies jsonb default '{}')
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_tables text[];
+  v_functions text[];
+  v_bodies text[];
+begin
+  if jsonb_typeof(coalesce(p_bodies, '{}'::jsonb)) <> 'object' then
+    raise exception 'bodies must be a JSON object';
+  end if;
+  if coalesce(cardinality(p_tables), 0) + coalesce(cardinality(p_functions), 0)
+     + (select count(*) from jsonb_object_keys(coalesce(p_bodies, '{}'::jsonb))) > 2000 then
+    raise exception 'too many objects';
+  end if;
+
+  select coalesce(array_agg(t order by t), '{}') into v_tables
+    from unnest(coalesce(p_tables, '{}')) t
+   where t !~ '^[a-z0-9_]{1,63}$'
+      or not exists (select 1 from pg_catalog.pg_class c
+                     join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+                     where n.nspname = 'public' and c.relname = t and c.relkind in ('r', 'p', 'v', 'm'));
+
+  select coalesce(array_agg(f order by f), '{}') into v_functions
+    from unnest(coalesce(p_functions, '{}')) f
+   where f !~ '^[a-z0-9_]{1,63}$'
+      or not exists (select 1 from pg_catalog.pg_proc p
+                     join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+                     where n.nspname = 'public' and p.proname = f);
+
+  select coalesce(array_agg(b.key order by b.key), '{}') into v_bodies
+    from jsonb_each_text(coalesce(p_bodies, '{}'::jsonb)) b
+   where b.key !~ '^[a-z0-9_]{1,63}$'
+      or not exists (select 1 from pg_catalog.pg_proc p
+                     join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+                     where n.nspname = 'public' and p.proname = b.key
+                       and md5(regexp_replace(p.prosrc, '[ \t\r\n\f\v]+', '', 'g')) = b.value);
+
+  return jsonb_build_object('tables', to_jsonb(v_tables), 'functions', to_jsonb(v_functions), 'bodies', to_jsonb(v_bodies));
+end;
+$$;
+
+revoke execute on function public.schema_missing(text[], text[], jsonb) from public;
+grant execute on function public.schema_missing(text[], text[], jsonb) to anon, authenticated;
+
+notify pgrst, 'reload schema';
+
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-- 20261105020000_lock_down_internal.sql
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+-- =============================================================================
+-- Lock down internal helpers (20261105020000)
+--
+-- Supabase exposes every function in `public` through the API unless EXECUTE is
+-- revoked. These SECURITY DEFINER helpers are only meant to be called from other
+-- database functions (or cron), never by the app — but anyone could call them:
+--
+--   * wordle_command(app, channel, ...)  — signed-out callers could make any bot
+--     post into ANY channel (no membership or permission check). Proven in a test
+--     database: an anonymous call added a bot message to a private channel.
+--   * are_friends(a, b), is_blocked_between(a, b), shares_server_or_dm(a, b) —
+--     anyone signed in could map other people's friendships and blocks.
+--   * channel_perm_for_user(channel, user) — signed-out callers could read any
+--     user's permissions in any channel.
+--   * venband_notice(...) — any staff member could send an *official Venband* DM
+--     with arbitrary text, bypassing the moderation flow and its audit log.
+--   * the rest are internal helpers with no reason to be public.
+--
+-- Revoking is safe: none of these is referenced by an RLS policy, check
+-- constraint, column default or caller-privilege function (verified against the
+-- full schema), and the app never calls them. The functions that call them are
+-- SECURITY DEFINER, so they keep working. Cron jobs run as the owner.
+--
+-- Also: wordle_games (holds each channel's ANSWER) and wordle_words had no RLS,
+-- so on Supabase anyone could read today's answers or edit games through the API.
+-- They are only used inside wordle_command, so direct access is closed entirely.
+--
+-- Safe to run more than once.
+-- =============================================================================
+
+-- Wordle tables: no direct API access (RLS on, no policies, no grants)
+alter table if exists public.wordle_games enable row level security;
+alter table if exists public.wordle_words enable row level security;
+do $$ begin
+  revoke all on public.wordle_games from anon, authenticated;
+  revoke all on public.wordle_words from anon, authenticated;
+exception when undefined_table then null; end $$;
+
+-- Internal helpers: callable only by the database itself
+do $$
+declare
+  fn text;
+begin
+  foreach fn in array array[
+    'public.wordle_command(uuid, uuid, text, text)',
+    'public.wordle_feedback(text, text)',
+    'public.are_friends(uuid, uuid)',
+    'public.is_blocked_between(uuid, uuid)',
+    'public.shares_server_or_dm(uuid, uuid)',
+    'public.channel_perm_for_user(uuid, uuid)',
+    'public.channel_key_recipients(uuid)',
+    'public.member_count(uuid)',
+    'public.deliver_scheduled_messages()',
+    'public.can_ban_media(uuid)',
+    'public.can_force_contact(uuid)',
+    'public.mod_can_target(uuid)',
+    'public.venband_notice(uuid, text, text, uuid)',
+    'public.storage_console_stats()',
+    'public.storage_list_auth_users()',
+    'public.storage_queue_email(text, text, text)',
+    'public.storage_ledger_list()',
+    'public.storage_ledger_rebuild()'
+  ] loop
+    if to_regprocedure(fn) is not null then
+      execute format('revoke execute on function %s from public, anon, authenticated', fn);
+    end if;
+  end loop;
+end $$;
 
 notify pgrst, 'reload schema';
 

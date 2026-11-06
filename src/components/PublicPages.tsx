@@ -5,21 +5,29 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { supabase, supabaseKey, supabaseUrl, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { go, type PublicPage } from '../lib/router';
-import { Icon, Wordmark } from './ui';
+import { Icon } from './ui';
+import { SiteNav, type SiteSection } from './SiteNav';
 import { askConfirm } from './Dialogs';
 import { Select } from './Select';
 import { VerifiedMark } from './Badges';
+import { SCHEMA_MANIFEST } from '../lib/schemaManifest';
 
 const REPO_URL = 'https://github.com/youragoober999-sketch/venband';
 
-const NAV: { page: PublicPage; label: string }[] = [
+// Header sections that correspond to a public page (the rest live in the footer).
+const SECTION: Partial<Record<PublicPage, SiteSection>> = { download: 'download', discovery: 'discovery', bots: 'bots', status: 'status' };
+
+// Every public page is reachable from the footer, with plain-English labels.
+const FOOTER: { page: PublicPage; label: string }[] = [
   { page: 'download', label: 'Download' },
   { page: 'discovery', label: 'Discover' },
   { page: 'bots', label: 'Developers' },
   { page: 'voogle', label: 'Voogle' },
   { page: 'status', label: 'Status' },
+  { page: 'changelog', label: 'Changelog' },
   { page: 'privacy', label: 'Privacy' },
-  { page: 'tos', label: 'TOS' },
+  { page: 'tos', label: 'Terms' },
+  { page: 'guidelines', label: 'Guidelines' },
 ];
 
 export function PublicLayout({ page, title, children, wide }: { page: PublicPage; title: string; children: ReactNode; wide?: boolean }) {
@@ -33,71 +41,33 @@ export function PublicLayout({ page, title, children, wide }: { page: PublicPage
   }, [title]);
   return (
     <div className="public-page">
-      <header className="public-nav">
-        <div className={`public-inner${wide ? ' wide' : ''}`}>
-          <a
-            className="public-brand"
-            href={import.meta.env.BASE_URL}
-            onClick={(e) => {
-              e.preventDefault();
-              go('');
-            }}
-          >
-            <Wordmark />
-          </a>
-          <nav aria-label="Site" className="public-links">
-            {NAV.map((n) => (
-              <a
-                key={n.page}
-                href={n.page === 'privacy' ? 'https://privacy.venband.com' : `${import.meta.env.BASE_URL}${n.page}`}
-                className={n.page === page ? 'active' : ''}
-                onClick={(e) => {
-                  e.preventDefault();
-                  if (n.page === 'privacy') window.location.href = 'https://privacy.venband.com';
-                  else go(n.page);
-                }}
-              >
-                {n.label}
-              </a>
-            ))}
-          </nav>
-          {signedIn ? (
-            <button className="btn primary small" onClick={() => go('channels/@me')}>
-              Open Venband
-            </button>
-          ) : (
-            <span className="row">
-              <button className="btn ghost small" onClick={() => signInThenReturn()}>
-                Log in
-              </button>
-              <button className="btn primary small" onClick={() => signInThenReturn('register')}>
-                Sign up
-              </button>
-            </span>
-          )}
-        </div>
-      </header>
+      <SiteNav
+        active={SECTION[page]}
+        onLogin={() => signInThenReturn()}
+        onSignup={() => signInThenReturn('register')}
+        onOpenApp={signedIn ? () => go('channels/@me') : undefined}
+      />
       <main className={`public-inner public-main${wide ? ' wide' : ''}`}>{children}</main>
-      <footer className="public-inner public-footer small muted">
+      <footer className={`public-inner public-footer small muted${wide ? ' wide' : ''}`}>
         <span>© {new Date().getFullYear()} Venband · end-to-end encrypted chat</span>
-        {(['download', 'discovery', 'privacy', 'guidelines', 'changelog', 'status'] as PublicPage[]).map((p) => (
-          <a
-            key={p}
-            href={`${import.meta.env.BASE_URL}${p}`}
-            onClick={(e) => {
-              e.preventDefault();
-              go(p);
-            }}
-          >
-            {p[0].toUpperCase() + p.slice(1)}
+        <nav aria-label="Footer" className="public-footer-links">
+          {FOOTER.map((f) => (
+            <a
+              key={f.page}
+              href={`${import.meta.env.BASE_URL}${f.page}`}
+              aria-current={f.page === page ? 'page' : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                go(f.page);
+              }}
+            >
+              {f.label}
+            </a>
+          ))}
+          <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
+            Source code
           </a>
-        ))}
-        <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-          Source code
-        </a>
-        <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-          Learn more
-        </a>
+        </nav>
       </footer>
     </div>
   );
@@ -133,12 +103,50 @@ export function SignInCard({ what }: { what: string }) {
 
 // ------------------------------------------------------------------ status --
 
-type Health = 'ok' | 'slow' | 'down' | 'unknown' | 'checking';
+type Health = 'ok' | 'slow' | 'down' | 'outdated' | 'unknown' | 'checking';
+/** What a check can report besides "it answered": a different health and an explanation. */
+interface CheckOutcome {
+  health?: Health;
+  note?: string;
+  details?: string[];
+}
 interface Check {
   id: string;
   name: string;
   desc: string;
-  run: () => Promise<void>;
+  run: () => Promise<CheckOutcome | void>;
+}
+
+/** PostgREST: the function/table isn't in the database (migration not run). */
+const isMissingObject = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === 'PGRST202' || e.code === 'PGRST205' || /schema cache|does not exist/i.test(e.message ?? ''));
+
+/** Which migration files does the live database still need? (public.schema_missing) */
+async function schemaCheck(): Promise<CheckOutcome> {
+  const tables = SCHEMA_MANIFEST.flatMap((m) => m.tables);
+  const functions = SCHEMA_MANIFEST.flatMap((m) => m.functions);
+  const bodies = Object.assign({}, ...SCHEMA_MANIFEST.map((m) => m.bodies));
+  const { data, error } = await supabase.rpc('schema_missing', { p_tables: tables, p_functions: functions, p_bodies: bodies });
+  if (isMissingObject(error)) {
+    const newest = SCHEMA_MANIFEST.find((m) => m.functions.includes('schema_missing'))?.migration;
+    return {
+      health: 'outdated',
+      note: 'The database is older than this version of Venband.',
+      details: newest ? [`Run the newest files in supabase/migrations/ (at least ${newest}) — or supabase/setup.sql on a new project.`] : [],
+    };
+  }
+  if (error) throw error;
+  const r = data as { tables: string[]; functions: string[]; bodies: string[] };
+  const t = new Set(r.tables), f = new Set(r.functions), b = new Set(r.bodies);
+  const files = SCHEMA_MANIFEST.filter(
+    (m) => m.tables.some((x) => t.has(x)) || m.functions.some((x) => f.has(x)) || Object.keys(m.bodies).some((x) => b.has(x)),
+  ).map((m) => m.migration);
+  if (!files.length) return {};
+  return {
+    health: 'outdated',
+    note: `${files.length} database update${files.length === 1 ? '' : 's'} not installed yet, so some features won’t work.`,
+    details: files.map((m) => `supabase/migrations/${m}`),
+  };
 }
 
 async function timed<T>(fn: () => Promise<T>, timeout = 8000): Promise<{ ms: number; value: T }> {
@@ -148,16 +156,26 @@ async function timed<T>(fn: () => Promise<T>, timeout = 8000): Promise<{ ms: num
 }
 
 const CHECKS: Check[] = [
-  { id: 'app', name: 'Website & app', desc: 'venband.com and the web app', run: async () => void (await fetch(`${import.meta.env.BASE_URL}site.webmanifest`, { cache: 'no-store' })).ok },
+  {
+    id: 'app',
+    name: 'Website & app',
+    desc: 'venband.com and the web app',
+    run: async () => {
+      const r = await fetch(`${import.meta.env.BASE_URL}site.webmanifest`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(String(r.status)); // was ignored before, so the site could never show as down
+    },
+  },
   {
     id: 'api',
     name: 'Messages & database',
     desc: 'Sending, loading and syncing messages',
     run: async () => {
       const { error } = await supabase.rpc('status_ping');
+      if (isMissingObject(error)) return { health: 'outdated', note: 'The database answers but isn’t set up for Venband yet.' };
       if (error) throw error;
     },
   },
+  { id: 'schema', name: 'Database setup', desc: 'Every feature’s tables and functions are installed and current', run: schemaCheck },
   {
     id: 'auth',
     name: 'Sign in',
@@ -217,10 +235,10 @@ interface Incident {
   status_updates: { id: string; status: string; body: string; created_at: string }[];
 }
 
-const HEALTH_LABEL: Record<Health, string> = { ok: 'Operational', slow: 'Slow', down: 'Not responding', unknown: 'Not available here', checking: 'Checking…' };
+const HEALTH_LABEL: Record<Health, string> = { ok: 'Operational', slow: 'Slow', down: 'Not responding', outdated: 'Needs update', unknown: 'Not available here', checking: 'Checking…' };
 
 export function StatusPage() {
-  const [results, setResults] = useState<Record<string, { health: Health; ms?: number }>>({});
+  const [results, setResults] = useState<Record<string, { health: Health; ms?: number } & CheckOutcome>>({});
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const [incidents, setIncidents] = useState<Incident[] | null>(null);
   const staff = sessionStore.use((s) => ['moderator', 'admin', 'owner'].includes(s.me?.platform_role ?? 'user'));
@@ -231,8 +249,9 @@ export function StatusPage() {
     await Promise.all(
       CHECKS.map(async (c) => {
         try {
-          const { ms } = await timed(c.run);
-          setResults((r) => ({ ...r, [c.id]: { health: ms > 2500 ? 'slow' : 'ok', ms } }));
+          const { ms, value } = await timed(c.run);
+          const out = value ?? {};
+          setResults((r) => ({ ...r, [c.id]: { ...out, health: out.health ?? (ms > 2500 ? 'slow' : 'ok'), ms } }));
         } catch (e) {
           setResults((r) => ({ ...r, [c.id]: { health: c.id === 'previews' && /unavailable/.test(String(e)) ? 'unknown' : 'down' } }));
         }
@@ -267,7 +286,7 @@ export function StatusPage() {
   }, [runChecks, loadIncidents]);
 
   const active = (incidents ?? []).filter((i) => i.status !== 'resolved');
-  const down = Object.values(results).some((r) => r.health === 'down') || active.some((i) => i.severity === 'major');
+  const down = Object.values(results).some((r) => r.health === 'down' || r.health === 'outdated') || active.some((i) => i.severity === 'major');
   const degraded = Object.values(results).some((r) => r.health === 'slow') || active.length > 0;
   const overall = down ? 'down' : degraded ? 'slow' : Object.values(results).some((r) => r.health === 'checking') ? 'checking' : 'ok';
 
@@ -324,6 +343,18 @@ export function StatusPage() {
               <div className="grow">
                 <b>{c.name}</b>
                 <div className="small muted">{c.desc}</div>
+                {r.note && <div className="status-note small">{r.note}</div>}
+                {!!r.details?.length && (
+                  <details className="status-details small">
+                    <summary>For site admins: what to run</summary>
+                    <p className="muted">Paste each file into Supabase → SQL Editor → Run, in this order:</p>
+                    <ol>
+                      {r.details.map((d) => (
+                        <li key={d}>{d.startsWith('supabase/') ? <code>{d}</code> : d}</li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
               </div>
               {r.ms !== undefined && <span className="small muted">{r.ms} ms</span>}
               <span className={`status-pill ${r.health}`}>{HEALTH_LABEL[r.health]}</span>

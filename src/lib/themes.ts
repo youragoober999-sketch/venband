@@ -36,7 +36,7 @@ const BASE: ThemeVars = {
   'line-2': '#ffffff1c',
   text: '#f5f5f7',
   'text-2': '#b4b4bb',
-  muted: '#77777f',
+  muted: '#8a8a92', // WCAG AA 4.5:1 on bg-1…bg-4 (was #77777f: 4.25:1 on bg-2)
   accent: '#f5f5f7',
   'accent-hover': '#ffffff',
   'accent-soft': '#ffffff14',
@@ -125,6 +125,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       'bg-2': '#212124',
       'bg-3': '#2a2a2e',
       'bg-4': '#343439',
+      muted: '#94949c', // lighter surfaces need a lighter gray for 4.5:1 on bg-1…bg-3
       'bg-hover': '#26262a',
     },
   },
@@ -182,7 +183,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       'line-2': '#0000001c',
       text: '#111114',
       'text-2': '#45454d',
-      muted: '#7a7a83',
+      muted: '#64646c', // 4.5:1 on Daylight's light surfaces (was #7a7a83: 3.81:1 on bg-1)
       accent: '#111114',
       'accent-hover': '#000000',
       'accent-soft': '#0000000d',

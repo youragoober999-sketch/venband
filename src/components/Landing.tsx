@@ -1,49 +1,12 @@
 import type { ReactNode } from 'react';
-import { Icon, LogoGlyph, Wordmark } from './ui';
-import { go } from '../lib/router';
+import { Icon, LogoGlyph } from './ui';
+import { SiteNav } from './SiteNav';
 
 const REPO_URL = 'https://github.com/youragoober999-sketch/venband';
 
+/** Homepage + sign-in pages header — the shared site header (SiteNav). */
 export function TopNav({ onLogin, onSignup, onHome, onOpenApp }: { onLogin: () => void; onSignup: () => void; onHome: () => void; onOpenApp?: () => void }) {
-  return (
-    <header className="topnav">
-      <div className="container topnav-inner">
-        <button className="topnav-brand" onClick={onHome}>
-          <Wordmark />
-        </button>
-        <nav className="topnav-links" aria-label="Site">
-          <a href="#features" onClick={onHome}>
-            Features
-          </a>
-          <a href="#privacy" onClick={onHome}>
-            Privacy
-          </a>
-          <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-            Source code
-          </a>
-        </nav>
-        <div className="topnav-actions">
-          <button className="btn ghost small" onClick={() => go('download')}>
-            Download
-          </button>
-          {onOpenApp ? (
-            <button className="btn primary small" onClick={onOpenApp}>
-              Open Venband
-            </button>
-          ) : (
-            <>
-              <button className="btn ghost small" onClick={onLogin}>
-                Log in
-              </button>
-              <button className="btn primary small" onClick={onSignup}>
-                Sign up
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </header>
-  );
+  return <SiteNav onLogin={onLogin} onSignup={onSignup} onHome={onHome} onOpenApp={onOpenApp} />;
 }
 
 export function Landing({ onLogin, onSignup, onOpenApp }: { onLogin: () => void; onSignup: () => void; onOpenApp?: () => void }) {

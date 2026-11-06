@@ -46,5 +46,8 @@
   },
   "engines": {
     "node": ">=22.18"
+  },
+  "overrides": {
+    "@vercel/cli-config": "0.3.7"
   }
 }
