@@ -1,7 +1,8 @@
 // The message box: mentions, :emoji: autocomplete, formatting, files (with
 // spoilers and alt text), drafts, spell check, polls, scheduled sending.
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { supabase, errorMessage } from '../lib/supabase';
+import { errorMessage } from '../lib/supabase';
+import { rtChannel, rtRemove, type RtChannel } from '../lib/realtime';
 import { sessionStore } from '../lib/session';
 import { MAX_FILE } from '../lib/files';
 import { socialStore } from '../lib/social';
@@ -1118,7 +1119,7 @@ function ScheduleModal({
 
 // ---------------------------------------------------------------- typing --
 
-export const typingChannels = new Map<string, ReturnType<typeof supabase.channel>>();
+export const typingChannels = new Map<string, RtChannel>();
 
 /**
  * Who is typing. `key` is what the composer uses ("<channel>" or
@@ -1130,9 +1131,10 @@ export function useTyping(key: string) {
   useEffect(() => {
     setTyping({});
     const [channelId, thread] = key.split(':');
-    const ch = supabase.channel(`chan:${channelId}${thread ? `:t${thread.slice(0, 8)}` : ''}`, { config: { private: true, broadcast: { self: false } } });
-    ch.on('broadcast', { event: 'typing' }, ({ payload }) => {
-      const uid = (payload as { user_id?: string }).user_id;
+    const ch = rtChannel(`chan:${channelId}${thread ? `:t${thread.slice(0, 8)}` : ''}`, { config: { private: true, broadcast: { self: false } } });
+    ch.on('broadcast', { event: 'typing' }, ({ payload, from }) => {
+      // our realtime server stamps the real sender; Supabase's relays what the client says
+      const uid = from ?? (payload as { user_id?: string }).user_id;
       if (uid && uid !== me && !socialStore.get().relations[uid]?.blocked) setTyping((t) => ({ ...t, [uid]: Date.now() }));
     });
     ch.subscribe();
@@ -1141,7 +1143,7 @@ export function useTyping(key: string) {
     return () => {
       clearInterval(tick);
       typingChannels.delete(key);
-      supabase.removeChannel(ch);
+      rtRemove(ch);
     };
   }, [key, me]);
   return typing;

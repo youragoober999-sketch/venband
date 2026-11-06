@@ -1,0 +1,12 @@
+{
+  "name": "venband-realtime",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Venband's self-hosted realtime server (typing, presence, call signalling, games).",
+  "license": "MIT",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": { "start": "node server.mjs" },
+  "engines": { "node": ">=22" },
+  "dependencies": { "ws": "^8.18.0" }
+}

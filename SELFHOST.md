@@ -27,6 +27,9 @@ The newest option: a custom backend built on Vercel Postgres + Vercel KV (Redis)
 - Client adapter: `src/lib/vdl.ts` (signup/signin/users/servers/messages).
 - The `/storage` console now shows a "VDL users" block as proof of the new layer.
 
+## Realtime on your own VPS
+Typing, presence, call signalling and games can run on a small VPS you control instead of Supabase Realtime: see `deploy/realtime/README.md`. Set `VITE_REALTIME_URL` to switch; unset it to switch back.
+
 ## 4. Venband Blob (VBB) — custom, content-addressed object storage
 A fully custom blob store invented for Venband:
 - Small objects stored in Postgres (bytea), deduped by SHA-256 (content-addressable).

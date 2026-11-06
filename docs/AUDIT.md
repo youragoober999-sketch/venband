@@ -501,8 +501,9 @@ with a high risk of security regressions.
 
 **Decisions you need to make:**
 
-1. **Realtime host.** Vercel functions can't hold WebSockets, so calls,
-   typing, presence, Stackdown and live messages need a server that stays up.
+1. **Realtime host: decided 2026-11-06, self-host on a VPS (b).** Vercel
+   functions can't hold WebSockets, so calls, typing, presence, Stackdown and
+   live messages need a server that stays up.
    * (a) Keep Supabase Realtime for now (no work).
    * (b) Self-host one small VPS (about $5–10 a month) running a realtime
      server. This is the recommended choice.
@@ -534,5 +535,25 @@ with a high risk of security regressions.
 | J2 Read path | PostgREST (or `/api/vdl`) in front of the copy; a flag sends reads there for staff accounts only | Staff use the app for a week on it with no regressions |
 | J3 Auth | Import accounts (`lib/vdl-sync.js` already pulls them); VDL issues the JWTs that PostgREST checks | New sign-ins go to VDL; old sessions still work |
 | J4 Realtime | Bring up the chosen realtime host; port `realtime_topic_allowed` into its auth hook | Calls, presence, typing and Stackdown work on it |
+
+**J4, first part, built (2026-11-06).** The server is `realtime/server.mjs`,
+deployed with `deploy/realtime/` (Docker + Caddy; guide in its README).
+
+* **Topics it carries:** the live ones (`chan` typing, `scope` presence,
+  `call` signalling, `act` games), and only when the site has
+  `VITE_REALTIME_URL` set. The client side is `src/lib/realtime.ts`; unset
+  means Supabase as before.
+* **Security:** it holds no secrets. It checks users with `/auth/v1/user` and
+  topics with `realtime_topic_allowed`, running as the user. The server sets
+  the sender id itself, so typing can't be spoofed.
+* **Tests:** `tests/realtime.test.ts`. It was also checked against the local
+  Supabase stack with real accounts:
+  * a non-member is refused;
+  * a call topic on a text channel is refused;
+  * typing and the Stackdown lobby work through the app.
+* **Not yet tested:** a full voice call on it.
+* **Left for later:** the database change feeds (`dbc` / `dbs` / `dbu`) stay
+  on Supabase until the database moves (J1–J2). They need a LISTEN or
+  logical-replication feed on the new Postgres.
 | J5 Files | Copy buckets; signed-URL checks mirror the storage policies | Uploads and downloads served from the new store |
 | J6 Cut-over | Make the new host primary; Supabase becomes a read-only backup for 30 days | Supabase can be turned off |

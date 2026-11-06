@@ -4,8 +4,7 @@
 // Each player runs their own game; boards, scores and junk attacks are sent
 // to the others a few times a second.
 import { useEffect, useRef, useState } from 'react';
-import type { RealtimeChannel } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { rtChannel, rtRemove, type RtChannel } from '../lib/realtime';
 import { sessionStore } from '../lib/session';
 import { COLORS, COLS, Game, ROWS, VISIBLE_FROM, cells } from '../lib/stackdown';
 import { sfx } from '../lib/sfx';
@@ -120,14 +119,14 @@ export function Stackdown({ channelId, onClose }: { channelId: string; onClose: 
   const [won, setWon] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const game = useRef<Game | null>(null);
-  const rt = useRef<RealtimeChannel | null>(null);
+  const rt = useRef<RtChannel | null>(null);
   const multi = useRef(false);
   const remoteRef = useRef<Record<string, Remote>>({});
   remoteRef.current = remote;
 
   // ---- realtime lobby
   useEffect(() => {
-    const ch = supabase.channel(`act:${channelId}`, { config: { private: true, presence: { key: me.id }, broadcast: { self: false } } });
+    const ch = rtChannel(`act:${channelId}`, { config: { private: true, presence: { key: me.id }, broadcast: { self: false } } });
     rt.current = ch;
     ch.on('presence', { event: 'sync' }, () => {
       const st = ch.presenceState<Player>();
@@ -151,7 +150,7 @@ export function Stackdown({ channelId, onClose }: { channelId: string; onClose: 
       }
     });
     return () => {
-      void supabase.removeChannel(ch);
+      rtRemove(ch);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);

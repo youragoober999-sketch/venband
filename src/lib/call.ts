@@ -6,8 +6,7 @@
 // prevent that every SDP offer/answer is signed with the sender's Venband
 // identity key and verified before use, so media is end-to-end encrypted
 // between participants. TURN relays (if configured) only ever see ciphertext.
-import type { RealtimeChannel } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import { rtChannel, rtRemove, type RtChannel } from './realtime';
 import { sdpSignaturePayload, sign, verify, type Identity } from './crypto';
 import { getCurrentKey, observeKey } from './directory';
 import { acquireScope, sendRing, setVoiceState } from './presence';
@@ -92,7 +91,7 @@ function tuneScreen(sender: RTCRtpSender): RTCRtpSender {
 
 export class Call {
   readonly session = crypto.randomUUID();
-  private rt: RealtimeChannel | null = null;
+  private rt: RtChannel | null = null;
   private peers = new Map<string, Peer>();
   private listeners = new Set<() => void>();
   private closed = false;
@@ -272,7 +271,7 @@ export class Call {
    */
   private connect() {
     if (this.closed) return;
-    const rt = supabase.channel(`call:${this.channelId}`, {
+    const rt = rtChannel(`call:${this.channelId}`, {
       config: { private: true, presence: { key: this.session }, broadcast: { self: false } },
     });
     this.rt = rt;
@@ -302,7 +301,7 @@ export class Call {
         this.retryTimer = setTimeout(() => {
           if (this.closed || this.rt !== rt) return;
           this.rt = null; // so the CLOSED event from removing it is ignored
-          supabase.removeChannel(rt);
+          rtRemove(rt);
           this.connect();
         }, Math.min(10_000, 800 * 2 ** Math.min(this.retries, 4)));
       }
@@ -325,7 +324,7 @@ export class Call {
     for (const s of [this.mic, this.rawMic, this.cam, this.screen]) s?.getTracks().forEach((t) => t.stop());
     this.micCtx?.close().catch(() => {});
     // leaving the channel removes our presence; no extra untrack() write needed
-    if (this.rt) supabase.removeChannel(this.rt);
+    if (this.rt) rtRemove(this.rt);
     setVoiceState({ scope: null, voice_channel_id: null, muted: false, deafened: false, video: false, screen: false });
     // let the "left the call" presence update go out before the scope may close
     const release = this.releaseScope;

@@ -12,8 +12,7 @@
 //     compares what the server shows for this tab with what it should be, so a
 //     dropped update heals itself instead of leaving you "in the call" forever.
 //   * A channel the server closed is reopened with backoff.
-import type { RealtimeChannel } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import { rtChannel, rtRemove, type RtChannel } from './realtime';
 
 export interface PresenceMeta {
   user_id: string;
@@ -49,7 +48,7 @@ const HEARTBEAT_MS = 8_000;
 
 interface Scope {
   id: string;
-  channel: RealtimeChannel | null;
+  channel: RtChannel | null;
   refs: number;
   /** wants to show this tab as online (servers); DMs only show you while in a call */
   onlineRefs: number;
@@ -148,7 +147,7 @@ function sendFlags(s: Scope) {
 }
 
 function open(s: Scope) {
-  const channel = supabase.channel(`scope:${s.id}`, {
+  const channel = rtChannel(`scope:${s.id}`, {
     config: { private: true, presence: { key: TAB_SESSION }, broadcast: { self: false } },
   });
   s.channel = channel;
@@ -213,7 +212,7 @@ function reconnect(s: Scope) {
   const old = s.channel;
   s.channel = null;
   s.joined = false;
-  if (old) supabase.removeChannel(old);
+  if (old) rtRemove(old);
   s.reconnectTimer = setTimeout(() => {
     s.reconnectTimer = null;
     if (s.refs > 0) open(s);
@@ -264,7 +263,7 @@ export function acquireScope(scopeId: string, opts: { online?: boolean } = {}): 
       scopes.delete(scopeId);
       if (scope.retry) clearTimeout(scope.retry);
       if (scope.reconnectTimer) clearTimeout(scope.reconnectTimer);
-      if (scope.channel) supabase.removeChannel(scope.channel);
+      if (scope.channel) rtRemove(scope.channel);
     } else {
       syncPresence(scope);
     }

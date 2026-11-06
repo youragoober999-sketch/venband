@@ -1,0 +1,8 @@
+{$REALTIME_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy realtime:4010
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}

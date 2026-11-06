@@ -1,0 +1,30 @@
+# Venband Realtime on a VPS, with automatic HTTPS (Caddy + Let's Encrypt).
+# See deploy/realtime/README.md. Run from this folder: docker compose up -d
+services:
+  realtime:
+    build:
+      context: ../../realtime
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "4010"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file: .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - realtime
+volumes:
+  caddy_data:
+  caddy_config:
