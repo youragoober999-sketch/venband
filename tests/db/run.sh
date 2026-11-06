@@ -23,4 +23,5 @@ psql -q -v ON_ERROR_STOP=1 -d $DB -f tests/db/cosmetics_test.sql
 psql -q -v ON_ERROR_STOP=1 -d $DB -f tests/db/staff_test.sql
 psql -q -v ON_ERROR_STOP=1 -d $DB -f tests/db/memories_test.sql
 psql -q -v ON_ERROR_STOP=1 -d $DB -f tests/db/category_test.sql
+psql -q -v ON_ERROR_STOP=1 -d $DB -f tests/db/gif_test.sql
 echo "database tests passed"

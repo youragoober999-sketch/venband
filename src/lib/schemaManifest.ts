@@ -715,5 +715,13 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "reorder_categories"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261106090000_gif_library.sql",
+    "tables": [],
+    "functions": [
+      "my_gif_count"
+    ],
+    "bodies": {}
   }
 ];

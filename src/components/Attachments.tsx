@@ -6,7 +6,8 @@ import type { Attachment } from '../lib/crypto';
 import { CODE_LANGS, downloadDecrypted, extOf, fileIcon, fileKind, saveDecrypted } from '../lib/files';
 import { LANGUAGE_OPTIONS } from '../lib/codeLanguages';
 import { useHighlight } from '../lib/useHighlight';
-import { imagesToGif } from '../lib/gifenc';
+import { saveToMyGifs, toGif } from '../lib/myGifs';
+import { showToast } from './Undo';
 import { errorMessage } from '../lib/supabase';
 import { copyText, openMenu } from './ContextMenu';
 import { Icon, Modal } from './ui';
@@ -155,6 +156,19 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
   const { url, blob, progress, error, load } = useDecrypted(a, auto);
   const [big, setBig] = useState(false);
   const [broken, setBroken] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const isGif = a.mime === 'image/gif' || /\.gif$/i.test(a.name);
+  const baseName = a.name.replace(/\.[^.]+$/, '') || 'venband';
+  const pictureBlob = async (): Promise<Blob> => blob ?? (await (await fetch(url!)).blob());
+  async function saveAsGif() {
+    try {
+      await saveToMyGifs(await pictureBlob(), baseName);
+      setSaved(true);
+      showToast('Saved to your GIFs — find it under Favourites in the GIF picker.');
+    } catch (err) {
+      showAlert(errorMessage(err));
+    }
+  }
   if (error || broken) return <FileCard a={a}>{error && <div className="small danger-text">{error}</div>}</FileCard>;
   if (!url)
     return (
@@ -164,20 +178,25 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
     );
   return (
     <>
-      <img className="attachment-img" src={url} alt={a.alt || a.name} title={a.alt || undefined} onClick={() => setBig(true)} onError={() => setBroken(true)} onContextMenu={(e) => openMenu(e, [
-        { label: 'Save image', icon: 'download', onClick: () => { const a2 = document.createElement('a'); a2.href = url; a2.download = a.name; a2.click(); } },
-        { label: 'Make as GIF', icon: 'sparkles', onClick: async () => {
-          try {
-            if (!blob) { await load(); }
-            const b = blob || (await (async () => { const r = await fetch(url!); return r.blob(); })());
-            const file = new File([b], a.name, { type: b.type || 'image/png' });
-            const gif = await imagesToGif([file], { delayMs: 500 });
-            const u = URL.createObjectURL(gif);
-            const a2 = document.createElement('a'); a2.href = u; a2.download = a.name.replace(/\\.[^.]+$/, '') + '.gif'; a2.click();
-            setTimeout(() => URL.revokeObjectURL(u), 1000);
-          } catch (e) { console.error(e); showAlert('Could not make GIF: ' + String((e as Error)?.message || e)); }
-        } },
-      ])} />
+      <span className="attachment-img-wrap">
+        <img className="attachment-img" src={url} alt={a.alt || a.name} title={a.alt || undefined} onClick={() => setBig(true)} onError={() => setBroken(true)} onContextMenu={(e) => openMenu(e, [
+          { label: 'Save image', icon: 'download', onClick: () => { const a2 = document.createElement('a'); a2.href = url; a2.download = a.name; a2.click(); } },
+          { label: 'Save as GIF', icon: 'star', hint: 'to your GIFs', onClick: () => void saveAsGif() },
+          { label: 'Download as GIF', icon: 'sparkles', onClick: async () => {
+            try {
+              const gif = await toGif(await pictureBlob(), baseName);
+              const u = URL.createObjectURL(gif);
+              const a2 = document.createElement('a'); a2.href = u; a2.download = `${baseName}.gif`; a2.click();
+              setTimeout(() => URL.revokeObjectURL(u), 1000);
+            } catch (err) { showAlert('Couldn’t make a GIF: ' + String((err as Error)?.message || err)); }
+          } },
+        ])} />
+        {isGif && (
+          <button className={`gif-fav${saved ? ' on' : ''}`} onClick={() => void saveAsGif()} title={saved ? 'In your GIFs' : 'Add to your GIFs'} aria-label="Add to your GIFs">
+            <Icon name="star" size={16} />
+          </button>
+        )}
+      </span>
       {big && (
         <Lightbox url={url} name={a.name} onClose={() => setBig(false)} download={<DownloadButton a={a} />} />
       )}

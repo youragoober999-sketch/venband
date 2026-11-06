@@ -25,7 +25,8 @@ import { languageName, translate, translationSupported, type Translation } from 
 import { containsSlur } from '../lib/automod';
 import { has, P } from '../lib/permissions';
 import { isSaved, loadSavedIds, setPinned, setSaved, useChannelExtras, type PollState, type ReactionGroup, type ThreadInfo } from '../lib/chatExtras';
-import { Avatar, Icon, StyledName } from './ui';
+import { Avatar, Icon, LogoGlyph, StyledName } from './ui';
+import { BUILTIN_APP, BUILTIN_COMMANDS, isBuiltin, runBuiltin } from '../lib/builtinCommands';
 import { Badges, OwnerCrown, RoleIcon } from './Badges';
 import { copyText, openMenu, type Entry } from './ContextMenu';
 import { askConfirm, askText, showAlert } from './Dialogs';
@@ -313,7 +314,18 @@ export function ChatView({
   }
 
   async function sendPayload(text: string, files: PendingFile[], opts: SendOptions) {
-    const slash = !files.length && !opts.scheduleAt && text.trim().match(/^\/([a-z0-9_-]{1,32})(?:\s+([\s\S]*))?$/i);
+    // Venband's own commands (/avatar, /gif, /roll…) run here, unless a bot in
+    // this chat has a command with the same name
+    let cmd: MessagePayload['cmd'];
+    const own = !opts.scheduleAt && text.trim().match(/^\/([a-z0-9_-]{1,32})(?:\s+([\s\S]*))?$/i);
+    if (own && isBuiltin(own[1].toLowerCase()) && !botCommands.some((c) => c.name === own[1].toLowerCase()) && !(isDm && dmCommands.some((c) => c.name === own[1].toLowerCase()))) {
+      const name = own[1].toLowerCase();
+      const r = await runBuiltin(name, own[2] ?? '', { me: sessionStore.get().me!, replyTo });
+      text = r.text;
+      files = [...files, ...r.files.map((file) => ({ id: crypto.randomUUID(), file, spoiler: false, alt: '' }))];
+      cmd = { name };
+    }
+    const slash = !cmd && !files.length && !opts.scheduleAt && text.trim().match(/^\/([a-z0-9_-]{1,32})(?:\s+([\s\S]*))?$/i);
     const command = slash && botCommands.find((c) => c.name === slash[1].toLowerCase());
     if (slash && command) {
       // commands go to the bot in plain text (bots can't read encrypted messages)
@@ -337,6 +349,7 @@ export function ChatView({
     const keyring = sessionStore.get().keyring!;
     await keyring.prepareSend(channel.id);
     const payload = await buildPayload(text, files, opts.onProgress, opts.poll);
+    if (cmd) payload.cmd = cmd;
     if (opts.scheduleAt) {
       const times = opts.repeat ? opts.repeat.times : 1;
       const step = opts.repeat?.every === 'week' ? 7 * 86_400_000 : 86_400_000;
@@ -447,7 +460,10 @@ export function ChatView({
       channels: (data?.channels ?? []).filter((c) => c.type === 'text').map((c) => ({ id: c.id, label: c.name })),
       everyone: Boolean(data) && can(P.MENTION_EVERYONE),
       emoji: customEmoji(expressions),
-      commands: isDm ? dmCommands : botCommands,
+      commands: [
+        ...(isDm ? dmCommands : botCommands),
+        ...BUILTIN_COMMANDS.filter((b) => !(isDm ? dmCommands : botCommands).some((c) => c.name === b.name)).map((b) => ({ ...BUILTIN_APP, name: b.name, description: b.usage ? `${b.description} — ${b.usage}` : b.description })),
+      ],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, dmMembers, me, expressions, botCommands, dmCommands, isDm]);
@@ -1324,6 +1340,14 @@ function MessageItem({
               </div>
             ) : (
               <>
+                {m.payload.cmd && (
+                  <div className="cmd-label">
+                    <span className="cmd-app">
+                      <LogoGlyph size={11} /> Venband
+                    </span>
+                    used <span className="cmd-name">/{m.payload.cmd.name}</span>
+                  </div>
+                )}
                 {m.payload.forwarded && (
                   <div className="forwarded-label">
                     <Icon name="share" size={13} /> Forwarded from <b>{m.payload.forwarded.author}</b>

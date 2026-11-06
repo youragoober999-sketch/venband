@@ -3,11 +3,16 @@ import { useEffect } from 'react';
 import { createStore } from '../lib/store';
 import { Icon } from './ui';
 
-const store = createStore<{ item: { id: number; text: string; undo: () => Promise<void> | void } | null }>({ item: null });
+const store = createStore<{ item: { id: number; text: string; undo?: () => Promise<void> | void } | null }>({ item: null });
 let n = 0;
 
 export function showUndo(text: string, undo: () => Promise<void> | void) {
   store.set({ item: { id: ++n, text, undo } });
+}
+
+/** A short confirmation that fades out on its own (no Undo button). */
+export function showToast(text: string) {
+  store.set({ item: { id: ++n, text } });
 }
 
 export function UndoToast() {
@@ -22,15 +27,17 @@ export function UndoToast() {
     <div className="undo-toast" role="status">
       <Icon name="check" size={16} />
       <span>{item.text}</span>
-      <button
-        className="btn small secondary"
-        onClick={async () => {
-          store.set({ item: null });
-          await item.undo();
-        }}
-      >
-        Undo
-      </button>
+      {item.undo && (
+        <button
+          className="btn small secondary"
+          onClick={async () => {
+            store.set({ item: null });
+            await item.undo?.();
+          }}
+        >
+          Undo
+        </button>
+      )}
       <button className="icon-btn small" onClick={() => store.set({ item: null })} aria-label="Dismiss">
         <Icon name="x" size={14} />
       </button>
