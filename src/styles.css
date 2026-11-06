@@ -2923,3 +2923,16 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .mac-dock-left .mac-dock-item.drop-after, .mac-dock-right .mac-dock-item.drop-after { box-shadow: 0 3px 0 var(--accent); }
 .folder-panel .rail-item.drop-before { box-shadow: 0 -4px 0 -1px var(--accent); }
 .folder-panel .rail-item.drop-after { box-shadow: 0 4px 0 -1px var(--accent); }
+
+/* ---- appeals + staff permissions + audit search */
+.appeal-items, .appeal-history { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.appeal-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--bg-1); border: 1px solid var(--line); }
+.appeal-row { padding: 10px 12px; border-radius: 10px; background: var(--bg-1); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.appeal-reply { padding: 6px 8px; border-radius: 8px; background: var(--bg-2); }
+.perm-list { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; max-height: 50vh; overflow-y: auto; }
+.check-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 8px; cursor: pointer; }
+.check-row:hover { background: var(--bg-2); }
+.check-row input { margin-top: 3px; }
+.mod-log-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.mod-log-filters > input { flex: 1 1 240px; }
+.mod-log-filters input[type='date'] { margin-left: 4px; }

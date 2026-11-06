@@ -11,7 +11,8 @@ import type { VoogleSettings } from '../lib/voogle';
 import { BotInstallSettings, PresetLogo } from './Apps';
 import { VoogleLogo } from './Voogle';
 import { Select } from './Select';
-import { askConfirm } from './Dialogs';
+import { askConfirm, askText } from './Dialogs';
+import { reportItem } from '../lib/staff';
 import { Field, Icon } from './ui';
 
 export function IntegrationsTab({ data }: { data: ServerData }) {
@@ -163,6 +164,25 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
                       </div>
                     )}
                   </div>
+                  {!isOfficialApp(a) && a.owner_id !== sessionStore.get().me?.id && (
+                    <button
+                      className="btn link small"
+                      title="Report this bot to Venband staff"
+                      onClick={async () => {
+                        const reason = await askText({ title: `Report ${a.name}`, label: 'What does it do wrong?', placeholder: 'Spam, scams, abuse…', maxLength: 1000 });
+                        if (!reason?.trim()) return;
+                        try {
+                          await reportItem('app', a.id, reason.trim());
+                          setError(null);
+                          alert('Reported — Venband staff will take a look.');
+                        } catch (e) {
+                          setError(errorMessage(e));
+                        }
+                      }}
+                    >
+                      Report
+                    </button>
+                  )}
                   {a.installed ? (
                     <span className="pill">Added</span>
                   ) : a.requested ? (

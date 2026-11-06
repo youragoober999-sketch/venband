@@ -16,6 +16,9 @@ import { askConfirm, askText } from './Dialogs';
 import { startDm } from './Modals';
 import { openProfile } from './People';
 import { openGlobalModal } from './GlobalModals';
+import { StaffPermissionsModal } from './Appeals';
+import { useStaffPerms } from '../lib/staff';
+import { isOldSchema } from '../lib/supabase';
 
 interface ModUser {
   id: string;
@@ -41,6 +44,8 @@ interface ModServer {
 }
 interface LogRow {
   id: string;
+  actor_id?: string | null;
+  target_user_id?: string | null;
   actor: string | null;
   target_user: string | null;
   target_server: string | null;
@@ -77,8 +82,16 @@ export function ModerationCenter() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [badgesFor, setBadgesFor] = useState<ModUser | null>(null);
+  const [permsFor, setPermsFor] = useState<ModUser | null>(null);
+  const [logQ, setLogQ] = useState('');
+  const [logAction, setLogAction] = useState('');
+  const [logFrom, setLogFrom] = useState('');
+  const [logTo, setLogTo] = useState('');
+  const [logMore, setLogMore] = useState(false);
   const myRank = RANK[me.platform_role ?? 'user'];
   const top = isTopStaff(me);
+  const perms = useStaffPerms();
+  const can = (p: Parameters<typeof perms.includes>[0]) => perms.includes(p);
 
   async function search(query = q) {
     setBusy(true);
@@ -88,10 +101,21 @@ export function ModerationCenter() {
     setUsers((data?.users ?? []) as ModUser[]);
     setServers((data?.servers ?? []) as ModServer[]);
   }
-  async function loadLog() {
-    const { data, error } = await supabase.rpc('mod_log', { p_limit: 100 });
+  async function loadLog(more = false) {
+    const before = more && log.length ? log[log.length - 1].created_at : null;
+    let { data, error } = await supabase.rpc('mod_log_search', {
+      p_query: logQ.trim(),
+      p_action: logAction,
+      p_from: logFrom ? new Date(logFrom).toISOString() : null,
+      p_to: logTo ? new Date(new Date(logTo).getTime() + 86_400_000).toISOString() : null,
+      p_before: before,
+      p_limit: 100,
+    });
+    if (error && isOldSchema(error)) ({ data, error } = await supabase.rpc('mod_log', { p_limit: 100 })); // older database
     if (error) return setMsg({ ok: false, text: errorMessage(error) });
-    setLog((data ?? []) as LogRow[]);
+    const rows = (data ?? []) as LogRow[];
+    setLog(more ? [...log, ...rows] : rows);
+    setLogMore(rows.length === 100);
   }
 
   useEffect(() => {
@@ -100,8 +124,11 @@ export function ModerationCenter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
   useEffect(() => {
-    if (view === 'log') loadLog();
-  }, [view]);
+    if (view !== 'log') return;
+    const t = setTimeout(() => loadLog(), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, logQ, logAction, logFrom, logTo]);
 
   async function run(label: string, fn: () => PromiseLike<{ error: unknown }>) {
     const { error } = await fn();
@@ -165,9 +192,11 @@ export function ModerationCenter() {
         <button className={view === 'servers' ? 'active' : ''} onClick={() => setView('servers')}>
           Servers · {servers.length}
         </button>
-        <button className={view === 'log' ? 'active' : ''} onClick={() => setView('log')}>
-          Audit Log
-        </button>
+        {can('audit') && (
+          <button className={view === 'log' ? 'active' : ''} onClick={() => setView('log')}>
+            Audit Log
+          </button>
+        )}
       </div>
       {msg && <div className={msg.ok ? 'notice' : 'form-error'}>{msg.text}</div>}
 
@@ -201,29 +230,29 @@ export function ModerationCenter() {
                       <Icon name="message" size={14} /> DM
                     </button>
                   )}
-                  {canAct && (
+                  {canAct && can('badges') && (
                     <button className="btn secondary small" onClick={() => setBadgesFor(u)}>
                       <Icon name="star" size={14} /> Apply Badges
                     </button>
                   )}
                   {canAct && u.id !== me.id && (
                     <>
-                      {u.account_status !== 'active' && (
+                      {u.account_status !== 'active' && can(u.account_status === 'banned' ? 'ban' : 'accounts') && (
                         <button className="btn success small" onClick={() => setStatus(u, 'active')}>
                           Restore
                         </button>
                       )}
-                      {u.account_status !== 'limited' && (
+                      {u.account_status !== 'limited' && can('accounts') && (u.account_status !== 'banned' || can('ban')) && (
                         <button className="btn secondary small" onClick={() => setStatus(u, 'limited')}>
                           Make Limited
                         </button>
                       )}
-                      {u.account_status !== 'very_limited' && (
+                      {u.account_status !== 'very_limited' && can('accounts') && (u.account_status !== 'banned' || can('ban')) && (
                         <button className="btn secondary small" onClick={() => setStatus(u, 'very_limited')}>
                           Make Very Limited
                         </button>
                       )}
-                      {u.account_status !== 'banned' && (
+                      {u.account_status !== 'banned' && can('ban') && (
                         <button className="btn danger small" onClick={() => setStatus(u, 'banned')}>
                           <Icon name="gavel" size={14} /> Ban Account
                         </button>
@@ -247,6 +276,11 @@ export function ModerationCenter() {
                       }}
                     >
                       <Icon name="trash" size={14} /> Erase Account
+                    </button>
+                  )}
+                  {top && u.id !== me.id && u.platform_role !== 'user' && !isTopStaff(u) && (
+                    <button className="btn secondary small" onClick={() => setPermsFor(u)}>
+                      <Icon name="shield" size={14} /> Permissions
                     </button>
                   )}
                   {top && u.id !== me.id && (
@@ -291,7 +325,7 @@ export function ModerationCenter() {
                 </div>
                 <span className={`pill ${s.status}`}>{SERVER_LABEL[s.status]}</span>
               </div>
-              <div className="mod-actions">
+              <div className="mod-actions" hidden={!can('servers') && !top}>
                 {s.status === 'active' && (
                   <>
                     <button className="btn secondary small" onClick={() => serverAction(s, s.verified ? 'unverify' : 'verify', s.verified ? 'Remove verification' : 'Verify server')}>
@@ -358,6 +392,35 @@ export function ModerationCenter() {
       )}
 
       {view === 'log' && (
+        <div className="mod-log-filters">
+          <input placeholder="Search people, servers, details, reasons or an ID" value={logQ} onChange={(e) => setLogQ(e.target.value)} aria-label="Search the audit log" />
+          <Select
+            value={logAction}
+            ariaLabel="Action"
+            onChange={setLogAction}
+            options={[
+              { value: '', label: 'All actions' },
+              { value: 'account_status', label: 'Account restrictions & bans' },
+              { value: 'badges', label: 'Badges' },
+              { value: 'platform_role', label: 'Staff roles' },
+              { value: 'staff_permissions', label: 'Staff permissions' },
+              { value: 'server_', label: 'Servers' },
+              { value: 'marketplace_', label: 'Marketplace' },
+              { value: 'app_', label: 'Bots & apps' },
+              { value: 'report_', label: 'Reports' },
+              { value: 'appeal_', label: 'Appeals' },
+              { value: 'badge_design', label: 'Badge designer' },
+            ]}
+          />
+          <label className="small muted">
+            From <input type="date" value={logFrom} onChange={(e) => setLogFrom(e.target.value)} />
+          </label>
+          <label className="small muted">
+            To <input type="date" value={logTo} onChange={(e) => setLogTo(e.target.value)} />
+          </label>
+        </div>
+      )}
+      {view === 'log' && (
         <div className="mod-log">
           {log.map((l) => (
             <div key={l.id} className="mod-log-row">
@@ -370,9 +433,15 @@ export function ModerationCenter() {
               {l.reason && <span className="small muted mod-reason">“{l.reason}”</span>}
             </div>
           ))}
-          {!log.length && <p className="muted">Nothing yet.</p>}
+          {!log.length && <p className="muted">Nothing matches.</p>}
+          {logMore && (
+            <button className="btn secondary small" onClick={() => loadLog(true)}>
+              Load older
+            </button>
+          )}
         </div>
       )}
+      {permsFor && <StaffPermissionsModal userId={permsFor.id} username={permsFor.username} onClose={() => (setPermsFor(null), search())} />}
 
       {badgesFor && (
         <BadgeEditor
@@ -438,7 +507,8 @@ function BadgeEditor({ user, myRank, top, onClose, onSave }: { user: ModUser; my
 interface ReportRow {
   id: string;
   reporter_id: string | null;
-  kind: 'message' | 'user';
+  kind: 'message' | 'user' | 'theme' | 'app';
+  target_ref?: string | null;
   target_user: string | null;
   message_id: string | null;
   channel_id: string | null;
@@ -491,6 +561,20 @@ export function ReportCentre() {
     load();
   }
 
+  async function removeItem(r: ReportRow) {
+    const reason = await askText({ title: r.kind === 'theme' ? 'Remove from the Marketplace' : 'Disable this bot', label: 'Reason (the creator sees it and can appeal)', initial: r.reason, maxLength: 500 });
+    if (!reason?.trim()) return;
+    const { error } =
+      r.kind === 'theme'
+        ? await supabase.rpc('theme_set_status', { p_theme: r.target_ref, p_status: 'removed', p_reason: reason.trim() })
+        : await supabase.rpc('mod_app_action', { p_app: r.target_ref, p_action: 'disable', p_reason: reason.trim() });
+    if (error) return setMsg({ ok: false, text: errorMessage(error) });
+    const { error: e2 } = await supabase.rpc('handle_report', { p_report: r.id, p_status: 'actioned', p_note: reason.trim() });
+    if (e2) return setMsg({ ok: false, text: errorMessage(e2) });
+    setMsg({ ok: true, text: r.kind === 'theme' ? 'Removed and report closed.' : 'Bot disabled and report closed.' });
+    load();
+  }
+
   return (
     <div className="mod-center">
       <div className="mod-head">
@@ -520,7 +604,7 @@ export function ReportCentre() {
         {(rows ?? []).filter((r) => reportMatches(r, filter, q)).map((r) => (
           <div key={r.id} className="mod-card report-card">
             <div className="mod-card-head">
-              <span className={`pill ${r.kind === 'message' ? 'review' : 'limited'}`}>{r.kind === 'message' ? 'Message' : 'User'}</span>
+              <span className={`pill ${r.kind === 'message' ? 'review' : 'limited'}`}>{{ message: 'Message', user: 'User', theme: 'Marketplace item', app: 'Bot' }[r.kind]}</span>
               <div className="grow small">
                 <b>{displayName(r.reporter_id ?? '')}</b> reported <b className="link-like" onClick={() => r.target_user && openProfile(r.target_user)}>{displayName(r.target_user ?? '')}</b>
                 <span className="muted"> · @{getProfile(r.target_user ?? '')?.username} · {new Date(r.created_at).toLocaleString()}</span>
@@ -550,6 +634,11 @@ export function ReportCentre() {
               {r.target_user && (
                 <button className="btn secondary small" onClick={() => startDm(r.target_user!).then(() => uiStore.set({ settings: null })).catch((e) => setMsg({ ok: false, text: errorMessage(e) }))}>
                   <Icon name="message" size={14} /> DM them
+                </button>
+              )}
+              {r.status === 'under_review' && (r.kind === 'theme' || r.kind === 'app') && r.target_ref && (
+                <button className="btn danger small" onClick={() => removeItem(r)}>
+                  <Icon name="trash" size={14} /> {r.kind === 'theme' ? 'Remove from Marketplace' : 'Disable bot'}
                 </button>
               )}
               {r.status === 'under_review' ? (

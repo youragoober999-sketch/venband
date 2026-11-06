@@ -355,10 +355,7 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "mod_set_account_status",
       "venband_notice"
     ],
-    "bodies": {
-      "mod_server_action": "3ecc64aed720f5e754753a255b80c66f",
-      "mod_set_account_status": "bb809d564aef3beb32b9d61e878bbd29"
-    }
+    "bodies": {}
   },
   {
     "migration": "20261016000000_account_deletion.sql",
@@ -670,8 +667,33 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     "functions": [],
     "bodies": {
       "all_badges": "26fe34d330d7f145540697b2003c2743",
-      "mod_set_badges": "94aa2b9894610d3fa9fbbf4d32d6a415",
       "protected_badges": "f03e6f2c2ca7e6f4429a94910c920a44"
+    }
+  },
+  {
+    "migration": "20261106050000_staff_permissions_appeals.sql",
+    "tables": [
+      "appeals"
+    ],
+    "functions": [
+      "handle_appeal",
+      "mod_app_action",
+      "mod_log_search",
+      "mod_set_staff_permissions",
+      "my_staff_permissions",
+      "report_item",
+      "staff_can",
+      "staff_permission_keys",
+      "staff_permissions_for",
+      "submit_appeal"
+    ],
+    "bodies": {
+      "handle_report": "5d5069a25f468041ef66f80aef9fafc5",
+      "mod_log": "ac8c31da157fc7769390f0d2247efe5a",
+      "mod_server_action": "b3e8a33a4694b07905b94456c2895737",
+      "mod_set_account_status": "3081169166ac753ff5479f849afa184e",
+      "mod_set_badges": "5dadcc79894e2e78be3d3e21188e88ff",
+      "theme_set_status": "c2c2235b9dab4dc2ad35f26e976a6dcd"
     }
   }
 ];

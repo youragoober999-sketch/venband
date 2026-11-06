@@ -9,6 +9,7 @@ import { openSettings } from '../lib/ui';
 import { askConfirm } from './Dialogs';
 import { Field, Icon } from './ui';
 import { OfficialNotices } from './NotificationCenter';
+import { AppealsPanel } from './Appeals';
 
 interface Factor {
   id: string;
@@ -74,6 +75,8 @@ export function SecurityTab() {
       </section>
 
       <OfficialNotices />
+
+      <AppealsPanel />
 
       <section className="settings-section">
         <h3>Two-factor sign-in</h3>

@@ -7,9 +7,10 @@ import { displayName, loadProfiles } from '../lib/directory';
 import { updateSettings } from '../lib/settings';
 import { sanitizeTheme } from '../lib/themes';
 import { recordInstall, themeFrom } from '../lib/themeMarket';
+import { reportItem } from '../lib/staff';
 import { sanitizeCss } from '../lib/customCss';
 import type { NameStyle, NameplateStyle } from '../lib/types';
-import { askConfirm } from './Dialogs';
+import { askConfirm, askText } from './Dialogs';
 import { ThemeSwatch } from './ThemeStudio';
 import { Avatar, Icon, nameplateVars, StyledName } from './ui';
 
@@ -159,6 +160,23 @@ export function MarketplaceView() {
                 <button className="btn primary small" onClick={() => apply(it)}>
                   Use
                 </button>
+                {it.author_id !== me.id && (
+                  <button
+                    className="btn link small"
+                    onClick={async () => {
+                      const reason = await askText({ title: `Report “${it.name}”`, label: 'What’s wrong with it?', placeholder: 'Stolen, offensive, breaks the app…', maxLength: 1000 });
+                      if (!reason?.trim()) return;
+                      try {
+                        await reportItem('theme', it.id, reason.trim());
+                        setMsg({ ok: true, text: 'Reported — Venband staff will take a look.' });
+                      } catch (e) {
+                        setMsg({ ok: false, text: errorMessage(e) });
+                      }
+                    }}
+                  >
+                    Report
+                  </button>
+                )}
                 {it.author_id === me.id && (
                   <button
                     className="btn link small danger-text"

@@ -15,6 +15,7 @@ export type SettingsTab =
   | 'moderation'
   | 'discovery-queue'
   | 'reports'
+  | 'appeals-queue'
   | 'badges'
   | 'my-apps'
   | 'connections';

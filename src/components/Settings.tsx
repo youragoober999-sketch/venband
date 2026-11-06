@@ -29,6 +29,8 @@ import { accountAge, bannerStyle, NAMEPLATES, ServerTag } from './People';
 import { EFFECT_LIST, FRAME_LIST, NameplateArt, ProfileEffect } from './Cosmetics';
 import { askConfirm } from './Dialogs';
 import { BadgeDesigner, DiscoveryQueue, ModerationCenter, ReportCentre } from './Moderation';
+import { AppealsQueue } from './Appeals';
+import { useStaffPerms, type StaffPerm } from '../lib/staff';
 import { Markdown } from './Markdown';
 import { SecurityTab } from './Security';
 import {
@@ -46,7 +48,7 @@ import {
   type ConnectionRow,
 } from '../lib/connections';
 
-const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; admin?: boolean; designer?: boolean }[] = [
+const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; perm?: StaffPerm; designer?: boolean }[] = [
   { id: 'account', label: 'My Account', icon: 'user', group: 'User Settings' },
   { id: 'profile', label: 'Profiles', icon: 'edit', group: 'User Settings' },
   { id: 'privacy', label: 'Privacy & Safety', icon: 'eye', group: 'User Settings' },
@@ -60,7 +62,8 @@ const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff
   { id: 'connections', label: 'Connections', icon: 'link', group: 'App Settings' },
   { id: 'moderation', label: 'Moderation', icon: 'gavel', group: 'Venband Staff', staff: true },
   { id: 'discovery-queue', label: 'Discovery Applications', icon: 'compass', group: 'Venband Staff', staff: true },
-  { id: 'reports', label: 'Report Centre', icon: 'flag', group: 'Venband Staff', staff: true, admin: true },
+  { id: 'reports', label: 'Report Centre', icon: 'flag', group: 'Venband Staff', staff: true, perm: 'reports' },
+  { id: 'appeals-queue', label: 'Appeals', icon: 'gavel', group: 'Venband Staff', staff: true, perm: 'appeals' },
   { id: 'badges', label: 'Badge Designer', icon: 'star', group: 'Venband Staff', designer: true },
 ];
 
@@ -70,7 +73,7 @@ export function SettingsPage() {
   const allSettings = useSettings((s) => s);
   const me = sessionStore.use((s) => s.me)!;
   const staff = (me.platform_role ?? 'user') !== 'user';
-  const admin = me.platform_role === 'admin' || me.platform_role === 'owner';
+  const perms = useStaffPerms();
   // Venband owners and founders design badges
   const designer = me.platform_role === 'owner' || (me.badges ?? []).includes('founder');
   useEffect(() => {
@@ -89,7 +92,7 @@ export function SettingsPage() {
             <input placeholder="Search settings…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           {groups.map((g) => {
-            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer) && (!search || t.label.toLowerCase().includes(search.toLowerCase())));
+            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.perm || perms.includes(t.perm)) && (!t.designer || designer) && (!search || t.label.toLowerCase().includes(search.toLowerCase())));
             if (!items.length) return null;
             return (
               <div key={g}>
@@ -109,7 +112,7 @@ export function SettingsPage() {
         </div>
       </nav>
       <main className="sp-content">
-        <div className={`sp-inner${tab === 'moderation' || tab === 'reports' || tab === 'discovery-queue' || tab === 'badges' ? ' wide' : ''}`}>
+        <div className={`sp-inner${tab === 'moderation' || tab === 'reports' || tab === 'appeals-queue' || tab === 'discovery-queue' || tab === 'badges' ? ' wide' : ''}`}>
           {search.trim() ? (
             <div className="settings-search-results">
               <h2>Search results</h2>
@@ -135,7 +138,7 @@ export function SettingsPage() {
                   const matches = entries.filter((e) => e.label.toLowerCase().includes(q));
                   if (!matches.length) {
                     // fall back to tab matches
-                    const tabMatches = TABS.filter((t) => (!t.staff || staff) && (!t.admin || admin) && (!t.designer || designer) && t.label.toLowerCase().includes(q));
+                    const tabMatches = TABS.filter((t) => (!t.staff || staff) && (!t.perm || perms.includes(t.perm)) && (!t.designer || designer) && t.label.toLowerCase().includes(q));
                     if (!tabMatches.length) return <p className="muted small">No settings match "{search}".</p>;
                     return tabMatches.map((t) => (
                       <button key={t.id} className="settings-search-item" onClick={() => { uiStore.set({ settings: t.id }); setSearch(''); }}>
@@ -171,7 +174,8 @@ export function SettingsPage() {
               {tab === 'my-apps' && <MyAppsTab />}
               {tab === 'connections' && <ConnectionsTab />}
               {tab === 'moderation' && staff && <ModerationCenter />}
-              {tab === 'reports' && admin && <ReportCentre />}
+              {tab === 'reports' && perms.includes('reports') && <ReportCentre />}
+              {tab === 'appeals-queue' && perms.includes('appeals') && <AppealsQueue />}
               {tab === 'discovery-queue' && staff && <DiscoveryQueue />}
               {tab === 'badges' && designer && <BadgeDesigner />}
             </>

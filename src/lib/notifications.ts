@@ -40,6 +40,7 @@ export const NOTIFICATION_ACTIONS: Record<string, { label: string; run: () => vo
   secure_account: { label: 'Secure my account', run: () => openSettings('security') },
   view_guidelines: { label: 'Community guidelines', run: () => go('guidelines') },
   open_theme_studio: { label: 'Open Theme Studio', run: () => openSettings('appearance') },
+  open_appeals: { label: 'Appeals', run: () => openSettings('security') },
 };
 
 export const notificationStore = createStore<{ items: AppNotification[]; loaded: boolean; unread: number; available: boolean }>({
