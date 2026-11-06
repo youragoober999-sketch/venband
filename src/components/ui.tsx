@@ -1,6 +1,7 @@
 import { cloneElement, isValidElement, useEffect, useId, useRef, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import type { Profile } from '../lib/types';
 import { LOGO_PATH, LOGO_VIEWBOX } from './logoPath';
+import { FrameArt } from './Cosmetics';
 
 /** Venband glyph (official mark). Uses currentColor. */
 export function LogoGlyph({ size = 22 }: { size?: number }) {
@@ -83,7 +84,7 @@ export function Avatar({
       ) : (
         initials(name)
       )}
-      {fr && <span className="avatar-frame" />}
+      {fr && <FrameArt id={fr} />}
       {status && <span className={`status-dot ${status}`} />}
     </div>
   );

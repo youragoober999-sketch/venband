@@ -815,19 +815,12 @@ input[type='range'] { accent-color: var(--accent); }
 
 /* ---- nameplates */
 .nameplate-row { position: relative; overflow: hidden; isolation: isolate; }
-.nameplate-row:not(.nameplate-none)::before {
+.nameplate-row.nameplate-custom::before {
   content: ''; position: absolute; inset: 0; z-index: -1; opacity: .38; background-size: 200% 100%; animation: plate 8s linear infinite;
 }
 @keyframes plate { to { background-position: -200% 0; } }
-.nameplate-aurora::before, .nameplate-option.nameplate-aurora { background-image: linear-gradient(100deg, transparent 20%, #5ee7df55, #b490ca55, transparent 80%); }
-.nameplate-ember::before, .nameplate-option.nameplate-ember { background-image: linear-gradient(100deg, transparent 20%, #ff6a0055, #ee097955, transparent 80%); }
-.nameplate-ocean::before, .nameplate-option.nameplate-ocean { background-image: linear-gradient(100deg, transparent 20%, #2193b055, #6dd5ed55, transparent 80%); }
-.nameplate-sakura::before, .nameplate-option.nameplate-sakura { background-image: linear-gradient(100deg, transparent 20%, #ffafbd66, #ffc3a055, transparent 80%); }
-.nameplate-circuit::before, .nameplate-option.nameplate-circuit { background-image: repeating-linear-gradient(90deg, #30d15822 0 2px, transparent 2px 14px), linear-gradient(100deg, transparent, #30d15833, transparent); }
-.nameplate-noir::before, .nameplate-option.nameplate-noir { background-image: linear-gradient(100deg, transparent 10%, #ffffff22, #00000066, transparent 90%); }
-.nameplate-gold::before, .nameplate-option.nameplate-gold { background-image: linear-gradient(100deg, transparent 20%, #f7971e55, #ffd20066, transparent 80%); }
 .nameplate-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.nameplate-option { padding: 12px 8px; border-radius: 10px; border: 1px solid var(--line-2); background-color: var(--bg-1); background-size: 200% 100%; animation: plate 8s linear infinite; font-weight: 600; font-size: 13px; }
+.nameplate-option { padding: 12px 8px; border-radius: 10px; border: 1px solid var(--line-2); background-color: var(--bg-1); font-weight: 600; font-size: 13px; }
 .nameplate-option.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 /* ---- member list extras */
@@ -2274,21 +2267,6 @@ a.bot-embed-title { color: var(--link); }
 .avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 .avatar.framed { overflow: visible; }
 .avatar-frame { position: absolute; inset: -12%; border-radius: 50%; pointer-events: none; z-index: 1; }
-.frame-neon .avatar-frame { border: 2px solid #5ee7ff; box-shadow: 0 0 8px #5ee7ff, inset 0 0 6px #5ee7ff88; animation: frame-pulse 2.4s ease-in-out infinite; }
-.frame-flame .avatar-frame { background: conic-gradient(from 0deg, #ff3d00, #ffb300, #ff6d00, #ff1744, #ff3d00); -webkit-mask: radial-gradient(circle, transparent 62%, #000 64%); mask: radial-gradient(circle, transparent 62%, #000 64%); filter: blur(0.4px) drop-shadow(0 0 4px #ff6d00); animation: frame-spin 3s linear infinite; }
-.frame-frost .avatar-frame { border: 2px dashed #b3e5fc; box-shadow: 0 0 10px #81d4fa99; animation: frame-spin 14s linear infinite; }
-.frame-rainbow .avatar-frame { background: conic-gradient(#ff0040, #ff8c00, #ffef00, #00f260, #0575e6, #8e2de2, #ff0040); -webkit-mask: radial-gradient(circle, transparent 63%, #000 65%); mask: radial-gradient(circle, transparent 63%, #000 65%); animation: frame-spin 4s linear infinite; }
-.frame-gold .avatar-frame { background: conic-gradient(#b8860b, #ffd700, #fff6c2, #ffd700, #b8860b); -webkit-mask: radial-gradient(circle, transparent 63%, #000 65%); mask: radial-gradient(circle, transparent 63%, #000 65%); animation: frame-spin 8s linear infinite; }
-.frame-sakura .avatar-frame { border: 2px solid #ffb7c5; box-shadow: 0 0 0 3px #ffb7c544; }
-.frame-sakura .avatar-frame::after { content: 'ðŸŒ¸'; position: absolute; right: -6%; top: -8%; font-size: 0.5em; animation: frame-bob 3s ease-in-out infinite; }
-.frame-pixel .avatar-frame { inset: -10%; border-radius: 18%; border: 3px solid transparent; border-image: repeating-linear-gradient(90deg, #00ff9c 0 4px, #00b8ff 4px 8px) 3; image-rendering: pixelated; animation: frame-pulse 1.6s steps(2) infinite; }
-.frame-orbit .avatar-frame { border: 1px solid #ffffff33; }
-.frame-orbit .avatar-frame::after { content: ''; position: absolute; width: 18%; height: 18%; border-radius: 50%; background: #c084fc; box-shadow: 0 0 8px #c084fc; top: -9%; left: 41%; transform-origin: 50% calc(50% + 280%); animation: frame-spin 3.2s linear infinite; }
-.frame-hearts .avatar-frame { border: 2px solid #ff4d8d; }
-.frame-hearts .avatar-frame::before, .frame-hearts .avatar-frame::after { content: 'â™¥'; position: absolute; color: #ff4d8d; font-size: 0.42em; animation: frame-bob 2.4s ease-in-out infinite; }
-.frame-hearts .avatar-frame::before { left: -6%; top: 10%; }
-.frame-hearts .avatar-frame::after { right: -6%; bottom: 8%; animation-delay: 1.2s; }
-.frame-glitch .avatar-frame { border: 2px solid #ff00c8; box-shadow: 2px 0 #00fff2, -2px 0 #ff00c8; animation: frame-glitch 1.8s steps(3) infinite; }
 @keyframes frame-spin { to { transform: rotate(360deg); } }
 @keyframes frame-pulse { 50% { opacity: 0.55; } }
 @keyframes frame-bob { 50% { transform: translateY(-3px) scale(1.1); } }
@@ -2915,8 +2893,8 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 @media (max-width: 520px) { .notif-panel { top: 56px; right: 8px; width: calc(100vw - 16px); } }
 
 /* ---- badges: medallions + picker ---- */
-.badge-icon.medallion { display: inline-block; overflow: visible; filter: drop-shadow(0 1px 1px #0006); }
-.badge-icon.medallion.rarity-legendary { filter: drop-shadow(0 0 2px #ffd76a88) drop-shadow(0 1px 1px #0006); }
+.badge-icon.tile { display: inline-block; overflow: visible; }
+.badge-icon.tile.rarity-legendary { filter: drop-shadow(0 0 2px #ffd76a77); }
 .badge-icon.custom.rarity-legendary { box-shadow: 0 0 0 1px #ffd76a, 0 0 4px #ffd76a88; }
 .badge-pick { display: flex; flex-direction: column; gap: 8px; }
 .badge-pick-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }

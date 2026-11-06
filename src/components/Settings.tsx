@@ -26,6 +26,7 @@ import { ServerUpdateCard } from './Apps';
 import { Badges } from './Badges';
 import { BadgeDisplayPicker } from './BadgePicker';
 import { accountAge, bannerStyle, NAMEPLATES, ServerTag } from './People';
+import { EFFECT_LIST, FRAME_LIST, NameplateArt, ProfileEffect } from './Cosmetics';
 import { askConfirm } from './Dialogs';
 import { BadgeDesigner, DiscoveryQueue, ModerationCenter, ReportCentre } from './Moderation';
 import { Markdown } from './Markdown';
@@ -857,9 +858,19 @@ function ProfileTab() {
           </Field>
           <Field label="Profile frame" group hint="An animated ring around your picture.">
             <div className="frame-grid">
-              {FRAMES.map((f) => (
-                <button key={f.id} type="button" className={`frame-option${(preview.avatar_frame ?? 'none') === f.id ? ' selected' : ''}`} onClick={() => set({ avatar_frame: f.id })} aria-label={f.label} title={f.label}>
-                  <Avatar profile={{ ...preview, avatar_frame: f.id }} size={44} />
+              {FRAME_LIST.map((f) => (
+                <button key={f.id} type="button" className={`frame-option${(preview.avatar_frame ?? 'none') === f.id ? ' selected' : ''}`} onClick={() => set({ avatar_frame: f.id as AvatarFrame })} aria-label={f.label} title={f.label}>
+                  <Avatar profile={{ ...preview, avatar_frame: f.id as AvatarFrame }} size={44} />
+                  <span>{f.label}</span>
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Profile effect" group hint="Animated particles over your whole profile card.">
+            <div className="effect-grid">
+              {EFFECT_LIST.map((f) => (
+                <button key={f.id} type="button" className={`effect-option${(preview.profile_effect ?? 'none') === f.id ? ' selected' : ''}`} onClick={() => set({ profile_effect: f.id })} aria-label={f.label} title={f.label}>
+                  <ProfileEffect id={f.id} />
                   <span>{f.label}</span>
                 </button>
               ))}
@@ -912,7 +923,8 @@ function ProfileTab() {
                   style={n.id === 'custom' ? nameplateVars({ nameplate: 'custom', nameplate_style: preview.nameplate_style?.colors?.length ? preview.nameplate_style : { colors: ['#ff6ec4', '#7873f5'] } }) : undefined}
                   onClick={() => set(n.id === 'custom' && !preview.nameplate_style?.colors?.length ? { nameplate: 'custom', nameplate_style: { colors: ['#ff6ec4', '#7873f5'], pattern: 'sweep' } } : { nameplate: n.id })}
                 >
-                  {n.label}
+                  <NameplateArt id={n.id} />
+                  <span className="np-label">{n.label}</span>
                 </button>
               ))}
             </div>
@@ -971,6 +983,7 @@ function ProfileTab() {
         <div className="profile-editor-preview">
           <div className="field-label">Preview</div>
           <div className={`profile-card mini nameplate-${preview.nameplate ?? 'none'}`} style={nameplateVars(preview)}>
+            <ProfileEffect id={preview.profile_effect} />
             <div className="profile-banner" style={bannerStyle(preview)} />
             <div className="profile-head">
               <div className="profile-avatar">
@@ -995,6 +1008,7 @@ function ProfileTab() {
           </div>
           <div className="preview-caption">In member lists, your nameplate looks like:</div>
           <div className={`member nameplate-preview nameplate-row nameplate-${preview.nameplate ?? 'none'}`} style={nameplateVars(preview)}>
+            <NameplateArt id={preview.nameplate} />
             <Avatar profile={preview} size={32} online />
             <span className="member-text">
               <span className="member-name">
@@ -1013,19 +1027,6 @@ function ProfileTab() {
   );
 }
 
-const FRAMES: { id: AvatarFrame; label: string }[] = [
-  { id: 'none', label: 'None' },
-  { id: 'neon', label: 'Neon' },
-  { id: 'flame', label: 'Flame' },
-  { id: 'frost', label: 'Frost' },
-  { id: 'rainbow', label: 'Rainbow' },
-  { id: 'gold', label: 'Gold' },
-  { id: 'sakura', label: 'Sakura' },
-  { id: 'pixel', label: 'Pixel' },
-  { id: 'orbit', label: 'Orbit' },
-  { id: 'hearts', label: 'Hearts' },
-  { id: 'glitch', label: 'Glitch' },
-];
 const NAME_FONTS: { id: NameFont; label: string }[] = [
   { id: 'default', label: 'Default font' },
   { id: 'serif', label: 'Serif' },

@@ -293,7 +293,6 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "warn_member"
     ],
     "bodies": {
-      "all_badges": "6acd0c2c5db8a4ac5d00026cff624f1f",
       "server_permissions": "08c2ad5a310b7341be976c9a116471ba"
     }
   },
@@ -394,7 +393,6 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "delete_server": "1485d2cc657ad9cc83d64010c7d73b90",
       "is_staff": "f79c93fda779abd3cdfed75283175974",
       "mod_can_target": "2617ce4137a56c62d588b0db567234a1",
-      "mod_set_badges": "1c41b58f8d51a9d05da12b99e16c5e7e",
       "mod_set_platform_role": "cdc5dce9d2d2edd89d18271407aacf8e",
       "restore_server": "fd086bbb7555cab02ef3733bae9ef89f",
       "review_bot_request": "e6b4fc5abbbd2c858528188605bf0cb8",
@@ -664,6 +662,16 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     "bodies": {
       "channel_perm_for_user": "0b0b2fd47dd326c3be5502033ced2886",
       "dm_blocked": "677b9f8316e1e260428e426a1e8c0b9d"
+    }
+  },
+  {
+    "migration": "20261106040000_cosmetics_badges.sql",
+    "tables": [],
+    "functions": [],
+    "bodies": {
+      "all_badges": "26fe34d330d7f145540697b2003c2743",
+      "mod_set_badges": "94aa2b9894610d3fa9fbbf4d32d6a415",
+      "protected_badges": "f03e6f2c2ca7e6f4429a94910c920a44"
     }
   }
 ];

@@ -11,6 +11,7 @@ import { openSettings, uiStore } from '../lib/ui';
 import type { Profile } from '../lib/types';
 import { openChannel, openServer, useDirectory, type ServerData } from '../hooks/data';
 import { Avatar, Icon, Modal, nameplateVars, StyledName } from './ui';
+import { ProfileEffect } from './Cosmetics';
 import { Badges, OwnerCrown, RoleIcon } from './Badges';
 import { ActivityCard } from './ActivityCard';
 import { copyText, type Entry } from './ContextMenu';
@@ -22,16 +23,7 @@ import { startDm } from './Modals';
 import { MemoriesStrip, MemoryRing, MemoryViewer } from './Memories';
 import type { Memory } from '../lib/memories';
 
-export const NAMEPLATES: { id: string; label: string }[] = [
-  { id: 'none', label: 'None' },
-  { id: 'aurora', label: 'Aurora' },
-  { id: 'ember', label: 'Ember' },
-  { id: 'ocean', label: 'Ocean' },
-  { id: 'sakura', label: 'Sakura' },
-  { id: 'circuit', label: 'Circuit' },
-  { id: 'noir', label: 'Noir' },
-  { id: 'gold', label: 'Gold' },
-];
+export { NAMEPLATE_LIST as NAMEPLATES } from './Cosmetics';
 
 /** A server's tag next to someone's name. Click it to see the server (and join, if it's open). */
 export function ServerTag({ tag, serverId }: { tag?: string | null; serverId?: string | null }) {
@@ -328,6 +320,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
   return (
     <Modal title="" onClose={onClose}>
       <div className={`profile-card nameplate-${shown?.nameplate ?? 'none'}`} style={nameplateVars(shown)}>
+        <ProfileEffect id={shown?.profile_effect} />
         <div className="profile-banner" style={bannerStyle(shown)} />
         <div className="profile-head">
           <div className="profile-avatar-wrap">

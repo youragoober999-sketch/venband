@@ -52,6 +52,7 @@ import { ContextMenuHost, copyText, openMenu, type Entry } from './ContextMenu';
 import { DialogHost, askConfirm, askText } from './Dialogs';
 import { NotificationBell } from './NotificationCenter';
 import { ProfileHost, ServerTag, openProfile, userMenu } from './People';
+import { NameplateArt } from './Cosmetics';
 import { Badges, OwnerCrown, RoleIcon, ServerBadge, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
 import { DiscoveryView, DonateView, FriendsView, MessageRequestsView, RequestBanner } from './Friends';
@@ -1713,6 +1714,7 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
                 onClick={() => openProfile(m.user_id, data.server!.id)}
                 onContextMenu={(e) => openMenu(e, userMenu(m.user_id, { data }))}
               >
+                <NameplateArt id={p?.nameplate} />
                 <Avatar profile={p} size={32} online={on} />
                 <span className="member-text">
                   <span className="member-name" style={{ color: top?.color }}>

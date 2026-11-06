@@ -403,7 +403,7 @@ function BadgeEditor({ user, myRank, top, onClose, onSave }: { user: ModUser; my
     const d = BADGES.find((x) => x.id === id);
     return !!d && (d.retired || (!!d.awardableUntil && new Date(d.awardableUntil) < new Date())) && !user.badges.includes(id);
   };
-  const locked = (id: string) => closed(id) || (top ? false : id === 'owner' || id === 'founder' ? myRank < 3 : ['admin', 'moderator', 'staff'].includes(id) ? myRank < 2 : false);
+  const locked = (id: string) => closed(id) || (top ? false : id === 'owner' || id === 'founder' ? myRank < 3 : ['admin', 'moderator', 'staff', 'developer', 'verified', 'verified_bot', 'verified_server'].includes(id) ? myRank < 2 : false);
   return (
     <Modal title={`Badges for @${user.username}`} onClose={onClose}>
       <div className="badge-editor">

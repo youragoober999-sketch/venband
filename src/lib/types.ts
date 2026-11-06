@@ -33,9 +33,11 @@ export interface Profile {
   avatar_frame?: AvatarFrame;
   name_style?: NameStyle;
   nameplate_style?: NameplateStyle;
+  /** particles over the whole profile card (Cosmetics.tsx EFFECT_LIST) */
+  profile_effect?: string;
 }
 
-export type AvatarFrame = 'none' | 'neon' | 'flame' | 'frost' | 'rainbow' | 'gold' | 'sakura' | 'pixel' | 'orbit' | 'hearts' | 'glitch';
+export type AvatarFrame = 'none' | 'neon' | 'flame' | 'frost' | 'rainbow' | 'gold' | 'sakura' | 'pixel' | 'orbit' | 'hearts' | 'glitch' | 'galaxy' | 'lightning' | 'crystal';
 export type NameFont = 'default' | 'serif' | 'mono' | 'rounded' | 'handwritten' | 'display' | 'pixel';
 export type NameEffect = 'none' | 'shimmer' | 'glow' | 'rainbow' | 'pulse' | 'wave' | 'aurora' | 'fire' | 'ice' | 'holographic' | 'sparkle';
 export interface NameStyle {
@@ -51,10 +53,10 @@ export interface NameplateStyle {
 
 /** Columns other people may read (keep in sync with directory.loadProfiles). */
 export const PROFILE_COLUMNS =
-  'id, username, display_name, avatar_color, about, created_at, pronouns, status_text, status_emoji, presence, banner_color, banner_color2, accent_color, nameplate, tag_server_id, server_tag, badges, badge_display, platform_role, account_status, avatar_url, banner_url, avatar_frame, name_style, nameplate_style';
+  'id, username, display_name, avatar_color, about, created_at, pronouns, status_text, status_emoji, presence, banner_color, banner_color2, accent_color, nameplate, tag_server_id, server_tag, badges, badge_display, platform_role, account_status, avatar_url, banner_url, avatar_frame, name_style, nameplate_style, profile_effect';
 
 /** Columns added by recent migrations. If the database hasn't run them yet, profiles load without them. */
-export const PROFILE_COLUMNS_RECENT = ['badge_display'];
+export const PROFILE_COLUMNS_RECENT = ['badge_display', 'profile_effect'];
 
 export type ServerStatus = 'active' | 'review' | 'closed' | 'banned' | 'deleted';
 
