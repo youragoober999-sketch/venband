@@ -1674,7 +1674,7 @@ function LanguageTab() {
       </Section>
       <Section title="Translation" desc="Translation happens on your device, so encrypted messages stay private.">
         <div className="notice small">
-          Venband translates into {LANGUAGES.length} languages with nothing to download: a built-in phrasebook ({PHRASEBOOK_SIZE} common phrases and words in {PHRASEBOOK_LANGS.length} languages), a letter-by-letter writer that spells any unknown word in your language's alphabet, and a server-backed translator for full sentences.
+          Venband translates messages from and into {LANGUAGES.length} languages, with nothing to download. It works out which language a message is in by itself, understands chat slang (ngl, idk, rn…), and never touches code, links, mentions or emoji. If you’re offline, a built-in phrasebook ({PHRASEBOOK_SIZE} common phrases in {PHRASEBOOK_LANGS.length} languages) covers the basics.
           {device ? ' Your browser also has on-device translation, which Venband uses first when its language model is ready.' : ''}
         </div>
         <div className="radio-cards">
