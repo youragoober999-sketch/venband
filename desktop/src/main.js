@@ -25,6 +25,7 @@ const {
 } = require('electron');
 const { appBase, isAppUrl, isSafeExternal, deepLinkToUrl, deepLinkFromArgv } = require('./links');
 const { createRpcServer, activityKey } = require('./rpc');
+const { startGamePoller } = require('./games');
 const { startSpotifyPoller } = require('./spotify');
 const { startMediaPoller } = require('./media');
 
@@ -409,6 +410,8 @@ let stopSpotify = null;
 let stopMedia = null;
 let rpcActivity = null;
 let spotifyActivity = null;
+let gameActivity = null; // a game found among running programs (games.js)
+let stopGames = null;
 let activeActivity = null;
 let rpcStamp = 0;
 let spotifyStamp = 0;
@@ -426,6 +429,9 @@ function recomputeActivity() {
   } else {
     next = rpcActivity || spotifyActivity;
   }
+  // a game that reports itself over RPC carries more detail; otherwise a game
+  // we found running beats background music
+  if (gameActivity && !rpcActivity) next = gameActivity;
   pushActivity(next);
 }
 
@@ -452,6 +458,12 @@ function setupRpcBridge() {
     console.error('rpc bridge failed to start', e?.message || e);
   });
   stopSpotify = startSpotifyPoller({ onChange: setSpotifyActivity });
+  stopGames = startGamePoller({
+    onChange: (a) => {
+      gameActivity = a;
+      recomputeActivity();
+    },
+  });
   stopMedia = startMediaPoller({ onChange: setSpotifyActivity });
 
   ipcMain.handle('rpc:get-state', () => ({
@@ -498,6 +510,7 @@ app.on('before-quit', () => {
   quitting = true;
   stopSpotify?.();
   stopMedia?.();
+  stopGames?.();
   rpc?.close?.().catch(() => {});
 });
 app.on('window-all-closed', () => {

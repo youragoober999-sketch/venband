@@ -30,6 +30,7 @@ import { EFFECT_LIST, FRAME_LIST, NameplateArt, ProfileEffect } from './Cosmetic
 import { askConfirm } from './Dialogs';
 import { BadgeDesigner, DiscoveryQueue, ModerationCenter, ReportCentre } from './Moderation';
 import { AppealsQueue } from './Appeals';
+import { setShareGames, shareGames } from '../lib/activity';
 import { SoundSettings } from './SoundSettings';
 import { useStaffPerms, type StaffPerm } from '../lib/staff';
 import { Markdown } from './Markdown';
@@ -1057,6 +1058,22 @@ const NAME_EFFECTS: { id: NameEffect; label: string }[] = [
 
 // --------------------------------------------------------------- privacy --
 
+function ShareGamesSection() {
+  const [on, setOn] = useState(shareGames());
+  return (
+    <Section title="Activity" desc="In the Venband desktop app, the game you’re playing shows on your profile (“Playing Minecraft · 1:20:05”) and in your recent activity. Only the game’s name is shared — never the other programs you have open.">
+      <Toggle
+        label="Share what I’m playing"
+        checked={on}
+        onChange={(v) => {
+          setShareGames(v);
+          setOn(v);
+        }}
+      />
+    </Section>
+  );
+}
+
 function PrivacyTab() {
   const relations = socialStore.use((s) => s.relations);
   const blocked = Object.values(relations).filter((r) => r.blocked);
@@ -1077,6 +1094,7 @@ function PrivacyTab() {
         ))}
         {!blocked.length && <p className="muted small">You haven’t blocked anyone.</p>}
       </Section>
+      <ShareGamesSection />
       <Section title="What the server can see">
         <ul className="security-list">
           <li>Your messages, files, calls and translations are end-to-end encrypted. Venband’s server can’t read them.</li>

@@ -205,6 +205,23 @@ export function watchActivities() {
 
 // ------------------------------------------------------------------ bridge ----
 
+/** Desktop: show the game you're playing on your profile (Settings → Privacy). On unless switched off. */
+export function shareGames(): boolean {
+  try {
+    return localStorage.getItem('venband:share-games') !== 'off';
+  } catch {
+    return true;
+  }
+}
+export function setShareGames(on: boolean) {
+  try {
+    localStorage.setItem('venband:share-games', on ? 'on' : 'off');
+  } catch {
+    /* storage blocked */
+  }
+  if (!on) void supabase.rpc('clear_my_activity');
+}
+
 let myUserId = '';
 
 /** Tell this module who the signed-in user is (from the session). */
@@ -216,7 +233,10 @@ export function setActivityUser(userId: string) {
     // the bridge handshake carries who we are so the READY payload looks right
     window.venbandDesktop.setRpcUser({ id: userId });
     window.venbandDesktop.onActivity((a) => {
-      if (myUserId) pushMyActivity(a as ActivityInput | null);
+      if (!myUserId) return;
+      // a game the desktop app spotted among running programs: only shared if you allow it
+      const detected = (a as { source?: string } | null)?.source === 'game-detect';
+      pushMyActivity(detected && !shareGames() ? null : (a as ActivityInput | null));
     });
   }
 }
