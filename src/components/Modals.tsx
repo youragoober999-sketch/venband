@@ -15,6 +15,7 @@ import { inviteCodeFrom, inviteUrl } from '../lib/dmSend';
 import { OwnerCrown } from './Badges';
 import { PERMISSION_GROUPS, PERMISSION_INFO } from '../lib/permissions';
 
+
 // ------------------------------------------------------ create/join server --
 
 export const SERVER_TEMPLATES = [
@@ -22,209 +23,631 @@ export const SERVER_TEMPLATES = [
   { id: 'gaming', emoji: '🎮', name: 'Gaming', desc: 'LFG, clips, guides forum, voice lobbies and a tournament stage.' },
   { id: 'friends', emoji: '🫶', name: 'Friends', desc: 'General, memes, photos, plans and a hangout call.' },
   { id: 'hangout', emoji: '🛋️', name: 'Hangout Server', desc: 'Introductions, music, pets, food and chill voice rooms.' },
-  { id: 'school', emoji: '🎒', name: 'School Club', desc: 'Announcements, homework help, resources, Q&A forum, meeting stage.' },
+  { id: 'school', emoji: '🎒', name: 'School Club', desc: 'Announcements, homework help, resources, Q&A forum and meetings.' },
   { id: 'community', emoji: '🏘️', name: 'Local Community', desc: 'Local news, events, marketplace, suggestions and a town hall.' },
-  { id: 'creators', emoji: '🎨', name: 'Artists & Creators', desc: 'Showcase, work-in-progress, feedback forum, commissions, live workshop.' },
+  { id: 'creators', emoji: '🎨', name: 'Artists & Creators', desc: 'Showcase, work-in-progress, feedback, commissions and workshops.' },
 ] as const;
 
-const DISCOVERY_CATEGORIES = ['Gaming', 'Music', 'Art', 'Education', 'Science & Tech', 'Entertainment', 'Community', 'Anime', 'Sports', 'Creators'];
+const DISCOVERY_CATEGORIES = [
+  'Gaming',
+  'Music',
+  'Art',
+  'Education',
+  'Science & Tech',
+  'Entertainment',
+  'Community',
+  'Anime',
+  'Sports',
+  'Creators',
+];
 
-async function uploadServerPicture(serverId: string, kind: 'icon' | 'banner', blob: Blob) {
-  const path = `${serverId}/${kind}-${crypto.randomUUID()}.webp`;
-  const { error } = await supabase.storage.from('server-assets').upload(path, blob, { contentType: blob.type || 'image/webp', upsert: true });
-  if (error) throw error;
-  const url = supabase.storage.from('server-assets').getPublicUrl(path).data.publicUrl;
-  const { error: e2 } = await supabase.from('servers').update(kind === 'icon' ? { icon_url: url } : { banner_url: url }).eq('id', serverId);
-  if (e2) throw e2;
+type ServerPicture = {
+  blob: Blob;
+  url: string;
+};
+
+async function uploadServerPicture(
+  serverId: string,
+  kind: 'icon' | 'banner',
+  blob: Blob,
+): Promise<void> {
+  if (blob.size > 8 * 1024 * 1024) {
+    throw new Error('Images must be smaller than 8 MB.');
+  }
+
+  const extension = blob.type === 'image/png'
+    ? 'png'
+    : blob.type === 'image/jpeg'
+      ? 'jpg'
+      : 'webp';
+
+  const path = `${serverId}/${kind}-${crypto.randomUUID()}.${extension}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('server-assets')
+    .upload(path, blob, {
+      contentType: blob.type || 'image/webp',
+      upsert: false,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const publicUrl = supabase.storage
+    .from('server-assets')
+    .getPublicUrl(path).data.publicUrl;
+
+  const update = kind === 'icon'
+    ? { icon_url: publicUrl }
+    : { banner_url: publicUrl };
+
+  const { error: updateError } = await supabase
+    .from('servers')
+    .update(update)
+    .eq('id', serverId);
+
+  if (updateError) throw updateError;
 }
 
-export function CreateJoinModal({ onClose, initialTemplate }: { onClose: () => void; initialTemplate?: string }) {
+export function CreateJoinModal({
+  onClose,
+  initialTemplate,
+}: {
+  onClose: () => void;
+  initialTemplate?: string;
+}) {
   const [tab, setTab] = useState<'create' | 'join'>('create');
-  // a shared template's code (venband.com/template/CODE), instead of a built-in layout
-  const [communityCode, setCommunityCode] = useState<string | null>(initialTemplate ?? null);
+  const [communityCode, setCommunityCode] = useState<string | null>(
+    initialTemplate ?? null,
+  );
+
   const [step, setStep] = useState(0);
-  const [template, setTemplate] = useState<string>('default');
+  const [template, setTemplate] = useState('default');
+
   const [name, setName] = useState('');
-  const [color, setColor] = useState(randomColor());
-  const [icon, setIcon] = useState<{ blob: Blob; url: string } | null>(null);
-  const [banner, setBanner] = useState<{ blob: Blob; url: string } | null>(null);
-  const [cropping, setCropping] = useState<{ file: File; kind: 'icon' | 'banner' } | null>(null);
   const [description, setDescription] = useState('');
+  const [color, setColor] = useState(randomColor());
+
+  const [icon, setIcon] = useState<ServerPicture | null>(null);
+  const [banner, setBanner] = useState<ServerPicture | null>(null);
+
+  const [cropping, setCropping] = useState<{
+    file: File;
+    kind: 'icon' | 'banner';
+  } | null>(null);
+
   const [apply, setApply] = useState(false);
   const [pitch, setPitch] = useState('');
   const [cats, setCats] = useState<string[]>([]);
+
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const me = sessionStore.use((s) => s.me)!;
 
+  // Release temporary image previews when they are replaced or the modal closes.
+  useEffect(() => {
+    return () => {
+      if (icon?.url) URL.revokeObjectURL(icon.url);
+      if (banner?.url) URL.revokeObjectURL(banner.url);
+    };
+  }, [icon?.url, banner?.url]);
+
+  function choosePicture(kind: 'icon' | 'banner') {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp,image/gif';
+
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      if (!file.type.startsWith('image/')) {
+        setError('Please choose an image file.');
+        return;
+      }
+
+      if (file.size > 8 * 1024 * 1024) {
+        setError('Choose an image smaller than 8 MB.');
+        return;
+      }
+
+      setError(null);
+      setCropping({ file, kind });
+    };
+
+    input.click();
+  }
+
+  function finishCrop(blob: Blob) {
+    if (!cropping) return;
+
+    const picture: ServerPicture = {
+      blob,
+      url: URL.createObjectURL(blob),
+    };
+
+    if (cropping.kind === 'icon') {
+      setIcon(picture);
+    } else {
+      setBanner(picture);
+    }
+
+    setCropping(null);
+  }
+
+  function toggleCategory(category: string) {
+    setCats((current) => {
+      if (current.includes(category)) {
+        return current.filter((item) => item !== category);
+      }
+
+      if (current.length >= 3) return current;
+      return [...current, category];
+    });
+  }
+
   async function create() {
+    const serverName = name.trim() || `${me.display_name}'s server`;
+
+    if (serverName.length < 2) {
+      setError('Your server name must contain at least 2 characters.');
+      setStep(1);
+      return;
+    }
+
+    if (apply && pitch.trim().length < 10) {
+      setError('Write at least 10 characters explaining why people should join.');
+      return;
+    }
+
+    if (apply && cats.length === 0) {
+      setError('Choose at least one discovery category.');
+      return;
+    }
+
     setBusy(true);
     setError(null);
-    const serverName = name.trim() || `${me.display_name}'s server`;
-    const { data, error } = communityCode
-      ? await supabase.rpc('create_server_from_template', { p_code: communityCode, p_name: serverName, p_icon_color: color })
-      : await supabase.rpc('create_server', { p_name: serverName, p_icon_color: color, p_template: template });
-    if (error) {
-      setBusy(false);
-      return setError(errorMessage(error));
-    }
-    const id = data as string;
-    const problems: string[] = [];
+
     try {
-      if (icon) await uploadServerPicture(id, 'icon', icon.blob);
-      if (banner) await uploadServerPicture(id, 'banner', banner.blob);
-    } catch (e) {
-      problems.push(`pictures: ${errorMessage(e)}`);
+      // Community templates and built-in templates use different database RPCs.
+      const result = communityCode
+        ? await supabase.rpc('create_server_from_template', {
+            p_code: communityCode,
+            p_name: serverName,
+            p_icon_color: color,
+          })
+        : await supabase.rpc('create_server', {
+            p_name: serverName,
+            p_icon_color: color,
+            p_template: template,
+          });
+
+      if (result.error) throw result.error;
+
+      const serverId = result.data as string;
+
+      if (!serverId) {
+        throw new Error('The database did not return the new server ID.');
+      }
+
+      const warnings: string[] = [];
+
+      // Upload pictures independently so one failed upload does not prevent
+      // the other picture or the server itself from being created.
+      if (icon) {
+        try {
+          await uploadServerPicture(serverId, 'icon', icon.blob);
+        } catch (pictureError) {
+          warnings.push(`Icon upload failed: ${errorMessage(pictureError)}`);
+        }
+      }
+
+      if (banner) {
+        try {
+          await uploadServerPicture(serverId, 'banner', banner.blob);
+        } catch (pictureError) {
+          warnings.push(`Banner upload failed: ${errorMessage(pictureError)}`);
+        }
+      }
+
+      if (description.trim()) {
+        const { error: descriptionError } = await supabase
+          .from('servers')
+          .update({
+            description: description.trim().slice(0, 300),
+          })
+          .eq('id', serverId);
+
+        if (descriptionError) {
+          warnings.push(`Description was not saved: ${errorMessage(descriptionError)}`);
+        }
+      }
+
+      if (apply) {
+        const { error: discoveryError } = await supabase.rpc(
+          'apply_for_discovery',
+          {
+            p_server: serverId,
+            p_pitch: pitch.trim(),
+            p_categories: cats,
+            p_language: navigator.language.split('-')[0] || 'en',
+          },
+        );
+
+        if (discoveryError) {
+          warnings.push(`Discovery application failed: ${errorMessage(discoveryError)}`);
+        }
+      }
+
+      openServer(serverId);
+
+      if (warnings.length > 0) {
+        showAlert(
+          `Your server was created, but some optional steps failed:\n\n${warnings.join('\n')}`,
+        );
+      }
+
+      onClose();
+    } catch (creationError) {
+      setError(errorMessage(creationError));
+    } finally {
+      setBusy(false);
     }
-    if (description.trim()) await supabase.from('servers').update({ description: description.trim().slice(0, 300) }).eq('id', id);
-    if (apply) {
-      const { error: ae } = await supabase.rpc('apply_for_discovery', { p_server: id, p_pitch: pitch.trim(), p_categories: cats, p_language: navigator.language.split('-')[0] });
-      if (ae) problems.push(`discovery: ${errorMessage(ae)}`);
-    }
-    setBusy(false);
-    openServer(id);
-    if (problems.length) showAlert(`Your server was created, but: ${problems.join('; ')}`);
-    onClose();
   }
 
   async function join(e: FormEvent) {
     e.preventDefault();
+
+    const raw = code.trim();
+    if (!raw) {
+      setError('Enter an invite code or link.');
+      return;
+    }
+
+    const parsed =
+      inviteCodeFrom(raw) ??
+      raw.replace(/\/+$/, '').split('/').pop() ??
+      raw;
+
+    if (!parsed) {
+      setError('That invite code does not look valid.');
+      return;
+    }
+
     setBusy(true);
     setError(null);
-    const raw = code.trim();
-    const parsed = inviteCodeFrom(raw) ?? raw.replace(/\/+$/, '').split('/').pop() ?? raw;
-    const { data, error } = await supabase.rpc('join_server', { p_code: parsed });
-    setBusy(false);
-    if (error) return setError(errorMessage(error));
-    openServer(data as string);
-    onClose();
+
+    try {
+      const { data, error: joinError } = await supabase.rpc('join_server', {
+        p_code: parsed,
+      });
+
+      if (joinError) throw joinError;
+      if (!data) throw new Error('The server could not be opened.');
+
+      openServer(data as string);
+      onClose();
+    } catch (joinError) {
+      setError(errorMessage(joinError));
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const pick = (kind: 'icon' | 'banner') => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = () => input.files?.[0] && setCropping({ file: input.files[0], kind });
-    input.click();
-  };
+  const selectedTemplate = SERVER_TEMPLATES.find(
+    (item) => item.id === template,
+  );
 
   return (
-    <Modal title={tab === 'create' ? 'Create a server' : 'Join a server'} onClose={onClose} wide={tab === 'create' && step === 0}>
+    <Modal
+      title={tab === 'create' ? 'Create a server' : 'Join a server'}
+      onClose={onClose}
+      wide={tab === 'create' && step === 0}
+    >
       {cropping && (
         <ImageCropper
           file={cropping.file}
-          opts={cropping.kind === 'icon' ? { aspect: 1, size: 512, round: true, title: 'Server icon' } : { aspect: 16 / 9, size: 1280, title: 'Server banner' }}
+          opts={
+            cropping.kind === 'icon'
+              ? {
+                  aspect: 1,
+                  size: 512,
+                  round: true,
+                  title: 'Server icon',
+                }
+              : {
+                  aspect: 16 / 9,
+                  size: 1280,
+                  title: 'Server banner',
+                }
+          }
           onCancel={() => setCropping(null)}
-          onDone={(blob) => {
-            const v = { blob, url: URL.createObjectURL(blob) };
-            if (cropping.kind === 'icon') setIcon(v);
-            else setBanner(v);
-            setCropping(null);
-          }}
+          onDone={finishCrop}
         />
       )}
+
       <div className="tabs">
-        <button className={tab === 'create' ? 'active' : ''} onClick={() => setTab('create')}>
+        <button
+          type="button"
+          className={tab === 'create' ? 'active' : ''}
+          onClick={() => {
+            setTab('create');
+            setError(null);
+          }}
+        >
           Create
         </button>
-        <button className={tab === 'join' ? 'active' : ''} onClick={() => setTab('join')}>
+
+        <button
+          type="button"
+          className={tab === 'join' ? 'active' : ''}
+          onClick={() => {
+            setTab('join');
+            setError(null);
+          }}
+        >
           Join
         </button>
       </div>
+
       {error && <div className="form-error">{error}</div>}
+
       {tab === 'create' ? (
         <>
-          <div className="steps" aria-hidden>
-            {[0, 1, 2].map((i) => (
-              <span key={i} className={i <= step ? 'on' : ''} />
+          <div className="steps" aria-label={`Step ${step + 1} of 3`}>
+            {[0, 1, 2].map((index) => (
+              <span
+                key={index}
+                className={index <= step ? 'on' : ''}
+              />
             ))}
           </div>
+
           {step === 0 && (
             <>
-              <p className="muted">Pick a starting point. You can change every channel later.</p>
-              <div className="template-grid" role="radiogroup" aria-label="Template">
-                {SERVER_TEMPLATES.map((t) => (
-                  <button key={t.id} type="button" role="radio" aria-checked={!communityCode && template === t.id} className={`template-card${!communityCode && template === t.id ? ' selected' : ''}`} onClick={() => (setTemplate(t.id), setCommunityCode(null))}>
-                    <span className="tpl-emoji">{t.emoji}</span>
-                    <b>{t.name}</b>
-                    <span className="tpl-desc">{t.desc}</span>
-                  </button>
-                ))}
+              <h2>Choose your starting layout</h2>
+              <p className="muted">
+                Pick a template. You can customize channels, roles and
+                permissions after creating your server.
+              </p>
+
+              <div
+                className="template-grid"
+                role="radiogroup"
+                aria-label="Server template"
+              >
+                {SERVER_TEMPLATES.map((item) => {
+                  const selected =
+                    !communityCode && template === item.id;
+
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      className={`template-card${selected ? ' selected' : ''}`}
+                      onClick={() => {
+                        setTemplate(item.id);
+                        setCommunityCode(null);
+                      }}
+                    >
+                      <span className="tpl-emoji">{item.emoji}</span>
+                      <b>{item.name}</b>
+                      <span className="tpl-desc">{item.desc}</span>
+                    </button>
+                  );
+                })}
               </div>
-              <CommunityTemplatePicker selected={communityCode} onSelect={setCommunityCode} initialCode={initialTemplate} />
+
+              {selectedTemplate && (
+                <p className="small muted">
+                  Selected: {selectedTemplate.name}
+                </p>
+              )}
+
+              <CommunityTemplatePicker
+                selected={communityCode}
+                onSelect={setCommunityCode}
+                initialCode={initialTemplate}
+              />
+
               <div className="modal-actions">
-                <button className="btn primary" onClick={() => setStep(1)}>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => {
+                    setError(null);
+                    setStep(1);
+                  }}
+                >
                   Next
                 </button>
               </div>
             </>
           )}
+
           {step === 1 && (
             <>
+              <h2>Personalize your server</h2>
+              <p className="muted">
+                Give your server an identity. You can change these details
+                later in Server Settings.
+              </p>
+
               <div className="create-pictures">
-                <button type="button" className={`pic-slot icon${icon ? ' has' : ''}`} style={icon ? { backgroundImage: `url(${icon.url})` } : { background: color }} onClick={() => pick('icon')} aria-label="Upload server icon">
-                  <Icon name="upload" size={20} /> Icon
+                <button
+                  type="button"
+                  className={`pic-slot icon${icon ? ' has' : ''}`}
+                  style={
+                    icon
+                      ? { backgroundImage: `url(${icon.url})` }
+                      : { background: color }
+                  }
+                  onClick={() => choosePicture('icon')}
+                  aria-label="Upload server icon"
+                >
+                  {!icon && <Icon name="upload" size={20} />}
+                  {!icon && 'Icon'}
+                  {icon && 'Change icon'}
                 </button>
-                <button type="button" className={`pic-slot${banner ? ' has' : ''}`} style={banner ? { backgroundImage: `url(${banner.url})` } : undefined} onClick={() => pick('banner')} aria-label="Upload server banner">
-                  <Icon name="image" size={20} /> Banner (optional)
+
+                <button
+                  type="button"
+                  className={`pic-slot${banner ? ' has' : ''}`}
+                  style={
+                    banner
+                      ? { backgroundImage: `url(${banner.url})` }
+                      : undefined
+                  }
+                  onClick={() => choosePicture('banner')}
+                  aria-label="Upload server banner"
+                >
+                  <Icon name="image" size={20} />
+                  {banner ? 'Change banner' : 'Banner (optional)'}
                 </button>
               </div>
+
               <Field label="Server name">
-                <input autoFocus maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder={`${me.display_name}'s server`} />
+                <input
+                  autoFocus
+                  required
+                  minLength={2}
+                  maxLength={100}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={`${me.display_name}'s server`}
+                />
               </Field>
-              <Field label="Description" hint="Shown on invites and in discovery">
-                <textarea maxLength={300} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What's this server about?" />
+
+              <Field
+                label="Description"
+                hint="Shown on invites and in discovery. Maximum 300 characters."
+              >
+                <textarea
+                  maxLength={300}
+                  rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What's this server about?"
+                />
               </Field>
+
               {!icon && (
                 <Field label="Icon color">
                   <ColorPicker value={color} onChange={setColor} />
                 </Field>
               )}
+
               <div className="modal-actions">
-                <button className="btn secondary" onClick={() => setStep(0)}>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => {
+                    setError(null);
+                    setStep(0);
+                  }}
+                >
                   Back
                 </button>
-                <button className="btn primary" onClick={() => setStep(2)}>
+
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => {
+                    if (name.trim() && name.trim().length < 2) {
+                      setError('Server names must contain at least 2 characters.');
+                      return;
+                    }
+
+                    setError(null);
+                    setStep(2);
+                  }}
+                >
                   Next
                 </button>
               </div>
             </>
           )}
+
           {step === 2 && (
             <>
+              <h2>Server discovery</h2>
+
               <label className="check-row">
-                <input type="checkbox" checked={apply} onChange={(e) => setApply(e.target.checked)} /> <b>Apply for Server Discovery</b>
+                <input
+                  type="checkbox"
+                  checked={apply}
+                  onChange={(e) => setApply(e.target.checked)}
+                />
+                <b>Apply for Server Discovery</b>
               </label>
-              <p className="small muted">Venband staff review applications. Approved servers appear on the Discover page where anyone can find and join them.</p>
+
+              <p className="small muted">
+                Apply to have your server reviewed. Approved servers can
+                appear on Venband's Discover page.
+              </p>
+
               {apply && (
                 <>
-                  <Field label="Why should people join?">
-                    <textarea maxLength={1000} rows={3} value={pitch} onChange={(e) => setPitch(e.target.value)} placeholder="A friendly place for…" />
+                  <Field
+                    label="Why should people join?"
+                    hint="Tell people what makes your server worth joining."
+                  >
+                    <textarea
+                      maxLength={1000}
+                      rows={4}
+                      value={pitch}
+                      onChange={(e) => setPitch(e.target.value)}
+                      placeholder="A friendly place for people who..."
+                    />
                   </Field>
-                  <Field label="Categories" hint="up to 3">
+
+                  <Field
+                    label="Categories"
+                    hint={`Choose up to 3 categories (${cats.length}/3 selected).`}
+                  >
                     <div className="chip-row">
-                      {DISCOVERY_CATEGORIES.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          className={`chip${cats.includes(c) ? ' on' : ''}`}
-                          aria-pressed={cats.includes(c)}
-                          onClick={() => setCats((x) => (x.includes(c) ? x.filter((y) => y !== c) : [...x, c].slice(0, 3)))}
-                        >
-                          {c}
-                        </button>
-                      ))}
+                      {DISCOVERY_CATEGORIES.map((category) => {
+                        const selected = cats.includes(category);
+
+                        return (
+                          <button
+                            key={category}
+                            type="button"
+                            className={`chip${selected ? ' on' : ''}`}
+                            aria-pressed={selected}
+                            onClick={() => toggleCategory(category)}
+                          >
+                            {category}
+                          </button>
+                        );
+                      })}
                     </div>
                   </Field>
                 </>
               )}
+
               <div className="modal-actions">
-                <button className="btn secondary" onClick={() => setStep(1)}>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => {
+                    setError(null);
+                    setStep(1);
+                  }}
+                >
                   Back
                 </button>
-                <button className="btn primary" disabled={busy} onClick={create}>
-                  {busy ? 'Creating…' : 'Create server'}
+
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={busy}
+                  onClick={create}
+                >
+                  {busy ? 'Creating server…' : 'Create server'}
                 </button>
               </div>
             </>
@@ -232,18 +655,35 @@ export function CreateJoinModal({ onClose, initialTemplate }: { onClose: () => v
         </>
       ) : (
         <form onSubmit={join}>
-          <p className="muted">Enter an invite code or link, like venband.com/invite/abc123 or a custom link.</p>
+          <p className="muted">
+            Enter an invite code or link, such as
+            {' '}venband.com/invite/abc123.
+          </p>
+
           <Field label="Invite">
-            <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. Ab3dEf9hIjKl" />
+            <input
+              required
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="Invite code or link"
+            />
           </Field>
-          <button className="btn primary full" disabled={busy}>
-            Join Server
+
+          <button
+            type="submit"
+            className="btn primary full"
+            disabled={busy}
+          >
+            {busy ? 'Joining…' : 'Join server'}
           </button>
         </form>
       )}
     </Modal>
   );
 }
+
+// ---------------------------------------------------------------- invites --
+
 
 // ---------------------------------------------------------------- invites --
 
