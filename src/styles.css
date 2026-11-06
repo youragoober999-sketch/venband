@@ -2916,3 +2916,20 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .badge-pick-row .badge-pick-down svg { transform: none; }
 .hidden-badges .badge-pick-row { opacity: .6; }
 .badge-pick-sub { margin-top: 4px; }
+
+/* ---- drag to reorder (useDragSort): mouse, touch long-press, keyboard ---- */
+[data-sortable] { -webkit-user-drag: none; -webkit-touch-callout: none; user-select: none; }
+[data-sortable] img { -webkit-user-drag: none; }
+body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !important; }
+.sort-ghost { opacity: .88; box-shadow: 0 10px 28px #0007; border-radius: 10px; background: var(--bg-2, #222); transition: none !important; }
+.channel-group.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.channel-group.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.channel-group.dragging { opacity: .4; }
+.category[data-sortable] { cursor: grab; }
+.mac-dock-item.dragging { opacity: .35; }
+.mac-dock-item.drop-before { box-shadow: -3px 0 0 var(--accent); }
+.mac-dock-item.drop-after { box-shadow: 3px 0 0 var(--accent); }
+.mac-dock-left .mac-dock-item.drop-before, .mac-dock-right .mac-dock-item.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+.mac-dock-left .mac-dock-item.drop-after, .mac-dock-right .mac-dock-item.drop-after { box-shadow: 0 3px 0 var(--accent); }
+.folder-panel .rail-item.drop-before { box-shadow: 0 -4px 0 -1px var(--accent); }
+.folder-panel .rail-item.drop-after { box-shadow: 0 4px 0 -1px var(--accent); }

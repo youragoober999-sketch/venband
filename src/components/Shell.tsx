@@ -29,6 +29,7 @@ import { currentPath, go, linkTo, parseRoute, useRoute } from '../lib/router';
 import { socialStore } from '../lib/social';
 import { RING_MS, ringFor, subscribeRings } from '../lib/presence';
 import { getSettings, updateLayout, updateSettings, useSettings, type ServerFolder } from '../lib/settings';
+import { useDragSort, type DropWhere } from '../lib/useDragSort';
 import { isPhone, openSearch, openSettings, setDrawer, uiStore } from '../lib/ui';
 import {
   nav,
@@ -392,11 +393,30 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
   const unreadState = unreadStore.use((s) => s);
   const dmUnread = dms.reduce((n, d) => n + (unreadState.counts[d.channel.id] ?? 0), 0);
   const dockRef = useRef<HTMLDivElement>(null);
-  const [dragKey, setDragKey] = useState<string | null>(null);
   const railOrder = useSettings((s) => s.rail.order);
   const sortedServers = [...servers].sort((a, b) => {
     const ra = railOrder.indexOf(a.id); const rb = railOrder.indexOf(b.id);
     return (ra === -1 ? 9999 : ra) - (rb === -1 ? 9999 : rb);
+  });
+  const vertical = position === 'left' || position === 'right';
+  const moveInDock = (id: string, target: string, where: DropWhere) => {
+    const ids = sortedServers.map((s) => s.id).filter((x) => x !== id);
+    const i = ids.indexOf(target);
+    if (i === -1) return;
+    ids.splice(where === 'before' ? i : i + 1, 0, id);
+    // keep folder / other keys in the saved order, servers in their new order
+    const rest = getSettings().rail.order.filter((k) => !ids.includes(k));
+    updateSettings((st) => ({ rail: { ...st.rail, order: [...ids, ...rest] } }));
+  };
+  const dockSort = useDragSort({
+    axis: vertical ? 'y' : 'x',
+    where: (_d, t, rel) => (t.kind === 'dock' ? (rel < 0.5 ? 'before' : 'after') : null),
+    onDrop: (d, t, where) => moveInDock(d.id, t.id, where),
+    onKeyMove: (k, dir) => {
+      const ids = sortedServers.map((s) => s.id);
+      const n = ids[ids.indexOf(k.id) + dir];
+      if (n) moveInDock(k.id, n, dir < 0 ? 'before' : 'after');
+    },
   });
   const leftItems = [
     { key: 'home', node: (
@@ -408,14 +428,7 @@ function MacDock({ servers, dms, current, onAdd, discover, onDiscover, position 
     ) },
   ];
   const middleItems = sortedServers.map((s) => ({ key: s.id, node: (
-    <button key={s.id} className={`mac-dock-item${s.id === current ? ' active' : ''}`} draggable onDragStart={() => setDragKey(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => {
-      if (!dragKey || dragKey === s.id) return;
-      const newOrder = railOrder.includes(dragKey) ? railOrder.filter((x) => x !== dragKey) : [...railOrder];
-      const targetIdx = newOrder.indexOf(s.id);
-      if (targetIdx === -1) newOrder.push(dragKey); else newOrder.splice(targetIdx, 0, dragKey);
-      updateSettings({ rail: { ...useSettings((st) => st.rail), order: newOrder } });
-      setDragKey(null);
-    }} onClick={() => openServer(s.id)} title={s.name}>
+    <button key={s.id} className={`mac-dock-item${s.id === current ? ' active' : ''}${dockSort.classFor(s.id, 'dock')}`} {...dockSort.bind(s.id, 'dock')} onKeyDown={(e) => dockSort.keyDown(e, s.id, 'dock')} onClick={() => openServer(s.id)} title={s.name}>
       {s.icon_url ? <img src={s.icon_url} alt="" className="mac-dock-img" /> : <span className="mac-dock-icon" style={{ background: s.icon_color }}>{s.name.slice(0, 1).toUpperCase()}</span>}
       <span className="mac-dock-label">{s.name}</span>
     </button>
@@ -513,7 +526,6 @@ function ServerRail({
   const mutedServers = useSettings((s) => s.mutedServers);
   const railFolders = rail.folders;
   const [openFolder, setOpenFolder] = useState<string | null>(null);
-  const [railDnd, setRailDnd] = useState<{ drag: string | null; over: string | null; where: 'before' | 'after' | 'into' }>({ drag: null, over: null, where: 'into' });
   const inFolder = new Set(railFolders.flatMap((f) => f.servers));
   type RailItem = { kind: 'server'; key: string; server: Server } | { kind: 'folder'; key: string; folder: ServerFolder };
   const railItems: RailItem[] = useMemo(() => {
@@ -539,29 +551,43 @@ function ServerRail({
     return prev;
   };
 
-  function railDragStart(e: React.DragEvent, key: string) {
-    e.dataTransfer.setData('application/x-venband-server', key);
-    e.dataTransfer.effectAllowed = 'move';
-    setRailDnd({ drag: key, over: null, where: 'into' });
-  }
-  function railDragOver(e: React.DragEvent, key: string) {
-    if (!railDnd.drag || railDnd.drag === key) return;
-    e.preventDefault();
-    const r = e.currentTarget.getBoundingClientRect();
-    const y = (e.clientY - r.top) / r.height;
-    // folders can't go inside folders: only before / after
-    const where = y < 0.28 ? 'before' : y > 0.72 ? 'after' : railDnd.drag.startsWith('f:') ? (y < 0.5 ? 'before' : 'after') : 'into';
-    setRailDnd((d) => ({ ...d, over: key, where }));
-  }
-  function railDrop(e: React.DragEvent, target: string) {
-    e.preventDefault();
-    const { drag, where } = railDnd;
-    setRailDnd({ drag: null, over: null, where: 'into' });
-    if (!drag || drag === target) return;
+  // Drag servers and folders on the rail (mouse, touch long-press, Alt + ↑/↓).
+  // Server on a server = new folder; on a folder = add to it; servers in an
+  // open folder can be reordered or dragged back out onto the rail.
+  const railSort = useDragSort({
+    where: (drag, target, rel) => {
+      if (target.kind === 'fserver') return drag.kind === 'folder' ? null : rel < 0.5 ? 'before' : 'after';
+      if (target.kind !== 'server' && target.kind !== 'folder') return null;
+      // folders can't go inside folders: only before / after
+      return rel < 0.28 ? 'before' : rel > 0.72 ? 'after' : drag.kind === 'folder' ? (rel < 0.5 ? 'before' : 'after') : 'into';
+    },
+    onDrop: (drag, target, where) => railDrop(drag.id, target.id, where, target.kind === 'fserver'),
+    onKeyMove: (key, dir) => {
+      if (key.kind === 'fserver') {
+        const f = railFolders.find((x) => x.servers.includes(key.id));
+        const n = f?.servers[f.servers.indexOf(key.id) + dir];
+        if (n) railDrop(key.id, n, dir < 0 ? 'before' : 'after', true);
+        return;
+      }
+      const keys = railItems.map((i) => i.key);
+      const n = keys[keys.indexOf(key.id) + dir];
+      if (n) railDrop(key.id, n, dir < 0 ? 'before' : 'after', false);
+    },
+  });
+  function railDrop(drag: string, target: string, where: DropWhere, targetInFolder: boolean) {
+    if (drag === target) return;
     let folders = railFolders.map((f) => ({ ...f, servers: f.servers.filter((id) => id !== drag) })).filter((f) => f.servers.length > 0 || `f:${f.id}` === drag);
     let order = railItems.map((i) => i.key).filter((k) => k !== drag);
     let undoText = 'Moved server';
-    if (where === 'into') {
+    if (targetInFolder) {
+      folders = folders.map((f) => {
+        const i = f.servers.indexOf(target);
+        if (i === -1) return f;
+        const list = [...f.servers];
+        list.splice(where === 'before' ? i : i + 1, 0, drag);
+        return { ...f, servers: list };
+      });
+    } else if (where === 'into') {
       if (target.startsWith('f:')) {
         folders = folders.map((f) => (`f:${f.id}` === target ? { ...f, servers: [...f.servers, drag] } : f));
         undoText = 'Added to folder';
@@ -615,7 +641,7 @@ function ServerRail({
     return (
       <button
         key={s.id}
-        className={`rail-item${current === s.id ? ' active' : ''}${s.status && s.status !== 'active' ? ' frozen' : ''}${railDnd.over === s.id ? ` drop-${railDnd.where}` : ''}${railDnd.drag === s.id ? ' dragging' : ''}`}
+        className={`rail-item${current === s.id ? ' active' : ''}${s.status && s.status !== 'active' ? ' frozen' : ''}${railSort.classFor(s.id, inPanel ? 'fserver' : 'server')}`}
         onClick={() => {
           openServer(s.id);
           if (inPanel) setOpenFolder(null);
@@ -624,11 +650,8 @@ function ServerRail({
         data-tip={s.name}
         aria-label={s.name}
         style={{ background: current === s.id ? s.icon_color : undefined }}
-        draggable
-        onDragStart={(e) => railDragStart(e, s.id)}
-        onDragOver={(e) => railDragOver(e, s.id)}
-        onDrop={(e) => railDrop(e, s.id)}
-        onDragEnd={() => setRailDnd({ drag: null, over: null, where: 'into' })}
+        {...railSort.bind(s.id, inPanel ? 'fserver' : 'server')}
+        onKeyDown={(e) => railSort.keyDown(e, s.id, inPanel ? 'fserver' : 'server')}
       >
         <span className={`rail-pill${st.any ? ' unread' : ''}`} />
         {s.icon_url ? (
@@ -661,19 +684,16 @@ function ServerRail({
         ) : (
           <div
             key={it.folder.id}
-            className={`rail-folder${openFolder === it.folder.id ? ' open' : ''}${railDnd.over === `f:${it.folder.id}` ? ` drop-${railDnd.where}` : ''}`}
+            className={`rail-folder${openFolder === it.folder.id ? ' open' : ''}${railSort.state.over?.id === `f:${it.folder.id}` && railSort.state.over.where !== 'into' ? ` drop-${railSort.state.over.where}` : ''}`}
             style={{ ['--folder' as string]: it.folder.color }}
           >
             <button
-              className="rail-item folder"
               data-tip={it.folder.name}
               aria-label={`Folder ${it.folder.name}`}
               aria-expanded={openFolder === it.folder.id}
-              draggable
-              onDragStart={(e) => railDragStart(e, `f:${it.folder.id}`)}
-              onDragOver={(e) => railDragOver(e, `f:${it.folder.id}`)}
-              onDrop={(e) => railDrop(e, `f:${it.folder.id}`)}
-              onDragEnd={() => setRailDnd({ drag: null, over: null, where: 'into' })}
+              className={`rail-item folder${railSort.classFor(`f:${it.folder.id}`, 'folder').replace(/ drop-(before|after)/, '')}`}
+              {...railSort.bind(`f:${it.folder.id}`, 'folder')}
+              onKeyDown={(e) => railSort.keyDown(e, `f:${it.folder.id}`, 'folder')}
               onClick={() => setOpenFolder(openFolder === it.folder.id ? null : it.folder.id)}
               onContextMenu={(e) => folderMenu(e, it.folder)}
             >
@@ -1389,9 +1409,57 @@ custom &&
     ]);
   }
 
-  // ---- drag & drop
-  const [dnd, setDnd] = useState<{ drag: string | null; over: { id: string; where: 'before' | 'after' } | null; overCategory?: string }>({ drag: null, over: null });
+  // ---- drag & drop (mouse, touch long-press, Alt + arrow keys)
   const themeColors = data.server?.theme ?? {};
+  const flat = () => groups.flatMap(([, list]) => list);
+  const sort = useDragSort({
+    where: (drag, target, rel) => {
+      if (drag.kind === 'channel') return target.kind === 'channel' ? (rel < 0.5 ? 'before' : 'after') : target.kind === 'category' ? 'into' : null;
+      if (drag.kind === 'category') return target.kind === 'group' && target.id !== `g:${drag.id}` ? (rel < 0.5 ? 'before' : 'after') : null;
+      return null;
+    },
+    onDrop: (drag, target, where) => {
+      if (drag.kind === 'channel') {
+        if (target.kind === 'category') return void moveChannel(drag.id, { beforeId: null, afterId: null, category: target.id });
+        const t = data.channels.find((c) => c.id === target.id);
+        if (t) void moveChannel(drag.id, { beforeId: where === 'before' ? t.id : null, afterId: where === 'after' ? t.id : null, category: t.category });
+      } else if (drag.kind === 'category') void moveCategory(drag.id, target.id.slice(2), where === 'before' ? 'before' : 'after');
+    },
+    onKeyMove: (key, dir) => {
+      if (key.kind === 'channel') {
+        const list = flat();
+        const i = list.findIndex((c) => c.id === key.id);
+        const n = list[i + dir];
+        if (i === -1 || !n) return;
+        void moveChannel(key.id, { beforeId: dir < 0 ? n.id : null, afterId: dir > 0 ? n.id : null, category: n.category });
+      } else if (key.kind === 'category') {
+        const names = groups.map(([c]) => c);
+        const n = names[names.indexOf(key.id) + dir];
+        if (n !== undefined) void moveCategory(key.id, n, dir < 0 ? 'before' : 'after');
+      }
+    },
+  });
+
+  /** Move a whole category (all its channels) before / after another one. */
+  async function moveCategory(from: string, to: string, where: 'before' | 'after') {
+    if (from === to) return;
+    const names = groups.map(([c]) => c).filter((c) => c !== from);
+    const at = names.indexOf(to);
+    if (at === -1) return;
+    names.splice(where === 'before' ? at : at + 1, 0, from);
+    const byCat = new Map(groups);
+    const ordered = names.flatMap((c) => byCat.get(c) ?? []);
+    if (!(byCat.get(from) ?? []).length) return alert('Add a channel to this category first — empty categories always sit at the bottom.');
+    const before = data.channels.map((c) => ({ id: c.id, position: c.position, category: c.category }));
+    const items = ordered.map((c, i) => ({ id: c.id, position: i, category: c.category }));
+    const { error } = await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: items });
+    if (error) return alert(errorMessage(error));
+    data.reload();
+    showUndo(`Moved ${from || 'channels'}`, async () => {
+      await supabase.rpc('reorder_channels', { p_server: data.server!.id, p_items: before });
+      data.reload();
+    });
+  }
 
   async function moveChannel(id: string, to: { beforeId: string | null; afterId: string | null; category: string }) {
     const moving = data.channels.find((c) => c.id === id);
@@ -1472,24 +1540,22 @@ custom &&
   return (
     <div className="sidebar-scroll" onContextMenu={(e) => listMenu(e)}>
       {groups.map(([category, channels]) => (
-        <div key={category || '_'}>
+        <div key={category || '_'} className={`channel-group${sort.classFor(`g:${category}`, 'group')}`} {...sort.bind(`g:${category}`, 'group', false)}>
           {category && (
             <div
-              className={`category${dnd.overCategory === category ? ' drop-into' : ''}`}
+              className={`category${sort.classFor(category, 'category')}`}
               style={themeColors.categories?.[category] || themeColors.category ? { color: themeColors.categories?.[category] ?? themeColors.category } : undefined}
+              role="button"
+              tabIndex={0}
+              aria-expanded={!collapsed[category]}
+              title={canManage ? 'Drag to move this category · Alt + ↑/↓' : undefined}
               onClick={() => setCollapsed((c) => ({ ...c, [category]: !c[category] }))}
+              onKeyDown={(e) => {
+                if (canManage && sort.keyDown(e, category, 'category')) return;
+                if (e.key === 'Enter' || e.key === ' ') (e.preventDefault(), setCollapsed((c) => ({ ...c, [category]: !c[category] })));
+              }}
               onContextMenu={(e) => listMenu(e, category)}
-              onDragOver={(e) => {
-                if (!dnd.drag) return;
-                e.preventDefault();
-                setDnd((d) => ({ ...d, over: null, overCategory: category }));
-              }}
-              onDragLeave={() => setDnd((d) => ({ ...d, overCategory: undefined }))}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dnd.drag) moveChannel(dnd.drag, { beforeId: null, afterId: null, category });
-                setDnd({ drag: null, over: null });
-              }}
+              {...sort.bind(category, 'category', canManage)}
             >
               <span>
                 <span className={`caret${collapsed[category] ? ' closed' : ''}`}>
@@ -1516,28 +1582,11 @@ custom &&
             .map((c) => (
               <div key={c.id}>
                 <div
-                  className={`channel${selected === c.id ? ' active' : ''}${dnd.over?.id === c.id ? ` drop-${dnd.over.where}` : ''}${dnd.drag === c.id ? ' dragging' : ''}`}
+                  className={`channel${selected === c.id ? ' active' : ''}${sort.classFor(c.id, 'channel')}`}
                   role="button"
                   tabIndex={0}
                   style={c.color || themeColors.channel ? { color: c.color ?? themeColors.channel } : undefined}
-                  draggable={canManage}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('application/x-venband-channel', c.id);
-                    e.dataTransfer.effectAllowed = 'move';
-                    setDnd({ drag: c.id, over: null });
-                  }}
-                  onDragEnd={() => setDnd({ drag: null, over: null })}
-                  onDragOver={(e) => {
-                    if (!dnd.drag || dnd.drag === c.id) return;
-                    e.preventDefault();
-                    const r = e.currentTarget.getBoundingClientRect();
-                    setDnd((d) => ({ ...d, over: { id: c.id, where: e.clientY < r.top + r.height / 2 ? 'before' : 'after' } }));
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (dnd.drag && dnd.over) moveChannel(dnd.drag, { beforeId: dnd.over.where === 'before' ? c.id : null, afterId: dnd.over.where === 'after' ? c.id : null, category: c.category });
-                    setDnd({ drag: null, over: null });
-                  }}
+                  {...sort.bind(c.id, 'channel', canManage)}
                   onClick={() => {
                     openChannel(data.server!.id, c.id);
                     if ((c.type === 'voice' || c.type === 'stage') && canConnect && call?.channelId !== c.id) {
@@ -1545,7 +1594,10 @@ custom &&
                     }
                   }}
                   onContextMenu={(e) => channelMenu(e, c)}
-                  onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLElement).click()}
+                  onKeyDown={(e) => {
+                    if (canManage && sort.keyDown(e, c.id, 'channel')) return;
+                    if (e.key === 'Enter') (e.currentTarget as HTMLElement).click();
+                  }}
                 >
                   <Icon name={channelIcon(c, data.server?.welcome_channel_id)} size={18} />
                   <span className={`channel-name${unread.counts[c.id] && selected !== c.id ? ' unread' : ''}`}>{c.name}</span>

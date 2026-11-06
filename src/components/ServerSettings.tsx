@@ -13,6 +13,7 @@ import { showUndo } from './Undo';
 import { DiscoveryTab, ExpressionsTab, InvitesTab, JoiningTab, ThemeTab } from './ServerSettingsExtra';
 import { Select } from './Select';
 import { RoleIcon } from './Badges';
+import { useDragSort } from '../lib/useDragSort';
 
 type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'expressions' | 'theme' | 'joining' | 'discovery' | 'integrations' | 'voogle' | 'reports' | 'audit';
 
@@ -213,8 +214,6 @@ function Roles({ data }: { data: ServerData }) {
   const role = data.roles.find((r) => r.id === selected) ?? null;
   const myTop = data.server!.owner_id === me.id ? Infinity : (data.topRole(me.id)?.position ?? 0);
   const canManage = has(data.myPermissions, P.MANAGE_ROLES);
-  const [drag, setDrag] = useState<string | null>(null);
-  const [over, setOver] = useState<{ id: string; where: 'before' | 'after' } | null>(null);
   const movable = (r: Role) => canManage && !r.is_default && r.position < myTop;
 
   async function create() {
@@ -231,8 +230,21 @@ function Roles({ data }: { data: ServerData }) {
     setSelected(r.id);
   }
 
-  async function drop(targetId: string, where: 'before' | 'after') {
-    if (!drag || drag === targetId) return;
+  const roleSort = useDragSort({
+    where: (_d, t, rel) => {
+      const r = data.roles.find((x) => x.id === t.id);
+      return r && !r.is_default ? (rel < 0.5 ? 'before' : 'after') : null;
+    },
+    onDrop: (d, t, where) => void drop(d.id, t.id, where === 'before' ? 'before' : 'after'),
+    onKeyMove: (k, dir) => {
+      const list = sorted.filter(movable);
+      const n = list[list.findIndex((r) => r.id === k.id) + dir];
+      if (n) void drop(k.id, n.id, dir < 0 ? 'before' : 'after');
+    },
+  });
+
+  async function drop(drag: string, targetId: string, where: 'before' | 'after') {
+    if (drag === targetId) return;
     // only the roles you can move are reordered; they stay below your own top role
     const list = sorted.filter(movable).map((r) => r.id).filter((id) => id !== drag);
     let i = list.indexOf(targetId);
@@ -257,32 +269,19 @@ function Roles({ data }: { data: ServerData }) {
             + Create Role
           </button>
         )}
-        <p className="small muted roles-hint">Drag roles to reorder. Higher roles can manage the ones below them.</p>
+        <p className="small muted roles-hint">Drag roles to reorder (or Alt + ↑/↓). Higher roles can manage the ones below them.</p>
         {sorted.map((r) => (
           <div
             key={r.id}
             role="listitem"
-            className={`role-item${selected === r.id ? ' active' : ''}${drag === r.id ? ' dragging' : ''}${over?.id === r.id ? ` drop-${over.where}` : ''}`}
+            className={`role-item${selected === r.id ? ' active' : ''}${roleSort.classFor(r.id, 'role')}`}
+            tabIndex={0}
             onClick={() => setSelected(r.id)}
-            draggable={movable(r)}
-            onDragStart={(e) => {
-              e.dataTransfer.effectAllowed = 'move';
-              e.dataTransfer.setData('text/plain', r.id);
-              setDrag(r.id);
+            onKeyDown={(e) => {
+              if (movable(r) && roleSort.keyDown(e, r.id, 'role')) return;
+              if (e.key === 'Enter') setSelected(r.id);
             }}
-            onDragEnd={() => (setDrag(null), setOver(null))}
-            onDragOver={(e) => {
-              if (!drag || drag === r.id || r.is_default) return;
-              e.preventDefault();
-              const box = e.currentTarget.getBoundingClientRect();
-              setOver({ id: r.id, where: e.clientY < box.top + box.height / 2 ? 'before' : 'after' });
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (over) drop(over.id, over.where);
-              setDrag(null);
-              setOver(null);
-            }}
+            {...roleSort.bind(r.id, 'role', movable(r))}
           >
             {movable(r) && (
               <span className="role-grip" aria-hidden>
