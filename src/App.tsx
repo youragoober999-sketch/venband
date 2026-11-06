@@ -1,24 +1,55 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect, type ComponentType, type ReactNode } from 'react';
 import { configured } from './lib/supabase';
 import { initSession, sessionStore } from './lib/session';
 import { startIdleDetection } from './lib/idle';
 import { startScreenTime } from './lib/screentime';
 import { AuthScreen, IdentityResetScreen, MfaScreen, RecoveryScreen, SetupErrorScreen, UnlockScreen } from './components/Auth';
-import { Shell } from './components/Shell';
 import { Logo } from './components/ui';
-import { Onboarding } from './components/Onboarding';
 import { ContextMenuHost } from './components/ContextMenu';
-import { InvitePage } from './components/Invite';
 import { Landing } from './components/Landing';
 import { parseRoute, go, useRoute, type Route } from './lib/router';
-import { ChangelogPage, GuidelinesPage, PrivacyPage, PublicDiscovery, StatusPage, TermsPage } from './components/PublicPages';
-import { ApplicationsPage } from './components/Apps';
-import { DownloadPage } from './components/Download';
-import { VooglePage } from './components/Voogle';
-import { StorageConsole } from './components/Storage';
 import { DialogHost } from './components/Dialogs';
-import { handleSteamRedirect, handleSpotifyRedirect, handleYouTubeRedirect, handleTikTokRedirect } from './lib/connections';
 import { openSettings, isAndroid } from './lib/ui';
+import { compareVersions, VERSION } from './lib/version';
+
+// Only the homepage and the sign-in screens are in the first download. Everything
+// else (the signed-in app, settings, the console, public pages) loads on demand, so
+// a first-time visitor does not download the whole app just to see the homepage.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyNamed<T extends Record<string, any>, K extends keyof T>(load: () => Promise<T>, name: K) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return lazy(async () => ({ default: (await load())[name] as ComponentType<any> }));
+}
+const Shell = lazyNamed(() => import('./components/Shell'), 'Shell');
+const Onboarding = lazyNamed(() => import('./components/Onboarding'), 'Onboarding');
+const InvitePage = lazyNamed(() => import('./components/Invite'), 'InvitePage');
+const StorageConsole = lazyNamed(() => import('./components/Storage'), 'StorageConsole');
+const ApplicationsPage = lazyNamed(() => import('./components/Apps'), 'ApplicationsPage');
+const DownloadPage = lazyNamed(() => import('./components/Download'), 'DownloadPage');
+const VooglePage = lazyNamed(() => import('./components/Voogle'), 'VooglePage');
+const publicPages = () => import('./components/PublicPages');
+const StatusPage = lazyNamed(publicPages, 'StatusPage');
+const TermsPage = lazyNamed(publicPages, 'TermsPage');
+const PrivacyPage = lazyNamed(publicPages, 'PrivacyPage');
+const GuidelinesPage = lazyNamed(publicPages, 'GuidelinesPage');
+const ChangelogPage = lazyNamed(publicPages, 'ChangelogPage');
+const PublicDiscovery = lazyNamed(publicPages, 'PublicDiscovery');
+
+function Splash({ label }: { label?: string }) {
+  return (
+    <div className="splash">
+      <Logo size={56} />
+      <div className="spinner" />
+      {label && <p className="muted small">{label}</p>}
+    </div>
+  );
+}
+
+/** Shows the splash while a lazily loaded screen downloads. */
+function Load({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<Splash />}>{children}</Suspense>;
+}
+
 
 export default function App() {
   const status = sessionStore.use((s) => s.status);
@@ -26,26 +57,20 @@ export default function App() {
   const needsOnboarding = sessionStore.use((s) => s.me?.onboarded === false);
   useEffect(() => {
     if (configured) initSession();
-    // a Steam "Connect" landed us back here with ?steam=1: verify + link
-    void handleSteamRedirect().then((msg) => {
-      if (!msg) return;
-      if (msg.startsWith('Steam link failed')) alert(msg);
-      else openSettings('connections');
-    });
-    void handleSpotifyRedirect().then((msg) => {
-      if (!msg) return;
-      if (msg.startsWith('Spotify link failed')) alert(msg);
-      else openSettings('connections');
-    });
-    void handleYouTubeRedirect().then((msg) => {
-      if (!msg) return;
-      if (msg.startsWith('YouTube link failed')) alert(msg);
-      else openSettings('connections');
-    });
-    void handleTikTokRedirect().then((msg) => {
-      if (!msg) return;
-      if (msg.startsWith('TikTok link failed')) alert(msg);
-      else openSettings('connections');
+    // Back from a Steam / Spotify / YouTube / TikTok "Connect" (?steam=1 or an OAuth
+    // ?code=...): verify + link. The handlers only load when such a return happens.
+    const sp = new URLSearchParams(window.location.search);
+    if (!sp.has('steam') && !sp.has('code')) return;
+    void import('./lib/connections').then(({ handleSteamRedirect, handleSpotifyRedirect, handleYouTubeRedirect, handleTikTokRedirect }) => {
+      const report = (service: string) => (msg: string | null) => {
+        if (!msg) return;
+        if (msg.startsWith(`${service} link failed`)) alert(msg);
+        else openSettings('connections');
+      };
+      void handleSteamRedirect().then(report('Steam'));
+      void handleSpotifyRedirect().then(report('Spotify'));
+      void handleYouTubeRedirect().then(report('YouTube'));
+      void handleTikTokRedirect().then(report('TikTok'));
     });
   }, []);
   useEffect(() => {
@@ -60,8 +85,10 @@ export default function App() {
         const r = await fetch('/api/vdl?r=version', { cache: 'no-store' });
         const j = await r.json();
         const latest = j?.android?.version;
-        const current = '1.0.3';
-        if (latest && latest !== current) {
+        // VERSION is baked into this build, i.e. the version of the installed APK.
+        // (It used to be hard-coded to '1.0.3', so every newer install was told to
+        // update to the version it already had.)
+        if (typeof latest === 'string' && compareVersions(latest, VERSION) > 0) {
           // eslint-disable-next-line no-alert
           if (confirm(`A new version (${latest}) is available. Download now?`)) {
             window.location.href = j.android.url;
@@ -75,7 +102,9 @@ export default function App() {
   if (window.location.hostname.toLowerCase().startsWith('privacy.')) {
     return (
       <>
-        <PrivacyPage />
+        <Load>
+          <PrivacyPage />
+        </Load>
         <DialogHost />
         <ContextMenuHost />
       </>
@@ -84,7 +113,9 @@ export default function App() {
   if (window.location.hostname.toLowerCase().startsWith('tos.')) {
     return (
       <>
-        <TermsPage />
+        <Load>
+          <TermsPage />
+        </Load>
         <DialogHost />
         <ContextMenuHost />
       </>
@@ -93,7 +124,9 @@ export default function App() {
   if (route.kind === 'page')
     return (
       <>
-        <PublicRoute route={route} />
+        <Load>
+          <PublicRoute route={route} />
+        </Load>
         <DialogHost />
         <ContextMenuHost />
       </>
@@ -102,7 +135,9 @@ export default function App() {
   if (route.kind === 'storage') {
     return (
       <>
-        <StorageConsole />
+        <Load>
+          <StorageConsole />
+        </Load>
         <DialogHost />
         <ContextMenuHost />
       </>
@@ -110,17 +145,14 @@ export default function App() {
   }
   if (!configured) return <NotConfigured />;
   // invite links work signed in or out
-  if (route.kind === 'invite' && (status === 'signed-out' || (status === 'ready' && hasProfile && !needsOnboarding))) return <InvitePage code={route.code} />;
-  // /callback handles Spotify (and future) OAuth returns.
-  if (route.kind === 'callback') {
+  if (route.kind === 'invite' && (status === 'signed-out' || (status === 'ready' && hasProfile && !needsOnboarding)))
     return (
-      <div className="splash">
-        <Logo size={56} />
-        <div className="spinner" />
-        <p className="muted small">Connecting…</p>
-      </div>
+      <Load>
+        <InvitePage code={route.code} />
+      </Load>
     );
-  }
+  // /callback handles Spotify (and future) OAuth returns.
+  if (route.kind === 'callback') return <Splash label="Connecting…" />;
   // venband.com shows the landing page even when you're signed in; open the
   // app from the "Open Venband" button instead of landing straight in your DMs.
   if (route.kind === 'root' && status === 'ready' && hasProfile) {
@@ -128,12 +160,7 @@ export default function App() {
   }
   switch (status) {
     case 'loading':
-      return (
-        <div className="splash">
-          <Logo size={56} />
-          <div className="spinner" />
-        </div>
-      );
+      return <Splash />;
     case 'signed-out':
       return (
         <>
@@ -153,7 +180,7 @@ export default function App() {
       return <SetupErrorScreen />;
     case 'ready':
       if (!hasProfile) return <SetupErrorScreen />;
-      return needsOnboarding ? <Onboarding /> : <Shell />;
+      return <Load>{needsOnboarding ? <Onboarding /> : <Shell />}</Load>;
   }
 }
 

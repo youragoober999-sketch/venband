@@ -201,3 +201,40 @@ into a throwaway Postgres (PGlite) with `tests/db/supabase_stub.sql`.
 `20261105010000_schema_check.sql`, then `20261105020000_lock_down_internal.sql`
 — plus `20261105000000_backfill_profiles.sql` if not done yet. The lock-down only
 changes permissions, so `/status` cannot detect whether it has been run.
+
+## 9. Phase B — performance (done 2026-11-06)
+
+Measured on production builds (`vite build`, source maps attributed per file).
+
+| What a homepage visitor downloads | Before | After |
+|---|---|---|
+| JavaScript (incl. the MP3 encoder) | 2,069 KB raw / 576 KB gzip | **594 KB raw / 178 KB gzip (−71% / −69%)** |
+| Signed-in app at startup | 1,536 KB + 533 KB encoder | 1,106 KB raw / 326 KB gzip |
+
+* **`public/lame.all.js` (533 KB) was a render-blocking `<script>` on every page**
+  — it's only for encoding voice messages. It now loads when recording starts
+  (`src/lib/voicerec.ts`); WebM remains the fallback. Verified under the site's
+  CSP: loads, and encodes valid MP3 frames (`FF FB` sync).
+* **Route-level code splitting** (`src/App.tsx`): the signed-in app (`Shell`),
+  onboarding, invites, the storage console, the developer portal, Voogle,
+  download and all public pages are lazy chunks behind a splash screen. The
+  first load is React + Supabase + session + homepage/sign-in only.
+* **highlight.js (171 KB) loads only when code is shown**: `src/lib/useHighlight.ts`
+  renders escaped plain text, then colours it; metadata moved to
+  `src/lib/codeLanguages.ts` so menus don't pull the highlighter in.
+* Social-login return handlers (`src/lib/connections.ts`) load only on a
+  `?steam` / `?code` return.
+* Dead dynamic imports: `gifenc` (made static — it was already in the same chunk);
+  `supabase` / `directory` dynamic imports are now effective. `session` ↔
+  `presence` is left as-is on purpose: it breaks a circular import.
+* **Bug fixed on the way:** the Android update check hard-coded the installed
+  version as `'1.0.3'`, so every newer install was told to "update" to the version
+  it already had. Now compares against the build's real version
+  (`compareVersions`, unit-tested in `tests/version.test.ts`).
+
+Verification: production preview — homepage loads exactly 5 JS files; `/status`,
+`/download`, `/bots`, `/voogle`, `/changelog`, `/privacy`, `/discovery`, `/storage`
+and a 404 each render and load only their chunk; `Shell`, `Onboarding`, `Invite`,
+`highlight`, `connections`, `translate` chunks all evaluate without errors (no
+circular-import breakage); no console errors. The signed-in app itself could not
+be clicked through (no test account).

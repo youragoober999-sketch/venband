@@ -1,4 +1,25 @@
 // Voice message recorder: records audio, shows live waveform, exports MP3.
+
+// The MP3 encoder (public/lame.all.js, ~530 KB) used to be a <script> in index.html,
+// so every visitor downloaded it. It now loads when someone starts recording.
+let lameLoading: Promise<void> | null = null;
+function loadMp3Encoder(): Promise<void> {
+  if ((window as any).lamejs) return Promise.resolve();
+  lameLoading ??= new Promise<void>((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = `${import.meta.env.BASE_URL}lame.all.js`;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => {
+      lameLoading = null; // allow a retry next time
+      s.remove();
+      reject(new Error('MP3 encoder failed to load'));
+    };
+    document.head.appendChild(s);
+  });
+  return lameLoading;
+}
+
 export interface VoiceRecorder {
   start: () => Promise<void>;
   stop: () => Promise<File>;
@@ -18,6 +39,7 @@ export function createVoiceRecorder(onLevel?: (level: number) => void): VoiceRec
   let levels: number[] = [];
 
   async function start() {
+    void loadMp3Encoder().catch(() => {}); // fetch while recording; WebM is the fallback
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     audioCtx = new AudioContext();
     const src = audioCtx.createMediaStreamSource(stream);
@@ -57,6 +79,7 @@ export function createVoiceRecorder(onLevel?: (level: number) => void): VoiceRec
           const audioBuffer = await ctx.decodeAudioData(ab);
           const pcm = audioBuffer.getChannelData(0);
           const sampleRate = audioBuffer.sampleRate;
+          await loadMp3Encoder();
           const lame = (window as any).lamejs;
           const Encoder = lame?.Mp3Encoder;
           if (!Encoder) throw new Error('no encoder');

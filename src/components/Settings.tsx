@@ -10,7 +10,7 @@ import { BUILT_IN_THEMES, sanitizeTheme, THEME_KEYS, type Theme } from '../lib/t
 import { describeAgent, listDevices, revokeDevice, type Device } from '../lib/devices';
 import { setRelation, socialStore } from '../lib/social';
 import { LANGUAGES, deviceTranslationSupported } from '../lib/translate';
-import { CODE_THEMES } from '../lib/highlight';
+import { CODE_THEMES } from '../lib/codeLanguages';
 import { PHRASEBOOK_LANGS, PHRASEBOOK_SIZE } from '../lib/phrasebook';
 import type { AvatarFrame, NameEffect, NameFont, PresenceStatus, Profile, Server } from '../lib/types';
 import { Avatar, ColorPicker, Field, Icon, nameplateVars, StyledName } from './ui';

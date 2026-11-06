@@ -4,7 +4,9 @@ import { isRiskyFile } from '../lib/metadata';
 import { askConfirm } from './Dialogs';
 import type { Attachment } from '../lib/crypto';
 import { CODE_LANGS, downloadDecrypted, extOf, fileIcon, fileKind, saveDecrypted } from '../lib/files';
-import { highlight, LANGUAGE_OPTIONS } from '../lib/highlight';
+import { LANGUAGE_OPTIONS } from '../lib/codeLanguages';
+import { useHighlight } from '../lib/useHighlight';
+import { imagesToGif } from '../lib/gifenc';
 import { errorMessage } from '../lib/supabase';
 import { copyText, openMenu } from './ContextMenu';
 import { Icon, Modal } from './ui';
@@ -169,7 +171,6 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
             if (!blob) { await load(); }
             const b = blob || (await (async () => { const r = await fetch(url!); return r.blob(); })());
             const file = new File([b], a.name, { type: b.type || 'image/png' });
-            const { imagesToGif } = await import('../lib/gifenc');
             const gif = await imagesToGif([file], { delayMs: 500 });
             const u = URL.createObjectURL(gif);
             const a2 = document.createElement('a'); a2.href = u; a2.download = a.name.replace(/\\.[^.]+$/, '') + '.gif'; a2.click();
@@ -272,7 +273,7 @@ function CodeAttachment({ a }: { a: Attachment }) {
   }, [blob]);
   const lines = useMemo(() => (text ?? '').split('\n'), [text]);
   const preview = lines.slice(0, PREVIEW_LINES).join('\n');
-  const html = useMemo(() => (text === null ? '' : highlight(preview, lang)), [preview, lang, text]);
+  const html = useHighlight(text === null ? '' : preview, lang);
 
   if (error) return <FileCard a={a}><div className="small danger-text">{error}</div></FileCard>;
   if (text === null)
@@ -315,7 +316,7 @@ function CodeAttachment({ a }: { a: Attachment }) {
 }
 
 function CodeViewer({ name, text, lang, setLang, a, onClose }: { name: string; text: string; lang: string; setLang: (l: string) => void; a: Attachment; onClose: () => void }) {
-  const html = useMemo(() => highlight(text, lang), [text, lang]);
+  const html = useHighlight(text, lang);
   const count = useMemo(() => text.split('\n').length, [text]);
   return (
     <Modal

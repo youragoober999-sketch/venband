@@ -4,8 +4,9 @@
 //   [masked](https://links), <https://no-embed>, <@user> <@&role> <#channel> @everyone @here
 import { guardLink } from './GlobalModals';
 import { sanitizeHtml } from '../lib/sanitize';
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { highlightAuto, languageLabel } from '../lib/highlight';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { languageLabel } from '../lib/codeLanguages';
+import { useHighlightAuto } from '../lib/useHighlight';
 import { copyText, openMenu } from './ContextMenu';
 import { EXPRESSION_TOKEN, expressionStore, noteUnknownExpression } from '../lib/expressions';
 import { isOurAsset } from '../lib/soundboard';
@@ -34,7 +35,7 @@ export function mentionsMe(text: string, myId: string, myRoleIds: string[] = [],
 
 /** A ``` block: coloured like a code editor, with the language and a copy button. */
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
-  const { html, language } = useMemo(() => highlightAuto(code, lang), [code, lang]);
+  const { html, language } = useHighlightAuto(code, lang);
   const [copied, setCopied] = useState(false);
   return (
     <div className="md-codeblock-wrap">
