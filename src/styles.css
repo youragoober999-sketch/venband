@@ -3108,3 +3108,9 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .recent-row { display: flex; align-items: center; gap: 10px; }
 .recent-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--text-2); }
 .recent-meta span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ---- "Start from" template chips in Create a server */
+.template-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+.template-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 99px; font-size: 13px; font-weight: 600; background: var(--bg-2); border: 1px solid var(--line-2); color: var(--text-2); }
+.template-chip:hover { background: var(--bg-3); color: var(--text); }
+.template-chip.selected { border-color: var(--accent); color: var(--text); box-shadow: 0 0 0 1px var(--accent); }

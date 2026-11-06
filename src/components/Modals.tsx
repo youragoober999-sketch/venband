@@ -25,10 +25,21 @@ import { InviteFriendsList } from './Invite';
 import { inviteCodeFrom, inviteUrl } from '../lib/dmSend';
 import { OwnerCrown } from './Badges';
 import { PERMISSION_GROUPS, PERMISSION_INFO } from '../lib/permissions';
+import { CommunityTemplatePicker } from './ServerTemplates';
 
 // ------------------------------------------------------ create/join server --
 
 const DEFAULT_SERVER_TEMPLATE = 'default';
+
+export const SERVER_TEMPLATES = [
+  { id: 'default', emoji: '✨', name: 'Start from scratch', desc: 'A welcome channel, a chat and a voice channel.' },
+  { id: 'gaming', emoji: '🎮', name: 'Gaming', desc: 'LFG, clips, guides forum, voice lobbies and a tournament stage.' },
+  { id: 'friends', emoji: '🫶', name: 'Friends', desc: 'General, memes, photos, plans and a hangout call.' },
+  { id: 'hangout', emoji: '🛋️', name: 'Hangout Server', desc: 'Introductions, music, pets, food and chill voice rooms.' },
+  { id: 'school', emoji: '🎒', name: 'School Club', desc: 'Announcements, homework help, resources, Q&A forum, meeting stage.' },
+  { id: 'community', emoji: '🏘️', name: 'Local Community', desc: 'Local news, events, marketplace, suggestions and a town hall.' },
+  { id: 'creators', emoji: '🎨', name: 'Artists & Creators', desc: 'Showcase, work-in-progress, feedback forum, commissions, live workshop.' },
+] as const;
 
 const DISCOVERY_CATEGORIES = [
   'Gaming',
@@ -94,12 +105,18 @@ async function uploadServerPicture(
 
 export function CreateJoinModal({
   onClose,
+  initialTemplate,
 }: {
   onClose: () => void;
+  /** a shared template's code (venband.com/template/CODE) */
   initialTemplate?: string;
 }) {
   const [tab, setTab] = useState<'create' | 'join'>('create');
   const [step, setStep] = useState(0);
+  // built-in layout, or a shared template's code instead
+  const [template, setTemplate] = useState<string>(DEFAULT_SERVER_TEMPLATE);
+  const [communityCode, setCommunityCode] = useState<string | null>(initialTemplate ?? null);
+  const [showCommunity, setShowCommunity] = useState(Boolean(initialTemplate));
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -210,11 +227,17 @@ export function CreateJoinModal({
     setError(null);
 
     try {
-      const result = await supabase.rpc('create_server', {
-        p_name: serverName,
-        p_icon_color: color,
-        p_template: DEFAULT_SERVER_TEMPLATE,
-      });
+      const result = communityCode
+        ? await supabase.rpc('create_server_from_template', {
+            p_code: communityCode,
+            p_name: serverName,
+            p_icon_color: color,
+          })
+        : await supabase.rpc('create_server', {
+            p_name: serverName,
+            p_icon_color: color,
+            p_template: template,
+          });
 
       if (result.error) throw result.error;
 
@@ -402,6 +425,37 @@ export function CreateJoinModal({
 
           {step === 0 && (
             <>
+              <div className="field-label">Start from</div>
+              <div className="template-chips" role="radiogroup" aria-label="Template">
+                {SERVER_TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={!communityCode && template === t.id}
+                    className={`template-chip${!communityCode && template === t.id ? ' selected' : ''}`}
+                    title={t.desc}
+                    onClick={() => {
+                      setTemplate(t.id);
+                      setCommunityCode(null);
+                    }}
+                  >
+                    <span aria-hidden>{t.emoji}</span> {t.name}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={`template-chip${communityCode ? ' selected' : ''}`}
+                  aria-expanded={showCommunity}
+                  onClick={() => setShowCommunity((v) => !v)}
+                >
+                  <Icon name="link" size={13} /> Shared template…
+                </button>
+              </div>
+              {showCommunity && (
+                <CommunityTemplatePicker selected={communityCode} onSelect={setCommunityCode} initialCode={initialTemplate} />
+              )}
+
               <h2>Personalize your server</h2>
 
               <p className="muted">
