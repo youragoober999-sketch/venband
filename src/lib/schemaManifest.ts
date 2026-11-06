@@ -621,5 +621,28 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     "bodies": {
       "install_theme": "2399b62cdcaec1e7536341cefcd11ffd"
     }
+  },
+  {
+    "migration": "20261106010000_official_notifications.sql",
+    "tables": [
+      "notifications"
+    ],
+    "functions": [
+      "guard_bot_display_name",
+      "guard_official_app",
+      "mark_notifications_read",
+      "notify",
+      "notify_account_restored",
+      "notify_auth_change",
+      "notify_marketplace_status",
+      "notify_mfa_change",
+      "notify_new_signin",
+      "notify_report_handled",
+      "official_dm"
+    ],
+    "bodies": {
+      "revoke_device": "6c4d072cec081644e1a9306e53f009ad",
+      "venband_notice": "a0e355c711d2e943f943901cc4279aa3"
+    }
   }
 ];

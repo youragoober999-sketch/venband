@@ -264,7 +264,8 @@ function AppList() {
 }
 
 function defaultName(p: Preset) {
-  return { verification: 'Gatekeeper', management: 'Helper', site: 'Site Updates', wordle: 'Wordle', venband: 'Venband', custom: 'My Bot' }[p];
+  // "Venband" / "Official" are reserved for the real Venband account
+  return { verification: 'Gatekeeper', management: 'Helper', site: 'Site Updates', wordle: 'Wordle', venband: 'Mod Toolkit', custom: 'My Bot' }[p];
 }
 
 // ----------------------------------------------------------- dashboard ----

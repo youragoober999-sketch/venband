@@ -49,6 +49,7 @@ import { CategorySettingsModal, ChannelSettingsModal, CreateChannelModal, Create
 import { ServerSettingsModal } from './ServerSettings';
 import { ContextMenuHost, copyText, openMenu, type Entry } from './ContextMenu';
 import { DialogHost, askConfirm, askText } from './Dialogs';
+import { NotificationBell } from './NotificationCenter';
 import { ProfileHost, ServerTag, openProfile, userMenu } from './People';
 import { Badges, OwnerCrown, RoleIcon, ServerBadge, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
@@ -1810,6 +1811,7 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
         <button className={`icon-btn${call?.deafened ? ' danger-text' : ''}`} onClick={() => call?.toggleDeafen()} disabled={!call} title={call?.deafened ? 'Undeafen' : 'Deafen'}>
           <Icon name={call?.deafened ? 'headphonesOff' : 'headphones'} size={18} />
         </button>
+        <NotificationBell />
         <button className="icon-btn" onClick={() => openSettings('account')} title="User settings">
           <Icon name="settings" size={18} />
         </button>

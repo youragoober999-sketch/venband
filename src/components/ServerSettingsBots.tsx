@@ -5,7 +5,7 @@ import { displayName, loadProfiles } from '../lib/directory';
 import { has, P } from '../lib/permissions';
 import { go } from '../lib/router';
 import type { ServerData } from '../hooks/data';
-import { APP_COLUMNS, PRESETS, useServerBots, type Application, type Preset } from '../lib/bots';
+import { APP_COLUMNS, isOfficialApp, PRESETS, useServerBots, type Application, type Preset } from '../lib/bots';
 import { isTopStaff, sessionStore } from '../lib/session';
 import type { VoogleSettings } from '../lib/voogle';
 import { BotInstallSettings, PresetLogo } from './Apps';
@@ -144,10 +144,10 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
                 return <p className="muted small">No apps match “{q}”. Try another search or filter.</p>;
               return filtered.map((a) => (
                 <div key={a.id} className="integration-row">
-                  {a.preset ? <PresetLogo preset={a.preset} color={a.color} size={36} /> : <Icon name="bot" />}
+                  {a.preset && (a.preset !== 'venband' || isOfficialApp(a)) ? <PresetLogo preset={a.preset} color={a.color} size={36} /> : <Icon name={a.preset === 'venband' ? 'shield' : 'bot'} />}
                   <div className="grow">
                     <b>
-                      {a.name} {a.preset === 'venband' && <span className="tag-soft accent">Official</span>}
+                      {a.name} {isOfficialApp(a) ? <span className="tag-soft accent">Official</span> : a.preset === 'venband' ? <span className="tag-soft">Mod toolkit</span> : null}
                     </b>
                     <div className="small muted">
                       {PRESETS.find((p) => p.id === a.preset)?.name} · in {a.installs} server{a.installs === 1 ? '' : 's'}

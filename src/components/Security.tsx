@@ -8,6 +8,7 @@ import { safeFileName } from '../lib/files';
 import { openSettings } from '../lib/ui';
 import { askConfirm } from './Dialogs';
 import { Field, Icon } from './ui';
+import { OfficialNotices } from './NotificationCenter';
 
 interface Factor {
   id: string;
@@ -71,6 +72,8 @@ export function SecurityTab() {
           ))}
         </ul>
       </section>
+
+      <OfficialNotices />
 
       <section className="settings-section">
         <h3>Two-factor sign-in</h3>

@@ -294,3 +294,55 @@ Verification:
 
 Not done in C: ratings/reviews and reporting themes (needs the reports system to
 accept a new target type — planned with Phase F), creator profile pages.
+
+## 11. Phase D — official notifications and security alerts (done 2026-11-06)
+
+Migration `20261106010000_official_notifications.sql`:
+
+* **`public.notifications`** — the notification center. Rows are created only by
+  the database; the API can read your own and mark them read (`read_at` is the
+  only writable column, via `mark_notifications_read`), never insert, edit or
+  delete. Live updates via Realtime. Deleting the Venband DM doesn't remove them.
+* **`notify()`** (internal, not API-callable): writes the notification, optionally
+  the official DM; deduplicates per event; caps official DMs at 10/hour/person
+  (notifications are always kept); actions are a fixed allow-list of in-app
+  destinations — a notification can never carry its own link.
+* **Real events**: new sign-in (`device_sessions` insert; the signup's first
+  device excluded), device signed out (`revoke_device`), password changed/reset
+  and email changed (`auth.users` trigger), two-factor on/off (`auth.mfa_factors`
+  trigger), account limited/restricted/banned (`venband_notice`, now via
+  `notify`), restrictions lifted (profile status trigger), marketplace item
+  removed/restored, report reviewed (reporter told the outcome; the reported
+  person is not told who reported). Auth-schema triggers are created only if the
+  project allows them, and can never block a password/email change.
+* **Official DMs no longer require a staff caller** (`official_dm`), so system
+  events can send them.
+* **Impersonation (fixed):** bots of the open "Venband" moderation-toolkit preset
+  were shown with an **Official** tag and Venband's logo, and its default name was
+  literally "Venband"; any bot/webhook could post as "Venband"/"Official".
+  Now: only the system account may name an app "Venband"/"Official"; reserved
+  display names from other bots are dropped; the app decides "official" from the
+  app's **owner** (`isOfficialApp`), never a name or preset; toolkit bots get
+  their own icon and a "Mod toolkit" label; default name "Mod Toolkit".
+
+App: bell with unread count in the top bar; notification center (filters,
+search, mark read / all read, details, safe action buttons, "Venband never asks
+for your password" footer); **Settings → Security → Official notices** lists
+every real security/account notice so a fake "official" message can be checked;
+official DMs render with an OFFICIAL badge and accent.
+
+Verification: `tests/db/notification_test.sql` (new, in `run.sh`) — sign-in alert
++ DM, no duplicate on re-register, none for the signup, sign-out alert, password /
+email / 2FA alerts (critical + DM), a failing notification can't block a
+password change, restriction + restoration notices with reasons, marketplace
+removal, report outcome to the reporter only, users can't insert/edit/delete
+notifications or call `notify`/`official_dm`, mark-all-read, reserved app names
+rejected (toolkit preset still allowed), reserved display name dropped,
+dedupe, DM cap, bad action ids rejected. All database suites pass together.
+UI checked on a temporary local page (removed): badge count, read-on-open,
+category filter, unknown action id not rendered, layout.
+
+Limits: the auth-schema triggers are skipped (with a notice) if Supabase refuses
+them on a project — then password/email/2FA alerts don't fire, the rest does.
+Passkey add/remove alerts and "new login location" detection beyond the device's
+self-reported location are not implemented. Appeals arrive with Phase F.

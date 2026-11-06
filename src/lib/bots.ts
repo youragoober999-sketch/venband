@@ -6,6 +6,14 @@ import { supabase } from './supabase';
 
 export type Preset = 'custom' | 'verification' | 'management' | 'site' | 'wordle' | 'venband';
 
+/** The fixed system account behind official Venband messages. */
+export const VENBAND_SYSTEM_ID = '3fff0000-0000-4000-8000-0000000000bd';
+/**
+ * Official = owned by the system account (server data). Never decide this from a
+ * name or the 'venband' preset — anyone can add the Venband moderation toolkit.
+ */
+export const isOfficialApp = (a?: Pick<Application, 'owner_id'> | null) => Boolean(a && a.owner_id === VENBAND_SYSTEM_ID);
+
 export interface Application {
   id: string;
   owner_id: string;

@@ -2865,3 +2865,39 @@ html.user-bg .rail, html.user-bg .sidebar, html.user-bg .members, html.user-bg .
 .market-filters { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
 @media (max-width: 640px) { .studio-item-main { flex-direction: column; } .studio-item-swatch { width: 100%; } }
+
+/* ---- notification center ---- */
+.notif-bell { position: relative; }
+.notif-bell.active { background: var(--bg-3); color: var(--text); }
+.notif-count { position: absolute; top: 1px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 800; line-height: 16px; text-align: center; box-shadow: 0 0 0 2px var(--bg-1); pointer-events: none; }
+.notif-panel { position: fixed; top: 60px; right: 12px; z-index: 900; width: min(420px, calc(100vw - 24px)); max-height: min(640px, calc(100dvh - 80px)); display: flex; flex-direction: column; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: 0 24px 60px #000a; animation: fade-up .18s var(--ease) both; overflow: hidden; }
+.notif-panel-head { display: flex; align-items: center; gap: 6px; padding: 12px 12px 6px 16px; }
+.notif-panel-head h3 { margin: 0 auto 0 0; font-size: 16px; }
+.notif-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 8px; }
+.notif-search { margin: 0 16px 8px; width: auto; }
+.notif-list { list-style: none; margin: 0; padding: 0 8px 8px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.notif-list.flat { padding: 0; max-height: 420px; }
+.notif-empty { padding: 28px 12px; text-align: center; display: grid; place-items: center; }
+.notif-item { border-radius: 10px; }
+.notif-item.open { background: var(--bg-2); }
+.notif-head { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 10px; border: 0; background: none; color: inherit; text-align: left; border-radius: 10px; cursor: pointer; font: inherit; }
+.notif-head:hover { background: var(--bg-2); }
+.notif-icon { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--bg-3); color: var(--text-2); }
+.notif-item.sev-warning .notif-icon { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+.notif-item.sev-critical .notif-icon { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+.notif-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.notif-title { font-weight: 600; font-size: 14px; line-height: 1.3; }
+.notif-item:not(.unread) .notif-title { font-weight: 500; color: var(--text-2); }
+.notif-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.notif-sev { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--danger); }
+.notif-dot { width: 8px; height: 8px; margin-top: 6px; flex: none; border-radius: 50%; background: var(--accent); }
+.notif-body { padding: 0 12px 12px 52px; font-size: 13.5px; line-height: 1.5; color: var(--text-2); }
+.notif-body p { margin: 0 0 8px; }
+.notif-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.notif-foot { display: flex; align-items: center; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--line); }
+
+/* ---- official Venband messages ---- */
+.official-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 800; letter-spacing: .05em; padding: 1px 6px; border-radius: 4px; vertical-align: middle; margin-left: 4px; line-height: 1.5; color: #fff; background: linear-gradient(135deg, #5865f2, #8b5cf6); box-shadow: 0 0 0 1px #ffffff2e inset; }
+.official-message { position: relative; }
+.official-message::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 3px; background: linear-gradient(#5865f2, #8b5cf6); }
+@media (max-width: 520px) { .notif-panel { top: 56px; right: 8px; width: calc(100vw - 16px); } }

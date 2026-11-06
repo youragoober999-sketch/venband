@@ -36,7 +36,7 @@ import { Composer, useTyping, type Mentionables, type PendingFile, type SendOpti
 import { EditHistoryModal, PollView, QuickReactBar, quickReactionSet, Reactions, ThreadSummary } from './MessageParts';
 import { EmojiPicker } from './EmojiPicker';
 import { toggleReaction } from '../lib/chatExtras';
-import { useApps, useBotMessages, useDmBot, useDmCommands, useServerCommands, type Application, type BotMessage } from '../lib/bots';
+import { isOfficialApp, useApps, useBotMessages, useDmBot, useDmCommands, useServerCommands, type Application, type BotMessage } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
 
 interface JoinEvent {
@@ -1591,9 +1591,11 @@ function ForwardModal({ m, onClose }: { m: DecryptedMessage; onClose: () => void
 
 /** A bot's post: plain text (not end-to-end encrypted) with an optional embed. */
 function BotMessageItem({ b, app, ctx, canManage }: { b: BotMessage; app?: Application; ctx: MentionContext; canManage: boolean }) {
+  // official = sent by the system account's app (server data), never a name
+  const official = isOfficialApp(app);
   return (
     <div
-      className="message bot-message"
+      className={`message bot-message${official ? ' official-message' : ''}`}
       onContextMenu={(e) =>
         openMenu(e, [
           { type: 'header', label: app?.name ?? 'Bot' },
@@ -1602,11 +1604,23 @@ function BotMessageItem({ b, app, ctx, canManage }: { b: BotMessage; app?: Appli
         ])
       }
     >
-      <span className="bot-avatar">{app ? <PresetLogo preset={app.preset} color={app.color} size={40} /> : <Icon name="bot" size={22} />}</span>
+      <span className="bot-avatar">
+        {app && (app.preset !== 'venband' || official) ? (
+          <PresetLogo preset={app.preset} color={app.color} size={40} />
+        ) : (
+          <Icon name={app?.preset === 'venband' ? 'shield' : 'bot'} size={22} />
+        )}
+      </span>
       <div className="message-body">
         <div className="message-head">
-          <span className="author">{b.username ?? app?.name ?? 'Bot'}</span>
-          <BotTag />
+          <span className="author">{official ? 'Venband' : b.username ?? app?.name ?? 'Bot'}</span>
+          {official ? (
+            <span className="official-tag" title="Official message from Venband. Every official notice is also listed in Settings → Security.">
+              <Icon name="check" size={10} /> OFFICIAL
+            </span>
+          ) : (
+            <BotTag />
+          )}
           <time dateTime={b.created_at}>{friendlyTime(new Date(b.created_at))}</time>
           <span className="bot-plain" title="Bots can’t use end-to-end encryption, so this message is stored as plain text.">
             <Icon name="unlock" size={12} />
