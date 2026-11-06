@@ -3080,3 +3080,4 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .sound-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 4px 12px; }
 .sound-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; font-size: 13.5px; }
 .sound-row:hover { background: var(--bg-hover); }
+.preset-logo.app-picture { border-radius: 28%; object-fit: cover; flex: none; background: var(--bg-3); }

@@ -1608,7 +1608,7 @@ function BotMessageItem({ b, app, ctx, canManage }: { b: BotMessage; app?: Appli
     >
       <span className="bot-avatar">
         {app && (app.preset !== 'venband' || official) ? (
-          <PresetLogo preset={app.preset} color={app.color} size={40} />
+          <PresetLogo preset={app.preset} color={app.color} size={40} src={app.icon_url} />
         ) : (
           <Icon name={app?.preset === 'venband' ? 'shield' : 'bot'} size={22} />
         )}

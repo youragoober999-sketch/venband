@@ -23,7 +23,9 @@ const PRESET_ART: Record<Preset, { from: string; to: string; path: string }> = {
 };
 
 /** Each preset has its own logo; custom bots use their color. */
-export function PresetLogo({ preset, color, size = 40 }: { preset: Preset; color?: string; size?: number }) {
+export function PresetLogo({ preset, color, size = 40, src }: { preset: Preset; color?: string; size?: number; src?: string | null }) {
+  // the app's own picture, when it has one (built-in bots, uploaded avatars)
+  if (src) return <img className="preset-logo app-picture" src={src} width={size} height={size} alt="" draggable={false} />;
   const art = PRESET_ART[preset] ?? PRESET_ART.custom;
   const id = `pl-${preset}-${(color ?? '').replace('#', '')}`;
   return (
@@ -248,7 +250,7 @@ function AppList() {
               go(`bots/${a.id}`);
             }}
           >
-            <PresetLogo preset={a.preset} color={a.color} />
+            <PresetLogo preset={a.preset} color={a.color} src={a.icon_url} />
             <div className="grow">
               <b>{a.name}</b>
               <div className="small muted">{PRESETS.find((p) => p.id === a.preset)?.name}</div>
@@ -342,7 +344,7 @@ function AppDashboard({ id }: { id: string }) {
           ← All applications
         </button>
         <div className="dash-side-bot">
-          <PresetLogo preset={app.preset} color={app.color} size={44} />
+          <PresetLogo preset={app.preset} color={app.color} size={44} src={app.icon_url} />
           <div className="grow">
             <b className="ellipsis">{app.name}</b>
             <div className="small muted">{preset.name}</div>
@@ -427,7 +429,7 @@ function GeneralTab({ app, canEdit, onSaved, isOwner }: { app: Application; canE
               <img className="bot-pfp" src={app.icon_url} alt="" />
             ) : (
               <div className="bot-pfp">
-                <PresetLogo preset={app.preset} color={color} size={64} />
+                <PresetLogo preset={app.preset} color={color} size={64} src={app.icon_url} />
               </div>
             )}
             {canEdit && (

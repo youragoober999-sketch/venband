@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 import { createStore } from '../lib/store';
 import { supabase } from '../lib/supabase';
 import { LOGO_PATH, LOGO_VIEWBOX } from './logoPath';
@@ -92,11 +92,50 @@ export function useAllBadges(): BadgeDef[] {
 
 export const badgeDef = (id: string) => BADGES.find((b) => b.id === id) ?? customBadgeStore.get().list.find((b) => b.id === id);
 
+// -------------------------------------------------------------------- seal --
+/** A smooth scalloped seal (10 soft bumps) centred in a 24×24 box. */
+function sealPath(bumps = 10, outer = 11, inner = 9.55): string {
+  const pts: string[] = [];
+  for (let i = 0; i < bumps; i++) {
+    const a0 = (i / bumps) * Math.PI * 2 - Math.PI / 2;
+    const a1 = ((i + 0.5) / bumps) * Math.PI * 2 - Math.PI / 2;
+    const a2 = ((i + 1) / bumps) * Math.PI * 2 - Math.PI / 2;
+    const p = (a: number, r: number) => `${(12 + Math.cos(a) * r).toFixed(2)} ${(12 + Math.sin(a) * r).toFixed(2)}`;
+    if (i === 0) pts.push(`M${p(a0, inner)}`);
+    // each bump: a curve out to the tip and back in
+    pts.push(`Q${p((a0 + a1) / 2, outer * 1.02)} ${p(a1, outer)}`, `Q${p((a1 + a2) / 2, outer * 1.02)} ${p(a2, inner)}`);
+  }
+  return pts.join(' ') + 'Z';
+}
+const SEAL = sealPath();
+const SEAL_COLORS: Record<string, [string, string, string]> = {
+  verified: ['#3ea6ff', '#0a6cff', '#0450c8'],
+  verified_server: ['#4ade80', '#16a34a', '#0f7a35'],
+  verified_bot: ['#8f9bff', '#5865f2', '#3c46c4'],
+};
+export function SealIcon({ size = 16, kind = 'verified' }: { size?: number; kind?: string }) {
+  const gid = useId().replace(/:/g, '');
+  const [hi, mid, rim] = SEAL_COLORS[kind] ?? SEAL_COLORS.verified;
+  return (
+    <svg className="badge-icon seal" width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <defs>
+        <linearGradient id={`${gid}s`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={hi} />
+          <stop offset="1" stopColor={mid} />
+        </linearGradient>
+      </defs>
+      <path d={SEAL} fill={`url(#${gid}s)`} stroke={rim} strokeWidth="0.9" strokeLinejoin="round" />
+      <path d="M7.4 12.4 10.5 15.4 16.7 9.1" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // ------------------------------------------------------------------ artwork --
 // Simple and readable at 14 px: every built-in badge is one flat rounded tile in
 // the badge's colour with a bold white symbol. Legendary badges get a thin gold
 // edge; that's the only decoration.
 function Tile({ def, size }: { def: BadgeDef; size: number }) {
+  if (SEAL_COLORS[def.id]) return <SealIcon size={size} kind={def.id} />;
   return (
     <svg className={`badge-icon tile rarity-${def.rarity ?? 'common'}`} width={size} height={size} viewBox="0 0 24 24" aria-hidden>
       <rect x="1" y="1" width="22" height="22" rx="6.5" fill={def.color} stroke={def.rarity === 'legendary' ? '#ffd76a' : '#0000'} strokeWidth="1.4" />
@@ -181,13 +220,7 @@ export function ServerBadge({ tag }: { tag?: string | null }) {
 export function VerifiedMark({ size = 16 }: { size?: number }) {
   return (
     <span className="verified-mark" data-tip="Verified server" aria-label="Verified">
-      <svg width={size} height={size} viewBox="0 0 24 24">
-        <path
-          fill="currentColor"
-          d="M12 1.5 14.6 3.4l3.2-.2.9 3.1 2.7 1.8-1 3 1 3-2.7 1.8-.9 3.1-3.2-.2L12 22.5l-2.6-1.9-3.2.2-.9-3.1-2.7-1.8 1-3-1-3 2.7-1.8.9-3.1 3.2.2z"
-        />
-        <path d="m8 12.2 2.7 2.7L16.2 9.4" fill="none" stroke="var(--on-accent)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+      <SealIcon size={size} kind="verified_server" />
     </span>
   );
 }

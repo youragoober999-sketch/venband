@@ -145,7 +145,7 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
                 return <p className="muted small">No apps match “{q}”. Try another search or filter.</p>;
               return filtered.map((a) => (
                 <div key={a.id} className="integration-row">
-                  {a.preset && (a.preset !== 'venband' || isOfficialApp(a)) ? <PresetLogo preset={a.preset} color={a.color} size={36} /> : <Icon name={a.preset === 'venband' ? 'shield' : 'bot'} />}
+                  {a.icon_url || (a.preset && (a.preset !== 'venband' || isOfficialApp(a))) ? <PresetLogo preset={a.preset} color={a.color} size={36} src={a.icon_url} /> : <Icon name={a.preset === 'venband' ? 'shield' : 'bot'} />}
                   <div className="grow">
                     <b>
                       {a.name} {isOfficialApp(a) ? <span className="tag-soft accent">Official</span> : a.preset === 'venband' ? <span className="tag-soft">Mod toolkit</span> : null}
@@ -203,7 +203,7 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
           <h3>Requests</h3>
           {requests.map((r) => (
             <div key={r.id} className="integration-row">
-              {r.app ? <PresetLogo preset={r.app.preset} color={r.app.color} size={36} /> : <Icon name="bot" />}
+              {r.app ? <PresetLogo preset={r.app.preset} color={r.app.color} size={36} src={r.app.icon_url} /> : <Icon name="bot" />}
               <div className="grow">
                 <b>{r.app?.name ?? 'A bot'}</b>
                 <div className="small muted">
@@ -238,7 +238,7 @@ export function IntegrationsTab({ data }: { data: ServerData }) {
         return (
           <div key={b.id} className="integration-card">
             <div className="integration-row">
-              {app ? <PresetLogo preset={app.preset} color={app.color} size={36} /> : <Icon name="bot" />}
+              {app ? <PresetLogo preset={app.preset} color={app.color} size={36} src={app.icon_url} /> : <Icon name="bot" />}
               <div className="grow">
                 <b>{app?.name ?? 'Bot'}</b>
                 <div className="small muted">
