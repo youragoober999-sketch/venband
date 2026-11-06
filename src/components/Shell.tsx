@@ -347,6 +347,10 @@ export function Shell() {
     });
   }, []);
 
+  // hooks must run on every render, never inside a condition (React error #310)
+  const dockStyle = useSettings((s) => s.dockStyle);
+  const dockPosition = useSettings((s) => s.dockPosition);
+
   return (
     <div className={`shell${drawer ? ` drawer-${drawer}` : ''}`}>
       <AppBanner />
@@ -354,7 +358,7 @@ export function Shell() {
       <WarningsNotice />
       <TopBar servers={servers} dms={dms} />
       <div className="shell-body">
-        {useSettings((s) => s.dockStyle) !== 'macos' && <ServerRail servers={servers} dms={dms} current={serverId} discover={discover} onAdd={() => setModal('create-join')} reload={reload} />}
+        {dockStyle !== 'macos' && <ServerRail servers={servers} dms={dms} current={serverId} discover={discover} onAdd={() => setModal('create-join')} reload={reload} />}
         {discover ? (
           <>
             <DiscoverySidebar />
@@ -384,7 +388,7 @@ export function Shell() {
       <SettingsPage />
       <ContextMenuHost />
       <DialogHost />
-      {useSettings((s) => s.dockStyle) === 'macos' && <MacDock servers={servers} dms={dms} current={serverId} onAdd={() => setModal('create-join')} discover={discover} onDiscover={() => nav.set({ serverId: null, discover: !discover })} position={useSettings((s) => s.dockPosition)} />}
+      {dockStyle === 'macos' && <MacDock servers={servers} dms={dms} current={serverId} onAdd={() => setModal('create-join')} discover={discover} onDiscover={() => nav.set({ serverId: null, discover: !discover })} position={dockPosition} />}
     </div>
   );
 }

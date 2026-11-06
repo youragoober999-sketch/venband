@@ -409,7 +409,6 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "force_unblock"
     ],
     "bodies": {
-      "dm_blocked": "3a4558cdcce70fd0038eaaceeb0e3207",
       "open_dm": "2ccbf9a064bc0bb080efe83d914c980e"
     }
   },
@@ -656,6 +655,15 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     ],
     "bodies": {
       "save_custom_badge": "15bb0436832d864d32b360edc788a695"
+    }
+  },
+  {
+    "migration": "20261106030000_fix_dm_blocked.sql",
+    "tables": [],
+    "functions": [],
+    "bodies": {
+      "channel_perm_for_user": "0b0b2fd47dd326c3be5502033ced2886",
+      "dm_blocked": "677b9f8316e1e260428e426a1e8c0b9d"
     }
   }
 ];

@@ -56,9 +56,15 @@ export async function whyRefused(channelId: string, epoch: number): Promise<stri
   if (!ch) return 'This conversation no longer exists, or you’re no longer in it.';
   if (ch.key_rotation_needed || ((latest.data as { epoch: number } | null)?.epoch ?? epoch) !== epoch)
     return 'This conversation’s encryption key changed while you were sending. Send it again.';
-  if (!ch.server_id && !ch.is_group)
+  if (!ch.server_id && !ch.is_group) {
+    // Databases without 20261106030000_fix_dm_blocked refuse every DM from owners,
+    // admins and founders (an inverted check). Say so instead of blaming a block.
+    const me = sessionStore.get().me;
+    if (me && (me.platform_role === 'admin' || me.platform_role === 'owner' || me.badges?.some((b) => b === 'owner' || b === 'founder')))
+      return 'The database refused this DM because of a known bug that blocks staff accounts from sending DMs. Fix: run supabase/update-2026-11.sql in the Supabase SQL editor (venband.com/status shows when it’s done).';
     return status === 'limited'
       ? 'Your account is limited, so you can only message friends right now.'
       : 'You can’t message this person right now — one of you has blocked the other, or they only accept messages from friends.';
+  }
   return 'You don’t have permission to send messages here (your roles are missing “Send Messages”, or the channel is read-only).';
 }

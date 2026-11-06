@@ -179,8 +179,11 @@ export function ContextMenuHost() {
   }, [open]);
 
   if (!open) return null;
+  // long menus get a tighter layout; anything still taller than the window scrolls
+  const rows = open.items.filter((it) => it.type !== 'sep').length;
+  const density = rows > 22 ? ' dense' : rows > 14 ? ' compact' : '';
   return (
-    <div className="ctx-menu" ref={ref} style={{ left: pos.x, top: pos.y }} role="menu">
+    <div className={`ctx-menu${density}`} ref={ref} style={{ left: pos.x, top: pos.y }} role="menu" onWheel={(e) => e.stopPropagation()}>
       {open.items.map((it, i) => {
         if (it.type === 'sep') return <div key={i} className="ctx-sep" />;
         if (it.type === 'header') return <div key={i} className="ctx-header">{it.label}</div>;
