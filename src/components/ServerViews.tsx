@@ -2,6 +2,7 @@
 // forum channels and stage channels.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
+import { insertEncrypted } from '../lib/sendMessage';
 import { sessionStore } from '../lib/session';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
 import { has, P } from '../lib/permissions';
@@ -307,13 +308,11 @@ function NewPostModal({ channel, tags, onClose, onPosted }: { channel: Channel; 
     setBusy(true);
     setError(null);
     try {
-      const { keyring, identity } = sessionStore.get();
+      const { keyring } = sessionStore.get();
       await keyring!.prepareSend(channel.id);
       const id = crypto.randomUUID();
       const payload: MessagePayload = { v: 1, text: `**${title.trim()}**\n${body.trim()}`, sentAt: Date.now() };
-      const env = await keyring!.encrypt(channel.id, id, payload);
-      const { error: e1 } = await supabase.from('messages').insert({ id, channel_id: channel.id, author_id: identity!.userId, author_key_id: env.author_key_id, epoch: env.epoch, iv: env.iv, ciphertext: env.ciphertext, signature: env.signature });
-      if (e1) throw e1;
+      await insertEncrypted(channel.id, id, payload);
       const { error: e2 } = await supabase.from('threads').insert({ root_id: id, channel_id: channel.id, name: title.trim().slice(0, 100) });
       if (e2) throw e2;
       if (picked.length) await supabase.from('threads').update({ tags: picked }).eq('root_id', id);

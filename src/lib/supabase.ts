@@ -22,6 +22,12 @@ export function appUrl(query = ''): string {
   return `${base.origin}${base.pathname}${query}`;
 }
 
+/** The database is older than this app: a newer migration hasn't been run on it yet. */
+export function isOldSchema(e: unknown): boolean {
+  const msg = typeof e === 'object' && e && 'message' in e ? String((e as { message: unknown }).message) : String(e ?? '');
+  return /column [\w."]+ does not exist|could not find the (function|table)|in the schema cache/i.test(msg);
+}
+
 export function errorMessage(e: unknown): string {
   if (!e) return 'Unknown error';
   let msg: string;
@@ -30,5 +36,7 @@ export function errorMessage(e: unknown): string {
   else msg = String(e);
   if (/bucket not found/i.test(msg))
     return 'File storage isn’t set up on this server yet. If you run this site, run supabase/setup.sql (new project) or the newest supabase/migrations/ files in the Supabase SQL editor.';
+  if (isOldSchema(e))
+    return 'This feature needs a database update that hasn’t been installed yet. If you run this site, run the newest files in supabase/migrations/ in the Supabase SQL editor (venband.com/status lists what’s missing).';
   return msg;
 }

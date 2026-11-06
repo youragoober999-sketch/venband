@@ -1,7 +1,7 @@
 // The Marketplace (in the DM sidebar): themes, nameplates, name styles and
 // custom CSS that people published. Everything is applied on your side.
 import { useCallback, useEffect, useState } from 'react';
-import { supabase, errorMessage } from '../lib/supabase';
+import { supabase, errorMessage, isOldSchema } from '../lib/supabase';
 import { sessionStore, updateMyProfile } from '../lib/session';
 import { displayName, loadProfiles } from '../lib/directory';
 import { updateSettings } from '../lib/settings';
@@ -58,9 +58,13 @@ export function MarketplaceView() {
 
   const load = useCallback(async () => {
     setRows(null);
-    let query = supabase.from('themes').select('*').eq('kind', kind).eq('status', 'published').limit(120);
-    query = sort === 'popular' ? query.order('installs', { ascending: false }).order('created_at', { ascending: false }) : query.order('created_at', { ascending: false });
-    const { data, error } = await query;
+    const run = (current: boolean) => {
+      let query = supabase.from('themes').select('*').eq('kind', kind).limit(120);
+      if (current) query = query.eq('status', 'published'); // older databases have no status column
+      return sort === 'popular' ? query.order('installs', { ascending: false }).order('created_at', { ascending: false }) : query.order('created_at', { ascending: false });
+    };
+    let { data, error } = await run(true);
+    if (error && isOldSchema(error)) ({ data, error } = await run(false));
     if (error) setMsg({ ok: false, text: errorMessage(error) });
     const list = (data ?? []) as Item[];
     await loadProfiles(list.map((x) => x.author_id));

@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { setMediaRemoved, useMediaRemoved } from '../lib/mediaBans';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
+import { insertEncrypted } from '../lib/sendMessage';
 import type { Attachment, MessagePayload } from '../lib/crypto';
 import { copyAttachment, removeAttachment, uploadEncrypted } from '../lib/files';
 import { AttachmentView } from './Attachments';
@@ -361,21 +362,10 @@ export function ChatView({
       return;
     }
     const id = crypto.randomUUID();
-    const env = await keyring.encrypt(channel.id, id, payload);
-    const row = {
-      id,
-      channel_id: channel.id,
-      author_id: identity.userId,
-      author_key_id: env.author_key_id,
-      epoch: env.epoch,
-      iv: env.iv,
-      ciphertext: env.ciphertext,
-      signature: env.signature,
+    const row = await insertEncrypted(channel.id, id, payload, {
       reply_to: replyTo?.row.id ?? null,
       ...(threadRoot ? { thread_root: threadRoot } : {}),
-    };
-    const { error } = await supabase.from('messages').insert(row);
-    if (error) throw error;
+    });
     if (opts.poll) {
       const { error: pe } = await supabase.from('polls').insert({
         message_id: id,
@@ -1538,19 +1528,7 @@ function ForwardModal({ m, onClose }: { m: DecryptedMessage; onClose: () => void
         ...(attachments.length ? { attachments } : {}),
       };
       for (const p of [payload, ...(note.trim() ? [{ v: 1 as const, text: note.trim(), sentAt: Date.now() + 1 }] : [])]) {
-        const id = crypto.randomUUID();
-        const env = await keyring.encrypt(d.id, id, p);
-        const { error: err } = await supabase.from('messages').insert({
-          id,
-          channel_id: d.id,
-          author_id: me.id,
-          author_key_id: env.author_key_id,
-          epoch: env.epoch,
-          iv: env.iv,
-          ciphertext: env.ciphertext,
-          signature: env.signature,
-        });
-        if (err) throw err;
+        await insertEncrypted(d.id, crypto.randomUUID(), p);
       }
       setDone((x) => [...x, d.id]);
     } catch (e) {

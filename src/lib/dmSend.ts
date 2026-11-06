@@ -2,6 +2,7 @@
 // invites from menus without opening the conversation.
 import { supabase } from './supabase';
 import { sessionStore } from './session';
+import { insertEncrypted } from './sendMessage';
 import type { MessagePayload } from './crypto';
 
 export async function sendToUser(userId: string, text: string): Promise<string> {
@@ -16,20 +17,8 @@ export async function sendToChannel(channelId: string, text: string) {
   const { keyring, identity } = sessionStore.get();
   if (!keyring || !identity) throw new Error('Not signed in');
   await keyring.prepareSend(channelId);
-  const id = crypto.randomUUID();
   const payload: MessagePayload = { v: 1, text, sentAt: Date.now() };
-  const env = await keyring.encrypt(channelId, id, payload);
-  const { error } = await supabase.from('messages').insert({
-    id,
-    channel_id: channelId,
-    author_id: identity.userId,
-    author_key_id: env.author_key_id,
-    epoch: env.epoch,
-    iv: env.iv,
-    ciphertext: env.ciphertext,
-    signature: env.signature,
-  });
-  if (error) throw error;
+  await insertEncrypted(channelId, crypto.randomUUID(), payload);
 }
 
 /** venband.com/invite/CODE (or a custom link), from any of the forms people paste. */

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { LooksPanel } from './LooksSettings';
-import { supabase, errorMessage } from '../lib/supabase';
+import { supabase, errorMessage, isOldSchema } from '../lib/supabase';
 import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
 import { fingerprint, passwordStrength } from '../lib/crypto';
 import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
@@ -1198,13 +1198,17 @@ function AppearanceTab() {
 
   const loadMarket = async () => {
     setMarket(null);
-    let query = supabase.from('themes').select('*').eq('kind', 'theme').eq('status', 'published').limit(100);
-    if (category) query = query.eq('category', category);
-    query =
-      sort === 'popular'
+    const run = (current: boolean) => {
+      let query = supabase.from('themes').select('*').eq('kind', 'theme').limit(100);
+      // older databases (before the theme-versions migration) have no status/category/updated_at
+      if (current) query = query.eq('status', 'published');
+      if (current && category) query = query.eq('category', category);
+      return sort === 'popular'
         ? query.order('installs', { ascending: false }).order('created_at', { ascending: false })
-        : query.order(sort === 'new' ? 'created_at' : 'updated_at', { ascending: false });
-    const { data, error } = await query;
+        : query.order(sort === 'new' || !current ? 'created_at' : 'updated_at', { ascending: false });
+    };
+    let { data, error } = await run(true);
+    if (error && isOldSchema(error)) ({ data, error } = await run(false));
     if (error) setMsg(errorMessage(error));
     const list = (data ?? []) as MarketItem[];
     await loadProfiles(list.map((x) => x.author_id));
