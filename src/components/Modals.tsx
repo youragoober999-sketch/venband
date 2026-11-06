@@ -1604,6 +1604,14 @@ function ChannelPermissionsEditor({
   );
 }
 
+const SLOWMODE_STEPS = [0, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 21600];
+export function slowmodeLabel(s: number) {
+  if (!s) return 'Off';
+  if (s < 60) return `${s} seconds`;
+  if (s < 3600) return `${s / 60} minute${s === 60 ? '' : 's'}`;
+  return `${s / 3600} hour${s === 3600 ? '' : 's'}`;
+}
+
 export function ChannelSettingsModal({
   channel,
   data,
@@ -1643,6 +1651,9 @@ export function ChannelSettingsModal({
       is_private: isPrivate,
     };
 
+    if (channel.type === 'text' || channel.type === 'forum') {
+      update.settings = { ...(channel.settings ?? {}), slowmode: Math.max(0, Math.min(21600, settings.slowmode ?? 0)) };
+    }
     if (isVoice) {
       update.settings = {
         ...(channel.settings ?? {}),
@@ -1777,6 +1788,17 @@ export function ChannelSettingsModal({
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
               />
+            </Field>
+          )}
+
+          {(channel.type === 'text' || channel.type === 'forum') && (
+            <Field label="Slowmode">
+              <Select
+                value={String(settings.slowmode ?? 0)}
+                onChange={(v) => setSettings((current) => ({ ...current, slowmode: Number(v) }))}
+                options={SLOWMODE_STEPS.map((s) => ({ value: String(s), label: slowmodeLabel(s) }))}
+              />
+              <p className="small muted">How often each member can send a message here. Moderators are exempt.</p>
             </Field>
           )}
 

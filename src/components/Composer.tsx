@@ -62,6 +62,12 @@ type Suggestion = { key: string; insert: string; token: string | null; label: Re
 
 const draftKey = (channelId: string) => `venband:draft:${sessionStore.get().identity?.userId ?? 'anon'}:${channelId}`;
 
+function fmtWait(s: number) {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
+
 export function Composer({
   channelId,
   placeholder,
@@ -78,6 +84,7 @@ export function Composer({
   canRepeat = false,
   canPoll = true,
   canAttach = true,
+  slowmode = 0,
   onQuoteDrop,
 }: {
   channelId: string;
@@ -96,6 +103,8 @@ export function Composer({
   canRepeat?: boolean;
   canPoll?: boolean;
   canAttach?: boolean;
+  /** seconds between messages for you here (0 = none or exempt) */
+  slowmode?: number;
   /** a message was dragged onto the box */
   onQuoteDrop?: (messageId: string) => void;
 }) {
@@ -110,6 +119,14 @@ export function Composer({
   const [upload, setUpload] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [coolUntil, setCoolUntil] = useState(0);
+  const [, setTick] = useState(0);
+  const coolLeft = Math.max(0, Math.ceil((coolUntil - Date.now()) / 1000));
+  useEffect(() => {
+    if (!coolLeft) return;
+    const t = setTimeout(() => setTick((n) => n + 1), 500);
+    return () => clearTimeout(t);
+  }, [coolLeft, coolUntil]);
   const [notice, setNotice] = useState<string | null>(null);
   const [gifs, setGifs] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -357,6 +374,10 @@ export function Composer({
     let t = encode(raw.trim());
     let all = [...files, ...extra];
     if ((!t && !all.length && !opts.poll) || busy) return;
+    if (coolLeft && !opts.scheduleAt) {
+      setError(`Slowmode is on — you can send again in ${fmtWait(coolLeft)}.`);
+      return;
+    }
     // long messages go out as a text file instead of a wall of text
     if (t.length > MAX_TEXT) {
       all = [{ id: crypto.randomUUID(), file: new File([t], 'message.txt', { type: 'text/plain' }), spoiler: false, alt: '' }, ...all];
@@ -368,6 +389,7 @@ export function Composer({
     try {
       setUpload(all.length ? 0 : null);
       await onSend(t, all, { ...opts, onProgress: all.length ? setUpload : undefined });
+      if (slowmode && !opts.scheduleAt) setCoolUntil(Date.now() + slowmode * 1000);
       for (const e of emojiIn(t)) noteEmojiUse(e);
       if (opts.scheduleAt) setNotice(`Scheduled for ${new Date(opts.scheduleAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}${opts.repeat ? `, repeating every ${opts.repeat.every} (${opts.repeat.times}×)` : ''}.`);
       if (raw === text) {
@@ -381,7 +403,11 @@ export function Composer({
         }
       }
     } catch (e) {
-      setError(errorMessage(e));
+      const wait = /slowmode: wait (\d+)/.exec(errorMessage(e));
+      if (wait) {
+        setCoolUntil(Date.now() + Number(wait[1]) * 1000);
+        setError(`Slowmode is on — you can send again in ${fmtWait(Number(wait[1]))}.`);
+      } else setError(errorMessage(e));
     } finally {
       setBusy(false);
       setUpload(null);
@@ -509,7 +535,12 @@ export function Composer({
           </div>
         </div>
       )}
-      {error && <div className="form-error" role="alert">{error}</div>}
+      {error && !(coolLeft === 0 && error.startsWith('Slowmode')) && <div className="form-error" role="alert">{error}</div>}
+      {slowmode > 0 && (
+        <div className={`slowmode-chip${coolLeft ? ' cooling' : ''}`} role="status" title={`Slowmode: one message every ${fmtWait(slowmode)}`}>
+          <Icon name="clock" size={12} /> {coolLeft ? `Slowmode · ${fmtWait(coolLeft)}` : `Slowmode is on · ${fmtWait(slowmode)}`}
+        </div>
+      )}
       {notice && (
         <div className="form-notice" role="status">
           <Icon name="clock" size={14} /> {notice}

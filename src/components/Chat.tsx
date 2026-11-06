@@ -28,6 +28,7 @@ import { isSaved, loadSavedIds, setPinned, setSaved, useChannelExtras, type Poll
 import { Avatar, Icon, LogoGlyph, StyledName } from './ui';
 import { BUILTIN_APP, BUILTIN_COMMANDS, isBuiltin, runBuiltin } from '../lib/builtinCommands';
 import { Stackdown } from './Stackdown';
+import { reminderFor, reminderMenu, whenLabel } from './Reminders';
 import { Badges, OwnerCrown, RoleIcon } from './Badges';
 import { copyText, openMenu, type Entry } from './ContextMenu';
 import { askConfirm, askText, showAlert } from './Dialogs';
@@ -802,6 +803,7 @@ export function ChatView({
           canAttach={can(P.ATTACH_FILES)}
           canSchedule={!isThread}
           canRepeat={isDm || can(P.MANAGE_MESSAGES)}
+          slowmode={isDm || can(P.MANAGE_MESSAGES) || can(P.MANAGE_CHANNELS) ? 0 : Math.max(0, Number(channel.settings?.slowmode) || 0)}
         />
       </div>
       {openThread && !isThread && (
@@ -1176,6 +1178,12 @@ function MessageItem({
           setSaved(m.row, !saved)
             .then(() => setSavedState(!saved))
             .catch((err) => showAlert(errorMessage(err))),
+      },
+      m.payload && {
+        label: 'Remind Me',
+        icon: 'clock',
+        hint: reminderFor(m.row.id) ? `⏰ ${whenLabel(reminderFor(m.row.id)!)}` : '›',
+        onClick: () => setTimeout(() => openMenu(e, reminderMenu(m.row, (err) => showAlert(errorMessage(err)))), 0),
       },
       !mine && { label: 'Mark Unread', icon: 'unread', onClick: onMarkUnread },
       m.payload && text && { label: 'Copy Text', icon: 'copy', onClick: () => copyText(text) },

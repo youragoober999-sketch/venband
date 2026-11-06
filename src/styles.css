@@ -3142,3 +3142,8 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
   .sd-arena { grid-template-columns: auto auto; }
   .sd-side:first-child { display: none; }
 }
+
+/* slowmode */
+.slowmode-chip { display: inline-flex; align-items: center; gap: 5px; margin: 0 4px 6px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; color: var(--text-muted); background: var(--bg-elev, rgba(127,127,127,.12)); width: fit-content; }
+.slowmode-chip.cooling { color: var(--warning, #f5a524); background: color-mix(in srgb, var(--warning, #f5a524) 14%, transparent); }
+.reminder-pill { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent, #7c5cff) 16%, transparent); color: var(--accent, #7c5cff); }

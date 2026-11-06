@@ -15,6 +15,9 @@ import type { MessageRow, Server } from '../lib/types';
 import { Markdown } from './Markdown';
 import { Avatar, Icon } from './ui';
 import { friendlyTime } from './Chat';
+import { onRemindersChanged, reminderFor, reminderMenu, whenLabel } from './Reminders';
+import { openMenu } from './ContextMenu';
+import { showAlert } from './Dialogs';
 
 const FILTER_HELP: [string, string][] = [
   ['from:', 'username'],
@@ -291,8 +294,10 @@ export function SavedView({ header }: { header?: ReactNode }) {
     }
     setItems(out);
   };
+  const [, rerender] = useState(0);
   useEffect(() => {
     load();
+    return onRemindersChanged(() => rerender((n) => n + 1));
   }, []);
   return (
     <div className="home-view saved-view">
@@ -313,11 +318,15 @@ export function SavedView({ header }: { header?: ReactNode }) {
               <b>{displayName(it.m.row.author_id)}</b>
               <span className="muted small">{it.where}</span>
               <span className="muted small">{friendlyTime(new Date(it.m.row.created_at))}</span>
+              {reminderFor(it.m.row.id) && <span className="reminder-pill">⏰ {whenLabel(reminderFor(it.m.row.id)!)}</span>}
             </div>
             <div className="panel-message-text">{it.m.payload ? <Markdown text={it.m.payload.text || `📎 ${it.m.payload.attachments?.length ?? 0} file(s)`} /> : <i className="muted">Can’t decrypt yet</i>}</div>
             <div className="panel-message-actions">
               <button className="btn small primary" onClick={() => jumpTo({ channelId: it.m.row.channel_id, serverId: it.serverId, messageId: it.m.row.id })}>
                 Go to message
+              </button>
+              <button className="btn link small" onClick={(e) => openMenu(e, reminderMenu(it.m.row, (err) => showAlert(errorMessage(err))))}>
+                {reminderFor(it.m.row.id) ? 'Change reminder' : 'Remind me'}
               </button>
               <button className="btn link small" onClick={() => setSaved(it.m.row, false).then(load)}>
                 Remove

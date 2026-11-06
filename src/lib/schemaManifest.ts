@@ -756,5 +756,13 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     "bodies": {
       "realtime_topic_allowed": "8d7bbda0e6750093ba14768521fb8905"
     }
+  },
+  {
+    "migration": "20261106140000_slowmode_reminders.sql",
+    "tables": [],
+    "functions": [
+      "check_slowmode"
+    ],
+    "bodies": {}
   }
 ];

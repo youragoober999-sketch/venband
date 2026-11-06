@@ -121,7 +121,7 @@ export interface Channel {
   request_to?: string | null;
   key_rotation_needed: boolean;
   created_at: string;
-  settings?: { bitrate?: number; user_limit?: number; video?: boolean; tags?: string[]; sort?: 'recent' | 'created'; guidelines?: string };
+  settings?: { bitrate?: number; user_limit?: number; video?: boolean; tags?: string[]; sort?: 'recent' | 'created'; guidelines?: string; slowmode?: number };
   color?: string | null;
   /** groups: the person who can remove members */
   owner_id?: string | null;

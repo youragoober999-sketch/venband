@@ -63,6 +63,7 @@ import { GlobalModals, openGlobalModal } from './GlobalModals';
 import { themeVars } from './ServerSettingsExtra';
 import { ForumView, StageView, TimeoutBar, VoogleGate, WarningsNotice, WelcomeScreen } from './ServerViews';
 import { SavedView, SearchPanel } from './Search';
+import { useReminderRunner } from './Reminders';
 import { mentionsMe } from './Markdown';
 
 export function useActiveCall() {
@@ -271,6 +272,7 @@ function useMyProfileFeed(myId: string) {
 export function Shell() {
   const [serversForAlerts, setServersForAlerts] = useState<Server[]>([]);
   const onMessage = useMessageAlerts(serversForAlerts);
+  useReminderRunner();
   const { servers, dms, loaded, reload } = useMyServers(onMessage);
   const me = sessionStore.use((s) => s.me)!;
   useEffect(() => setServersForAlerts(servers), [servers]);

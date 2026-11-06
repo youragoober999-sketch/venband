@@ -3,11 +3,16 @@ import { useEffect } from 'react';
 import { createStore } from '../lib/store';
 import { Icon } from './ui';
 
-const store = createStore<{ item: { id: number; text: string; undo?: () => Promise<void> | void } | null }>({ item: null });
+const store = createStore<{ item: { id: number; text: string; undo?: () => Promise<void> | void; label?: string } | null }>({ item: null });
 let n = 0;
 
 export function showUndo(text: string, undo: () => Promise<void> | void) {
   store.set({ item: { id: ++n, text, undo } });
+}
+
+/** A toast with one button of your choosing ("Show", "Open", …). */
+export function showAction(text: string, label: string, act: () => Promise<void> | void) {
+  store.set({ item: { id: ++n, text, undo: act, label } });
 }
 
 /** A short confirmation that fades out on its own (no Undo button). */
@@ -35,7 +40,7 @@ export function UndoToast() {
             await item.undo?.();
           }}
         >
-          Undo
+          {item.label ?? 'Undo'}
         </button>
       )}
       <button className="icon-btn small" onClick={() => store.set({ item: null })} aria-label="Dismiss">

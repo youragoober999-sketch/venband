@@ -213,6 +213,7 @@ export function loadSavedIds() {
   return savedLoaded;
 }
 export const isSaved = (id: string) => savedIds.has(id);
+export const noteSaved = (id: string) => void savedIds.add(id);
 export function resetSaved() {
   savedIds.clear();
   savedLoaded = null;
