@@ -6,10 +6,11 @@ import { sessionStore, updateMyProfile } from '../lib/session';
 import { displayName, loadProfiles } from '../lib/directory';
 import { updateSettings } from '../lib/settings';
 import { sanitizeTheme } from '../lib/themes';
+import { recordInstall, themeFrom } from '../lib/themeMarket';
 import { sanitizeCss } from '../lib/customCss';
 import type { NameStyle, NameplateStyle } from '../lib/types';
 import { askConfirm } from './Dialogs';
-import { ThemeSwatch } from './Settings';
+import { ThemeSwatch } from './ThemeStudio';
 import { Avatar, Icon, nameplateVars, StyledName } from './ui';
 
 type Kind = 'theme' | 'nameplate' | 'name_style' | 'css';
@@ -22,6 +23,8 @@ interface Item {
   installs: number;
   kind: Kind;
   created_at: string;
+  version?: number;
+  updated_at?: string;
 }
 
 const KINDS: { id: Kind; label: string; icon: string }[] = [
@@ -55,7 +58,7 @@ export function MarketplaceView() {
 
   const load = useCallback(async () => {
     setRows(null);
-    let query = supabase.from('themes').select('*').eq('kind', kind).limit(120);
+    let query = supabase.from('themes').select('*').eq('kind', kind).eq('status', 'published').limit(120);
     query = sort === 'popular' ? query.order('installs', { ascending: false }).order('created_at', { ascending: false }) : query.order('created_at', { ascending: false });
     const { data, error } = await query;
     if (error) setMsg({ ok: false, text: errorMessage(error) });
@@ -71,7 +74,7 @@ export function MarketplaceView() {
     setMsg(null);
     try {
       if (it.kind === 'theme') {
-        const t = sanitizeTheme({ ...(it.data as object), id: `market-${it.id}`, name: it.name, description: it.description, author: displayName(it.author_id) });
+        const t = themeFrom(it, it.id, it.version ?? 1, displayName(it.author_id));
         if (!t) throw new Error('That theme is invalid.');
         updateSettings((s) => ({ installedThemes: [...s.installedThemes.filter((x) => x.id !== t.id), t], themeId: t.id }));
       } else if (it.kind === 'nameplate') {
@@ -82,7 +85,7 @@ export function MarketplaceView() {
         if (!(await askConfirm({ title: `Use “${it.name}”?`, body: 'This replaces your custom CSS. Unsafe parts are removed. Safe mode (Ctrl+Shift+Alt+S) turns it off if anything breaks.', confirm: 'Use it' }))) return;
         updateSettings({ customCss: { enabled: true, code: sanitizeCss(String(it.data.css ?? '')) } });
       }
-      await supabase.rpc('install_theme', { p_theme: it.id });
+      await recordInstall(it.id).catch(() => {});
       setMsg({ ok: true, text: `Now using ${it.name}.` });
     } catch (e) {
       setMsg({ ok: false, text: errorMessage(e) });
@@ -145,6 +148,7 @@ export function MarketplaceView() {
                 <b>{it.name}</b>
                 <span className="small muted">
                   by {displayName(it.author_id)} · {it.installs.toLocaleString()} use{it.installs === 1 ? '' : 's'}
+                  {it.version && it.version > 1 ? ` · v${it.version}` : ''}
                 </span>
               </div>
               <div className="row-start">

@@ -27,6 +27,8 @@ export type CodeTheme = 'vscode-dark' | 'vs-2026' | 'github-dark' | 'monokai' | 
 export interface Settings {
   themeId: string;
   installedThemes: Theme[];
+  /** per installed marketplace theme (by themes.id): how to handle new versions */
+  themeUpdates: Record<string, ThemeUpdatePolicy>;
   translateMode: 'auto' | 'manual' | 'off';
   language: string;
   dockStyle: 'default' | 'macos';
@@ -100,6 +102,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   themeId: 'default',
   installedThemes: [],
+  themeUpdates: {},
   translateMode: 'manual',
   language: '',
   dockStyle: 'default',
@@ -169,6 +172,7 @@ function merge(raw: unknown): Settings {
     ...DEFAULT_SETTINGS,
     ...r,
     installedThemes: installed,
+    themeUpdates: cleanThemeUpdates(r.themeUpdates),
     voice: { ...DEFAULT_SETTINGS.voice, ...(r.voice ?? {}) },
     chat: { ...DEFAULT_SETTINGS.chat, ...(r.chat ?? {}) },
     screenTime: { ...DEFAULT_SETTINGS.screenTime, ...(r.screenTime ?? {}) },
@@ -200,6 +204,17 @@ function merge(raw: unknown): Settings {
       mutedUntil: r.dms?.mutedUntil && typeof r.dms.mutedUntil === 'object' ? r.dms.mutedUntil : {},
     },
   };
+}
+
+export type ThemeUpdatePolicy = 'auto' | 'ask' | 'keep';
+
+function cleanThemeUpdates(raw: unknown): Record<string, ThemeUpdatePolicy> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<string, ThemeUpdatePolicy> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, 100)) {
+    if (/^[0-9a-f-]{36}$/i.test(k) && (v === 'auto' || v === 'ask' || v === 'keep')) out[k] = v;
+  }
+  return out;
 }
 
 function trimUsage(u: Record<string, number>): Record<string, number> {
@@ -240,6 +255,11 @@ export async function loadSettings(userId: string) {
     saveLocal();
   } else if (local) {
     scheduleSave();
+  }
+  // installed marketplace themes set to "update automatically"
+  const s = getSettings();
+  if (s.installedThemes.some((t) => t.sourceId && s.themeUpdates[t.sourceId] === 'auto')) {
+    void import('./themeMarket').then((m) => m.runAutoThemeUpdates()).catch(() => {});
   }
 }
 

@@ -238,3 +238,59 @@ and a 404 each render and load only their chunk; `Shell`, `Onboarding`, `Invite`
 `highlight`, `connections`, `translate` chunks all evaluate without errors (no
 circular-import breakage); no console errors. The signed-in app itself could not
 be clicked through (no test account).
+
+## 10. Phase C — themes: ownership, versions, drafts, updates (done 2026-11-06)
+
+Migration `20261106000000_theme_versions.sql` (applies to themes, CSS, nameplates
+and name styles):
+
+* **Owners edit their published items; nobody else can.** `public.themes` has no
+  UPDATE policy — every change goes through `theme_save` / `theme_publish` /
+  `theme_rollback` / `theme_set_status`, which check ownership server-side.
+* **Versions:** each publish adds an immutable `theme_versions` row (with changelog
+  and publisher). Restoring an old version republishes it as a *new* version, so
+  history is never lost and installers see a normal update. Existing items were
+  backfilled as v1 with their original dates.
+* **Drafts:** `theme_drafts` (owner-only); the live version is untouched until
+  publish. New items start as private drafts.
+* **Status:** draft / published / unpublished (hidden, installers keep theirs) /
+  removed (staff only, reason required, shown to the creator, logged in
+  `mod_actions`; staff can restore).
+* **Server-side validation** (`theme_data_problem`) mirrors the app's sanitizers:
+  themes are colour variables + gradients only; CSS may not `@import`, load remote
+  `url()`s or use script-like tricks; nameplates/name styles are hex colours and
+  known keywords. Older app versions' direct inserts are validated and recorded as v1.
+* **Honest install counts:** `install_theme` recorded +1 per *call* (anyone could
+  inflate any count). Now one `theme_installs` row per person; the creator's own
+  installs don't count; existing counts kept as a baseline (`legacy_installs`).
+* Categories (`dark`, `light`, `colorful`, …) with marketplace filtering.
+
+App: **Theme Studio** (Settings → Appearance) — create; "My published themes" with
+status, Edit (opens the live version or your draft), Save draft, Publish vN with a
+changelog, version History with Restore, Unpublish / Publish again, Delete. Live
+"Try it on Venband" preview that always restores your theme; undo/redo (a colour
+drag is one step). Installed marketplace themes remember their source and version:
+per-theme **Ask before updating / Update automatically / Keep my version**, an
+update card with the changelog, a version list to switch versions (going back
+pins "keep"), and auto-updates on sign-in. `sanitizeTheme` moved to the
+dependency-free `src/lib/themeData.ts` so it's unit-tested.
+
+Verification:
+* `tests/db/theme_test.sql` (new, ~40 assertions, wired into `tests/db/run.sh`):
+  drafts private; publish v1/v2; spam guard; non-owners can't save, publish,
+  restore, change status, UPDATE the table or write versions/drafts; validation
+  rejects unknown vars, `url()` colours, remote wallpapers/CSS, `@import`,
+  `javascript:`; sanitizer output accepted; installs counted once per person,
+  uninstall decrements, creator excluded; rollback; unpublish hides item and
+  history; staff removal needs a reason, is logged, blocks the creator; restore;
+  old-client inserts → validated v1. All pass with the full RLS suite.
+* Backfill on a database that already had items (run twice): v1 created with
+  original dates, install counts kept (7 → 8 after one new install).
+* `tests/themes.test.ts`: sanitizer keeps source/version, rejects malformed ids,
+  unknown vars and remote wallpapers.
+* UI rendered on a temporary local page (removed afterwards): undo/redo incl. drag
+  coalescing, live preview applies + restores, edit mode shows "Publish version 3",
+  installed-theme update controls.
+
+Not done in C: ratings/reviews and reporting themes (needs the reports system to
+accept a new target type — planned with Phase F), creator profile pages.

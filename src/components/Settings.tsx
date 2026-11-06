@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { LooksPanel } from './LooksSettings';
 import { supabase, errorMessage } from '../lib/supabase';
 import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
 import { fingerprint, passwordStrength } from '../lib/crypto';
-import { displayName, getProfile, putProfile } from '../lib/directory';
+import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
 import { closeSettings, uiStore, type SettingsTab } from '../lib/ui';
 import { DEFAULT_SETTINGS, updateChat, updateSettings, updateVoice, useSettings } from '../lib/settings';
-import { BUILT_IN_THEMES, sanitizeTheme, THEME_KEYS, type Theme } from '../lib/themes';
+import { BUILT_IN_THEMES } from '../lib/themes';
+import { ThemeCreator, ThemeSwatch, MyThemes, InstalledThemeUpdates, type EditingTheme } from './ThemeStudio';
+import { categoryLabel, recordInstall, THEME_CATEGORIES, themeFrom, type MarketItem } from '../lib/themeMarket';
 import { describeAgent, listDevices, revokeDevice, type Device } from '../lib/devices';
 import { setRelation, socialStore } from '../lib/social';
 import { LANGUAGES, deviceTranslationSupported } from '../lib/translate';
@@ -1177,63 +1179,49 @@ function relative(iso: string) {
 
 // ------------------------------------------------------------ appearance --
 
-interface MarketTheme {
-  id: string;
-  author_id: string;
-  name: string;
-  description: string;
-  data: Theme;
-  installs: number;
-  created_at: string;
-}
-
-export function ThemeSwatch({ t }: { t: Theme }) {
-  const v = t.vars;
-  return (
-    <div className="theme-swatch" style={{ background: t.wallpaper && t.wallpaper !== 'none' ? t.wallpaper : v['bg-0'] }}>
-      <div className="ts-rail" style={{ background: v['bg-1'] }} />
-      <div className="ts-side" style={{ background: v['bg-2'] }}>
-        <span style={{ background: v['bg-4'] }} />
-        <span style={{ background: v['bg-3'] }} />
-      </div>
-      <div className="ts-main" style={{ background: v['bg-3'] }}>
-        <span style={{ background: v.text }} />
-        <span style={{ background: v['text-2'] }} />
-        <span className="ts-accent" style={{ background: v.accent }} />
-      </div>
-    </div>
-  );
-}
-
 function AppearanceTab() {
   const themeId = useSettings((s) => s.themeId);
   const installed = useSettings((s) => s.installedThemes);
   const reduceMotion = useSettings((s) => s.chat.reduceMotion);
   const serverThemes = useSettings((s) => s.serverThemes);
   const me = sessionStore.use((s) => s.me)!;
-  const [view, setView] = useState<'themes' | 'market' | 'create' | 'looks'>('themes');
-  const [market, setMarket] = useState<MarketTheme[] | null>(null);
+  const [view, setView] = useState<'themes' | 'market' | 'studio' | 'looks'>('themes');
+  const [studio, setStudio] = useState<'create' | 'mine'>('create');
+  const [editing, setEditing] = useState<EditingTheme | null>(null);
+  const [market, setMarket] = useState<MarketItem[] | null>(null);
   const [q, setQ] = useState('');
+  const [category, setCategory] = useState('');
+  const [sort, setSort] = useState<'popular' | 'new' | 'updated'>('popular');
   const [msg, setMsg] = useState<string | null>(null);
 
   const loadMarket = async () => {
-    const { data, error } = await supabase.from('themes').select('*').eq('kind', 'theme').order('installs', { ascending: false }).order('created_at', { ascending: false }).limit(100);
+    setMarket(null);
+    let query = supabase.from('themes').select('*').eq('kind', 'theme').eq('status', 'published').limit(100);
+    if (category) query = query.eq('category', category);
+    query =
+      sort === 'popular'
+        ? query.order('installs', { ascending: false }).order('created_at', { ascending: false })
+        : query.order(sort === 'new' ? 'created_at' : 'updated_at', { ascending: false });
+    const { data, error } = await query;
     if (error) setMsg(errorMessage(error));
-    setMarket((data ?? []) as MarketTheme[]);
+    const list = (data ?? []) as MarketItem[];
+    await loadProfiles(list.map((x) => x.author_id));
+    setMarket(list);
   };
   useEffect(() => {
     if (view === 'market') loadMarket();
-  }, [view]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, category, sort]);
 
-  const install = async (mt: MarketTheme) => {
-    const t = sanitizeTheme({ ...mt.data, id: `market-${mt.id}`, name: mt.name, description: mt.description, author: displayName(mt.author_id) });
+  const install = async (mt: MarketItem) => {
+    const t = themeFrom(mt, mt.id, mt.version, displayName(mt.author_id));
     if (!t) return setMsg('That theme is invalid.');
     updateSettings((s) => ({ installedThemes: [...s.installedThemes.filter((x) => x.id !== t.id), t], themeId: t.id }));
-    await supabase.rpc('install_theme', { p_theme: mt.id });
+    await recordInstall(mt.id).catch(() => {});
     setMsg(`Installed ${t.name}.`);
   };
 
-  const filtered = (market ?? []).filter((t) => !q || `${t.name} ${t.description}`.toLowerCase().includes(q.toLowerCase()));
+  const filtered = (market ?? []).filter((t) => !q || `${t.name} ${t.description} ${displayName(t.author_id)}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
     <>
@@ -1251,8 +1239,8 @@ function AppearanceTab() {
         <button className={view === 'market' ? 'active' : ''} onClick={() => setView('market')}>
           <Icon name="sparkles" size={14} /> Theme Marketplace
         </button>
-        <button className={view === 'create' ? 'active' : ''} onClick={() => setView('create')}>
-          <Icon name="plus" size={14} /> Create a Theme
+        <button className={view === 'studio' ? 'active' : ''} onClick={() => setView('studio')}>
+          <Icon name="palette" size={14} /> Theme Studio
         </button>
         <button className={view === 'looks' ? 'active' : ''} onClick={() => setView('looks')}>
           <Icon name="image" size={14} /> Background & CSS
@@ -1262,6 +1250,7 @@ function AppearanceTab() {
       {msg && <div className="notice">{msg}</div>}
       {view === 'themes' && (
         <>
+          <InstalledThemeUpdates />
           <div className="theme-grid">
             {[...BUILT_IN_THEMES, ...installed].map((t) => (
               <div key={t.id} className={`theme-card${themeId === t.id ? ' selected' : ''}`}>
@@ -1271,7 +1260,10 @@ function AppearanceTab() {
                     {t.name}
                     {themeId === t.id && <Icon name="check" size={14} />}
                   </div>
-                  <div className="small muted">{t.author ? `by ${t.author}` : t.description}</div>
+                  <div className="small muted">
+                    {t.author ? `by ${t.author}` : t.description}
+                    {t.sourceId ? ` · v${t.version ?? 1}` : ''}
+                  </div>
                 </button>
                 {!BUILT_IN_THEMES.some((b) => b.id === t.id) && (
                   <button
@@ -1311,31 +1303,62 @@ function AppearanceTab() {
       )}
       {view === 'market' && (
         <>
-          <input className="search-input" placeholder="Search themes" value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="market-filters">
+            <input className="search-input" placeholder="Search themes or creators" value={q} onChange={(e) => setQ(e.target.value)} />
+            <div className="chip-row">
+              {(['popular', 'new', 'updated'] as const).map((s) => (
+                <button key={s} className={`chip${sort === s ? ' on' : ''}`} onClick={() => setSort(s)}>
+                  {s === 'popular' ? 'Popular' : s === 'new' ? 'New' : 'Recently updated'}
+                </button>
+              ))}
+            </div>
+            <div className="chip-row">
+              <button className={`chip${!category ? ' on' : ''}`} onClick={() => setCategory('')}>
+                All
+              </button>
+              {THEME_CATEGORIES.map((c) => (
+                <button key={c.id} className={`chip${category === c.id ? ' on' : ''}`} onClick={() => setCategory(c.id)}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
           {!market && <div className="spinner" />}
           <div className="theme-grid">
             {filtered.map((mt) => {
-              const t = sanitizeTheme(mt.data);
+              const t = themeFrom(mt, mt.id, mt.version);
               if (!t) return null;
-              const have = installed.some((x) => x.id === `market-${mt.id}`);
+              const mine = installed.find((x) => x.id === `market-${mt.id}`);
+              const have = Boolean(mine) && (mine!.version ?? 1) >= mt.version;
               return (
                 <div key={mt.id} className="theme-card">
                   <ThemeSwatch t={t} />
                   <div className="theme-name">{mt.name}</div>
                   <div className="small muted">
-                    by {displayName(mt.author_id) === 'Unknown user' ? 'a Venband user' : displayName(mt.author_id)} · {mt.installs} installs
+                    by {displayName(mt.author_id) === 'Unknown user' ? 'a Venband user' : displayName(mt.author_id)} · {mt.installs.toLocaleString()} install{mt.installs === 1 ? '' : 's'}
+                  </div>
+                  <div className="small muted">
+                    v{mt.version}
+                    {mt.category ? ` · ${categoryLabel(mt.category)}` : ''}
+                    {mt.version > 1 ? ` · updated ${new Date(mt.updated_at).toLocaleDateString()}` : ''}
                   </div>
                   {mt.description && <div className="small">{mt.description}</div>}
                   <div className="theme-actions">
                     <button className="btn primary small" disabled={have} onClick={() => install(mt)}>
-                      {have ? 'Installed' : 'Install'}
+                      {have ? 'Installed' : mine ? `Update to v${mt.version}` : 'Install'}
                     </button>
-                    {(mt.author_id === me.id || me.platform_role !== 'user') && (
+                    {mt.author_id === me.id && (
+                      <button className="btn secondary small" onClick={() => (setView('studio'), setStudio('mine'))}>
+                        Manage
+                      </button>
+                    )}
+                    {mt.author_id !== me.id && me.platform_role !== 'user' && (
                       <button
                         className="btn danger small"
                         onClick={async () => {
-                          if (!(await askConfirm({ title: 'Remove theme', body: `Remove “${mt.name}” from the marketplace?`, confirm: 'Remove', danger: true }))) return;
-                          const { error } = await supabase.from('themes').delete().eq('id', mt.id);
+                          const reason = await askText({ title: `Remove “${mt.name}”?`, label: 'Reason (the creator sees this; it’s logged)', maxLength: 500 });
+                          if (!reason?.trim()) return;
+                          const { error } = await supabase.rpc('theme_set_status', { p_theme: mt.id, p_status: 'removed', p_reason: reason.trim() });
                           if (error) setMsg(errorMessage(error));
                           loadMarket();
                         }}
@@ -1351,125 +1374,31 @@ function AppearanceTab() {
           {market && !filtered.length && <p className="muted">No themes yet. Be the first: create one and publish it.</p>}
         </>
       )}
-      {view === 'create' && <ThemeCreator onDone={(m) => (setMsg(m), setView('themes'))} />}
+      {view === 'studio' && (
+        <>
+          <div className="tabs small">
+            <button className={studio === 'create' && !editing ? 'active' : ''} onClick={() => (setEditing(null), setStudio('create'))}>
+              <Icon name="plus" size={13} /> Create
+            </button>
+            <button className={studio === 'mine' || editing ? 'active' : ''} onClick={() => (setEditing(null), setStudio('mine'))}>
+              <Icon name="palette" size={13} /> My published themes
+            </button>
+          </div>
+          {editing ? (
+            <ThemeCreator
+              key={editing.id}
+              editing={editing}
+              onCancel={() => setEditing(null)}
+              onDone={(m) => (setMsg(m), setEditing(null), setStudio('mine'))}
+            />
+          ) : studio === 'create' ? (
+            <ThemeCreator onDone={(m) => (setMsg(m), setStudio('mine'))} />
+          ) : (
+            <MyThemes onEdit={(e) => (setMsg(null), setEditing(e))} />
+          )}
+        </>
+      )}
     </>
-  );
-}
-
-const EDITABLE: { key: (typeof THEME_KEYS)[number]; label: string }[] = [
-  { key: 'bg-0', label: 'Background' },
-  { key: 'bg-1', label: 'Server rail' },
-  { key: 'bg-2', label: 'Sidebars' },
-  { key: 'bg-3', label: 'Chat' },
-  { key: 'bg-4', label: 'Inputs & hover' },
-  { key: 'text', label: 'Text' },
-  { key: 'text-2', label: 'Secondary text' },
-  { key: 'muted', label: 'Muted text' },
-  { key: 'accent', label: 'Accent' },
-  { key: 'on-accent', label: 'Text on accent' },
-  { key: 'link', label: 'Links' },
-  { key: 'danger', label: 'Danger' },
-];
-
-const WALLPAPERS = [
-  'none',
-  'radial-gradient(1200px 800px at 15% 10%, #3b3f58 0%, transparent 60%), radial-gradient(900px 700px at 85% 90%, #2a3d44 0%, transparent 60%), linear-gradient(160deg, #07070a, #0d0e14)',
-  'linear-gradient(135deg, #1f1c2c, #3a2f5b, #12101a)',
-  'linear-gradient(160deg, #0f2027, #203a43, #2c5364)',
-  'radial-gradient(900px 600px at 80% 10%, #5b2a3d 0%, transparent 60%), linear-gradient(180deg, #0a0608, #120a10)',
-  'linear-gradient(135deg, #0b3a2c, #06221a 60%, #000000)',
-];
-
-function ThemeCreator({ onDone }: { onDone: (msg: string) => void }) {
-  const me = sessionStore.use((s) => s.me)!;
-  const [name, setName] = useState('My theme');
-  const [description, setDescription] = useState('');
-  const [vars, setVars] = useState<Record<string, string>>({ ...BUILT_IN_THEMES[0].vars });
-  const [glass, setGlass] = useState(false);
-  const [wallpaper, setWallpaper] = useState('none');
-  const [error, setError] = useState<string | null>(null);
-  const theme = useMemo(
-    () => sanitizeTheme({ id: `custom-${Date.now()}`, name, description, vars, glass, wallpaper: wallpaper === 'none' ? undefined : wallpaper, author: me.display_name }),
-    [name, description, vars, glass, wallpaper, me.display_name],
-  );
-  const preview = useRef<Theme | null>(null);
-  preview.current = theme;
-
-  const startFrom = (t: Theme) => {
-    setVars({ ...t.vars });
-    setGlass(Boolean(t.glass));
-    setWallpaper(t.wallpaper ?? 'none');
-  };
-
-  return (
-    <div className="theme-creator">
-      <div className="theme-creator-form">
-        {error && <div className="form-error">{error}</div>}
-        <Field label="Start from">
-          <div className="tag-options">
-            {BUILT_IN_THEMES.map((t) => (
-              <button key={t.id} type="button" className="tag-option" onClick={() => startFrom(t)}>
-                {t.name}
-              </button>
-            ))}
-          </div>
-        </Field>
-        <div className="row">
-          <Field label="Name">
-            <input maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="Description">
-            <input maxLength={140} value={description} onChange={(e) => setDescription(e.target.value)} />
-          </Field>
-        </div>
-        <div className="color-grid">
-          {EDITABLE.map((e) => (
-            <label key={e.key} className="color-cell">
-              <input type="color" value={(vars[e.key] ?? '#000000').slice(0, 7)} onChange={(ev) => setVars((v) => ({ ...v, [e.key]: ev.target.value }))} />
-              <span>{e.label}</span>
-            </label>
-          ))}
-        </div>
-        <Toggle label="Frosted glass" desc="See-through panels over the wallpaper." checked={glass} onChange={setGlass} />
-        <Field label="Wallpaper">
-          <div className="wallpaper-grid">
-            {WALLPAPERS.map((w) => (
-              <button key={w} type="button" className={`wallpaper-option${wallpaper === w ? ' selected' : ''}`} style={{ background: w === 'none' ? vars['bg-0'] : w }} onClick={() => setWallpaper(w)}>
-                {w === 'none' && 'None'}
-              </button>
-            ))}
-          </div>
-        </Field>
-        <div className="modal-actions">
-          <button
-            className="btn secondary"
-            onClick={() => {
-              if (!theme) return setError('Pick valid colors.');
-              updateSettings((s) => ({ installedThemes: [...s.installedThemes, theme], themeId: theme.id }));
-              onDone(`Saved “${theme.name}” to My Themes.`);
-            }}
-          >
-            Save to my themes
-          </button>
-          <button
-            className="btn primary"
-            onClick={async () => {
-              if (!theme) return setError('Pick valid colors.');
-              const { error } = await supabase.from('themes').insert({ author_id: me.id, name: theme.name, description: theme.description, data: theme });
-              if (error) return setError(errorMessage(error));
-              updateSettings((s) => ({ installedThemes: [...s.installedThemes, theme], themeId: theme.id }));
-              onDone(`Published “${theme.name}” to the marketplace.`);
-            }}
-          >
-            Publish to marketplace
-          </button>
-        </div>
-      </div>
-      <div className="theme-creator-preview">
-        <div className="field-label">Preview</div>
-        {theme && <ThemeSwatch t={theme} />}
-      </div>
-    </div>
   );
 }
 

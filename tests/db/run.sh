@@ -15,4 +15,5 @@ for f in supabase/migrations/*.sql; do
 done
 psql -q -v ON_ERROR_STOP=1 -d $DB -f tests/db/rls_test.sql
 psql -q -v ON_ERROR_STOP=1 -d $DB -f tests/db/schema_manifest_test.sql
+psql -q -v ON_ERROR_STOP=1 -d $DB -f tests/db/theme_test.sql
 echo "database tests passed"

@@ -599,5 +599,27 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "schema_missing"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261106000000_theme_versions.sql",
+    "tables": [
+      "theme_drafts",
+      "theme_installs",
+      "theme_versions"
+    ],
+    "functions": [
+      "guard_theme_insert",
+      "theme_categories",
+      "theme_data_problem",
+      "theme_first_version",
+      "theme_publish",
+      "theme_rollback",
+      "theme_save",
+      "theme_set_status",
+      "uninstall_theme"
+    ],
+    "bodies": {
+      "install_theme": "2399b62cdcaec1e7536341cefcd11ffd"
+    }
   }
 ];
