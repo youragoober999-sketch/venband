@@ -21,6 +21,16 @@ export const DEFAULT_SOUNDS: SoundRef[] = [
   { kind: 'default', id: 'clap', name: 'Clap', emoji: '👏' },
   { kind: 'default', id: 'sadhorn', name: 'Sad Horn', emoji: '🎺' },
   { kind: 'default', id: 'badumtss', name: 'Ba Dum Tss', emoji: '🥁' },
+  { kind: 'default', id: 'tada', name: 'Ta-da!', emoji: '🎉' },
+  { kind: 'default', id: 'drumroll', name: 'Drumroll', emoji: '🪘' },
+  { kind: 'default', id: 'boing', name: 'Boing', emoji: '🌀' },
+  { kind: 'default', id: 'laser', name: 'Laser', emoji: '🔫' },
+  { kind: 'default', id: 'whoosh', name: 'Whoosh', emoji: '💨' },
+  { kind: 'default', id: 'applause', name: 'Applause', emoji: '🙌' },
+  { kind: 'default', id: 'ding', name: 'Ding', emoji: '🔔' },
+  { kind: 'default', id: 'heartbeat', name: 'Heartbeat', emoji: '💓' },
+  { kind: 'default', id: 'levelup', name: 'Level Up', emoji: '⭐' },
+  { kind: 'default', id: 'thunder', name: 'Thunder', emoji: '⛈️' },
 ];
 
 const RATE = 44100;
@@ -51,7 +61,7 @@ function env(c: OfflineAudioContext, at: number, attack: number, hold: number, r
 
 /** Build each built-in sound once. */
 async function synth(id: string): Promise<AudioBuffer> {
-  const len = { airhorn: 1.6, fart: 0.9, quack: 0.6, cricket: 1.6, clap: 0.5, sadhorn: 2.4, badumtss: 1.6 }[id] ?? 1;
+  const len = { airhorn: 1.6, fart: 0.9, quack: 0.6, cricket: 1.6, clap: 0.5, sadhorn: 2.4, badumtss: 1.6, tada: 1.8, drumroll: 2.6, boing: 0.9, laser: 0.6, whoosh: 0.9, applause: 2.6, ding: 1.8, heartbeat: 1.8, levelup: 1.3, thunder: 3 }[id] ?? 1;
   const c = new OfflineAudioContext(1, Math.ceil(RATE * len), RATE);
   const out = c.createDynamicsCompressor();
   out.connect(c.destination);
@@ -177,6 +187,131 @@ async function synth(id: string): Promise<AudioBuffer> {
     const g = env(c, 0.44, 0.002, 0.03, 1, 0.5);
     n.connect(hp).connect(g).connect(out);
     n.start(0.44);
+  } else if (id === 'tada') {
+    // a quick pickup, then a big bright brass chord
+    for (const [at, dur, fs] of [[0, 0.14, [523, 659]], [0.16, 1.5, [523, 659, 784, 1047]]] as [number, number, number[]][]) {
+      const g = env(c, at, 0.015, dur - 0.3, 0.3, 0.22);
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 3200;
+      g.connect(lp).connect(out);
+      for (const f of fs) {
+        osc('sawtooth', f, at, dur, g);
+        osc('sawtooth', f * 1.004, at, dur, g); // slight detune = fuller section
+      }
+    }
+  } else if (id === 'drumroll') {
+    // snare roll that builds, then a cymbal
+    const n = noise(c, 2.6);
+    const bp = c.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 2200;
+    bp.Q.value = 0.8;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, 0);
+    for (let t = 0; t < 1.9; t += 0.045) {
+      const peak = 0.15 + (t / 1.9) * 0.55;
+      g.gain.setValueAtTime(peak, t);
+      g.gain.exponentialRampToValueAtTime(0.02, t + 0.04);
+    }
+    g.gain.setValueAtTime(0.9, 1.95);
+    g.gain.exponentialRampToValueAtTime(0.0001, 2.6);
+    n.connect(bp).connect(g).connect(out);
+    n.start(0);
+  } else if (id === 'boing') {
+    const g = env(c, 0, 0.005, 0.1, 0.75, 0.6);
+    g.connect(out);
+    const o = c.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(140, 0);
+    o.frequency.exponentialRampToValueAtTime(520, 0.12);
+    o.frequency.exponentialRampToValueAtTime(260, 0.8);
+    const wob = c.createOscillator();
+    const wg = c.createGain();
+    wob.frequency.value = 14;
+    wg.gain.value = 40;
+    wob.connect(wg).connect(o.frequency);
+    o.connect(g);
+    o.start(0);
+    wob.start(0);
+    o.stop(0.9);
+    wob.stop(0.9);
+  } else if (id === 'laser') {
+    const g = env(c, 0, 0.002, 0.05, 0.45, 0.4);
+    g.connect(out);
+    const o = c.createOscillator();
+    o.type = 'square';
+    o.frequency.setValueAtTime(1800, 0);
+    o.frequency.exponentialRampToValueAtTime(140, 0.5);
+    o.connect(g);
+    o.start(0);
+    o.stop(0.6);
+  } else if (id === 'whoosh') {
+    const n = noise(c, 0.9);
+    const bp = c.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(300, 0);
+    bp.frequency.exponentialRampToValueAtTime(3000, 0.45);
+    bp.frequency.exponentialRampToValueAtTime(500, 0.9);
+    const g = env(c, 0, 0.35, 0.05, 0.45, 0.8);
+    n.connect(bp).connect(g).connect(out);
+    n.start(0);
+  } else if (id === 'applause') {
+    // many random claps that swell and fade
+    for (let i = 0; i < 70; i++) {
+      const at = Math.random() * 2.1;
+      const n = noise(c, 0.06);
+      const bp = c.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 900 + Math.random() * 1800;
+      bp.Q.value = 1.1;
+      const swell = Math.sin((at / 2.1) * Math.PI);
+      const g = env(c, at, 0.002, 0.004, 0.05, 0.12 + swell * 0.35);
+      n.connect(bp).connect(g).connect(out);
+      n.start(at);
+    }
+  } else if (id === 'ding') {
+    for (const [mult, level] of [[1, 0.5], [2.76, 0.18], [5.4, 0.08]]) {
+      const g = env(c, 0, 0.002, 0.01, 1.7, level);
+      g.connect(out);
+      osc('sine', 1318 * mult, 0, 1.8, g);
+    }
+  } else if (id === 'heartbeat') {
+    for (const beat of [0, 0.85]) {
+      for (const [d, f] of [[0, 70], [0.18, 58]]) {
+        const g = env(c, beat + d, 0.005, 0.03, 0.18, 0.9);
+        g.connect(out);
+        const o = c.createOscillator();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(f * 1.6, beat + d);
+        o.frequency.exponentialRampToValueAtTime(f, beat + d + 0.06);
+        o.connect(g);
+        o.start(beat + d);
+        o.stop(beat + d + 0.3);
+      }
+    }
+  } else if (id === 'levelup') {
+    [523, 659, 784, 1047, 1319].forEach((f, i) => {
+      const g = env(c, i * 0.09, 0.005, 0.05, i === 4 ? 0.6 : 0.12, 0.18);
+      g.connect(out);
+      osc('square', f, i * 0.09, i === 4 ? 0.8 : 0.2, g);
+    });
+  } else if (id === 'thunder') {
+    const n = noise(c, 3);
+    const lp = c.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(900, 0);
+    lp.frequency.exponentialRampToValueAtTime(120, 2.8);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, 0);
+    g.gain.exponentialRampToValueAtTime(1, 0.04);
+    g.gain.exponentialRampToValueAtTime(0.35, 0.5);
+    g.gain.setValueAtTime(0.35, 0.6);
+    g.gain.exponentialRampToValueAtTime(0.7, 0.75); // second rumble
+    g.gain.exponentialRampToValueAtTime(0.0001, 3);
+    n.connect(lp).connect(g).connect(out);
+    n.start(0);
   }
   return c.startRendering();
 }

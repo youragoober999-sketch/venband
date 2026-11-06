@@ -19,7 +19,6 @@ import {
   markRead,
   notificationPermission,
   notify,
-  playMessageSound,
   setUnread,
   startRing,
   stopRing,
@@ -54,6 +53,7 @@ import { NotificationBell } from './NotificationCenter';
 import { ProfileHost, ServerTag, openProfile, userMenu } from './People';
 import { NameplateArt } from './Cosmetics';
 import { MacDock } from './MacDock';
+import { sfx } from '../lib/sfx';
 import { Badges, OwnerCrown, RoleIcon, ServerBadge, VerifiedMark } from './Badges';
 import { SettingsPage, STATUS_TEXT } from './Settings';
 import { DiscoveryView, DonateView, FriendsView, MessageRequestsView, RequestBanner } from './Friends';
@@ -118,7 +118,7 @@ function useMessageAlerts(servers: Server[]) {
     if ((getSettings().dms.mutedUntil[row.channel_id] ?? 0) > Date.now()) return;
     if (meta.server_id && getSettings().rail.folders.some((f) => f.muted && f.servers.includes(meta.server_id!))) return;
     if ((!isDm && !mention) || rel?.muted || me.presence === 'dnd' || meta.request_to === me.id) return;
-    playMessageSound();
+    sfx(isDm ? 'dm' : 'mention');
     await loadProfiles([row.author_id]);
     const who = displayName(row.author_id);
     const server = serversRef.current.find((x) => x.id === meta.server_id);

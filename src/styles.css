@@ -3074,3 +3074,9 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .cmd-label { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font-size: 12.5px; color: var(--muted); }
 .cmd-app { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 5px; font-size: 11px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #6d7cff, #4b3ad6); }
 .cmd-name { color: var(--link); font-weight: 600; }
+
+/* ---- Settings → Sounds */
+.sound-volume { display: flex; flex-direction: column; gap: 4px; font-size: 13px; margin: 6px 0 10px; }
+.sound-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 4px 12px; }
+.sound-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; font-size: 13.5px; }
+.sound-row:hover { background: var(--bg-hover); }

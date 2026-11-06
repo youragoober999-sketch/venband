@@ -13,6 +13,7 @@ import { getCurrentKey, observeKey } from './directory';
 import { acquireScope, sendRing, setVoiceState } from './presence';
 import { DEFAULT_SOUNDS, isOurAsset, playSound, type SoundRef } from './soundboard';
 import { stopRing } from './notify';
+import { sfx } from './sfx';
 import { getSettings } from './settings';
 
 interface CallMeta {
@@ -95,6 +96,8 @@ export class Call {
   private peers = new Map<string, Peer>();
   private listeners = new Set<() => void>();
   private closed = false;
+  /** when we joined — so the people already in the call don't each play a join sound */
+  private joinedAt = Date.now();
   version = 0;
 
   mic: MediaStream | null = null;
@@ -239,6 +242,8 @@ export class Call {
   }
 
   async join() {
+    this.joinedAt = Date.now();
+    sfx('call_connect');
     try {
       this.mic = await this.openMic();
       if (getSettings().voice.joinMuted && !this.muted) this.muted = true;
@@ -306,6 +311,7 @@ export class Call {
 
   leave() {
     if (this.closed) return;
+    sfx('call_end');
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.closed = true;
     this.status = 'closed';
@@ -354,7 +360,11 @@ export class Call {
       if (!who?.user_id) continue;
       if (this.allowed && !this.allowed.has(who.user_id)) continue;
       seen.add(session);
+      const isNew = !this.peers.has(session);
+      const wasHere = isNew && [...this.peers.values()].some((p) => p.userId === who.user_id);
       const peer = this.peers.get(session) ?? this.createPeer(session, who.user_id);
+      // a join sound for newcomers — not for the people already here when you join
+      if (isNew && !wasHere && Date.now() - this.joinedAt > 2500) sfx('user_join');
       if (peer.userId !== who.user_id) continue; // presence key/user mismatch: ignore
       const meta = this.metas.get(session);
       if (meta && meta.user_id === peer.userId) peer.meta = meta;
@@ -388,7 +398,10 @@ export class Call {
     peer.pc.close();
     this.peers.delete(session);
     this.metas.delete(session);
-    if (![...this.peers.values()].some((p) => p.userId === peer.userId)) this.lastLeft = peer.userId;
+    if (![...this.peers.values()].some((p) => p.userId === peer.userId)) {
+      this.lastLeft = peer.userId;
+      if (!this.closed) sfx('user_leave');
+    }
     this.changed();
   }
 
@@ -569,11 +582,13 @@ export class Call {
     if (this.muted && this.muteLock) return; // e.g. you're in the stage audience
     this.muted = !this.muted;
     this.mic.getAudioTracks().forEach((t) => (t.enabled = !this.muted));
+    sfx(this.muted ? 'mute' : 'unmute');
     this.publishState();
   }
 
   toggleDeafen() {
     this.deafened = !this.deafened;
+    sfx(this.deafened ? 'deafen' : 'undeafen');
     // deafening also mutes, like most voice apps
     if (this.mic?.getAudioTracks().length) {
       this.muted = this.deafened;
@@ -643,6 +658,7 @@ export class Call {
     for (const p of this.peers.values()) {
       for (const t of this.screen.getTracks()) p.senders.screen.push(tuneScreen(p.pc.addTrack(t, this.screen)));
     }
+    sfx('stream_start');
     this.publishState();
   }
 
@@ -654,6 +670,7 @@ export class Call {
     }
     this.screen.getTracks().forEach((t) => t.stop());
     this.screen = null;
+    sfx('stream_stop');
     this.publishState();
   }
 }

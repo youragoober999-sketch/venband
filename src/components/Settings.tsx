@@ -30,6 +30,7 @@ import { EFFECT_LIST, FRAME_LIST, NameplateArt, ProfileEffect } from './Cosmetic
 import { askConfirm } from './Dialogs';
 import { BadgeDesigner, DiscoveryQueue, ModerationCenter, ReportCentre } from './Moderation';
 import { AppealsQueue } from './Appeals';
+import { SoundSettings } from './SoundSettings';
 import { useStaffPerms, type StaffPerm } from '../lib/staff';
 import { Markdown } from './Markdown';
 import { SecurityTab } from './Security';
@@ -1480,6 +1481,7 @@ function VoiceTab() {
   return (
     <>
       <h2>Voice & Video</h2>
+      <SoundSettings />
       {!named && (
         <div className="notice">
           Your browser hides device names until you allow microphone access.{' '}
