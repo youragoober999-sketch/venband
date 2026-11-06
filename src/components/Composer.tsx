@@ -9,6 +9,10 @@ import { getSettings, noteEmojiUse, useSettings } from '../lib/settings';
 import { emojiIn, loadEmoji, replaceShortcodes, searchEmoji, type CustomEmoji, type EmojiMatch } from '../lib/emoji';
 import { addToDictionary, autoFix, findMistakes, suggestions as spellSuggestions } from '../lib/spell';
 import type { Profile } from '../lib/types';
+import { getProfile, loadProfiles } from '../lib/directory';
+
+/** @<uuid> typed / pasted and finished (space, punctuation or end), or a raw <@uuid> */
+const ID_MENTION = /(^|[\s(])(?:@|<@)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})>?(?=[\s.,!?)]|$)/gi;
 import { formatSize } from './Attachments';
 import { EmojiPicker } from './EmojiPicker';
 import { GifPicker } from './GifPicker';
@@ -131,6 +135,29 @@ export function Composer({
   useEffect(() => {
     loadEmoji();
   }, []);
+
+  // "@<user id>" (or a pasted "<@id>") turns into "@username" once the id is
+  // complete — the message still carries the real mention underneath.
+  useEffect(() => {
+    const ids = [...text.matchAll(ID_MENTION)].map((m) => m[2].toLowerCase());
+    if (!ids.length) return;
+    let cancelled = false;
+    void loadProfiles(ids).then(() => {
+      if (cancelled) return;
+      setText((t) =>
+        t.replace(ID_MENTION, (all, pre: string, id: string) => {
+          const p = getProfile(id.toLowerCase());
+          if (!p) return all;
+          const shown = `@${p.username}`;
+          tokens.current.set(shown, `<@${p.id}>`);
+          return `${pre}${shown}`;
+        }),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [text]);
 
   // drafts: restore when switching conversations, save as you type
   useEffect(() => {
