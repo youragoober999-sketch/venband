@@ -2936,3 +2936,15 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .mod-log-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
 .mod-log-filters > input { flex: 1 1 240px; }
 .mod-log-filters input[type='date'] { margin-left: 4px; }
+
+/* ---- GIF maker */
+.gif-controls { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.gif-range { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.gif-range input { width: 100%; }
+.gif-row { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.gif-row > :nth-child(2):last-child { grid-column: 2 / 4; }
+.check-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
+.gif-caption { width: 100%; }
+.gif-progress { display: flex; align-items: center; gap: 10px; }
+.gif-progress-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--bg-3); overflow: hidden; }
+.gif-progress-bar > div { height: 100%; background: var(--accent); transition: width .15s; }

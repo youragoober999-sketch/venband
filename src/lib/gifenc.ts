@@ -70,84 +70,118 @@ function indexFrame(f: GifFrame, palette: Uint8Array, lookup: Map<number, number
   return out;
 }
 
+/** Growable byte buffer (pushing numbers into an array was the slow part). */
+class Bytes {
+  buf = new Uint8Array(1 << 16);
+  len = 0;
+  private room(n: number) {
+    if (this.len + n <= this.buf.length) return;
+    let size = this.buf.length * 2;
+    while (size < this.len + n) size *= 2;
+    const next = new Uint8Array(size);
+    next.set(this.buf.subarray(0, this.len));
+    this.buf = next;
+  }
+  byte(b: number) {
+    this.room(1);
+    this.buf[this.len++] = b;
+  }
+  u16(n: number) {
+    this.room(2);
+    this.buf[this.len++] = n & 0xff;
+    this.buf[this.len++] = (n >> 8) & 0xff;
+  }
+  bytes(a: ArrayLike<number>) {
+    this.room(a.length);
+    this.buf.set(a, this.len);
+    this.len += a.length;
+  }
+  done() {
+    return this.buf.slice(0, this.len);
+  }
+}
+
+/** GIF LZW. Dictionary keys are numbers (prefixCode << 8 | index), not strings. */
 function lzw(indices: Uint8Array, minCodeSize: number): Uint8Array {
-  const bytes: number[] = [];
+  const out = new Bytes();
   let cur = 0;
   let bits = 0;
   const clear = 1 << minCodeSize;
   const eoi = clear + 1;
   let codeSize = minCodeSize + 1;
   let next = eoi + 1;
-  let dict = new Map<string, number>();
+  const dict = new Map<number, number>();
   const write = (code: number) => {
     cur |= code << bits;
     bits += codeSize;
     while (bits >= 8) {
-      bytes.push(cur & 0xff);
+      out.byte(cur & 0xff);
       cur >>= 8;
       bits -= 8;
     }
   };
   write(clear);
-  let prefix = String(indices[0]);
+  let prefix = indices[0];
   for (let i = 1; i < indices.length; i++) {
     const k = indices[i];
-    const key = `${prefix},${k}`;
-    if (dict.has(key)) {
-      prefix = key;
+    const key = (prefix << 8) | k;
+    const code = dict.get(key);
+    if (code !== undefined) {
+      prefix = code;
       continue;
     }
-    write(prefix.includes(',') ? dict.get(prefix)! : Number(prefix));
+    write(prefix);
     if (next < 4096) {
       dict.set(key, next++);
       if (next > 1 << codeSize && codeSize < 12) codeSize++;
     } else {
       write(clear);
-      dict = new Map();
+      dict.clear();
       next = eoi + 1;
       codeSize = minCodeSize + 1;
     }
-    prefix = String(k);
+    prefix = k;
   }
-  write(prefix.includes(',') ? dict.get(prefix)! : Number(prefix));
+  write(prefix);
   write(eoi);
-  if (bits > 0) bytes.push(cur & 0xff);
-  return Uint8Array.from(bytes);
+  if (bits > 0) out.byte(cur & 0xff);
+  return out.done();
 }
 
-export function encodeGif(width: number, height: number, frames: GifFrame[], loop = true): Blob {
+/** Encode frames as one GIF. onProgress(0..1) is called after each frame. */
+export function encodeGif(width: number, height: number, frames: GifFrame[], loop = true, onProgress?: (p: number) => void): Blob {
   const { palette, lookup } = buildPalette(frames);
   const used = Math.max(1, lookup.size);
-  const parts: number[] = [];
-  const push16 = (n: number) => parts.push(n & 0xff, (n >> 8) & 0xff);
+  const out = new Bytes();
   // header + logical screen (global colour table of 256)
-  parts.push(...'GIF89a'.split('').map((c) => c.charCodeAt(0)));
-  push16(width);
-  push16(height);
-  parts.push(0xf7, 0, 0);
-  parts.push(...palette);
-  if (loop && frames.length > 1) parts.push(0x21, 0xff, 0x0b, ...'NETSCAPE2.0'.split('').map((c) => c.charCodeAt(0)), 3, 1, 0, 0, 0);
-  for (const f of frames) {
+  out.bytes([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]); // GIF89a
+  out.u16(width);
+  out.u16(height);
+  out.bytes([0xf7, 0, 0]);
+  out.bytes(palette);
+  if (loop && frames.length > 1) out.bytes([0x21, 0xff, 0x0b, 0x4e, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32, 0x2e, 0x30, 3, 1, 0, 0, 0]); // NETSCAPE2.0
+  frames.forEach((f, n) => {
     // graphic control: delay + transparent index
-    parts.push(0x21, 0xf9, 4, 0b00001001);
-    push16(Math.round(f.delayMs / 10));
-    parts.push(TRANSPARENT, 0);
-    parts.push(0x2c);
-    push16(0);
-    push16(0);
-    push16(width);
-    push16(height);
-    parts.push(0);
+    out.bytes([0x21, 0xf9, 4, 0b00001001]);
+    out.u16(Math.round(f.delayMs / 10));
+    out.bytes([TRANSPARENT, 0, 0x2c]);
+    out.u16(0);
+    out.u16(0);
+    out.u16(width);
+    out.u16(height);
+    out.byte(0);
     const data = lzw(indexFrame(f, palette, lookup, used), 8);
-    parts.push(8);
+    out.byte(8);
     for (let i = 0; i < data.length; i += 255) {
       const chunk = data.subarray(i, i + 255);
-      parts.push(chunk.length, ...chunk);
+      out.byte(chunk.length);
+      out.bytes(chunk);
     }
-    parts.push(0);
-  }
-  parts.push(0x3b);
-  return new Blob([Uint8Array.from(parts)], { type: 'image/gif' });
+    out.byte(0);
+    onProgress?.((n + 1) / frames.length);
+  });
+  out.byte(0x3b);
+  return new Blob([out.done()], { type: 'image/gif' });
 }
 
 /** Draw pictures onto a canvas (fit + centre) and encode them as one GIF. */

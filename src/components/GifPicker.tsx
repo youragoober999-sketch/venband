@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { gifsEnabled, reportGifShare, searchGifs, trendingGifs } from '../lib/klipy';
-import { imagesToGif } from '../lib/gifenc';
+import { GifMaker } from './GifMaker';
 import { updateSettings, useSettings, type GifFavorite } from '../lib/settings';
 import { expressionStore } from '../lib/expressions';
 import { errorMessage } from '../lib/supabase';
@@ -140,7 +140,7 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
       <div className="modal-backdrop" onClick={() => setMakeOpen(false)}>
         <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
           <h2>Make a GIF</h2>
-          <MakeGif onDone={(f) => { onFile(f); setMakeOpen(false); onClose(); }} />
+          <GifMaker onDone={(f) => { onFile(f); setMakeOpen(false); onClose(); }} />
           <button className="btn ghost small" onClick={() => setMakeOpen(false)} style={{ marginTop: 8 }}>Close</button>
         </div>
       </div>
@@ -181,67 +181,6 @@ function GifTile({ g, fav, onPick }: { g: GifFavorite; fav: boolean; onPick: () 
         <img src={g.preview} alt="" loading="lazy" />
       </button>
       <FavoriteStar g={g} fav={fav} />
-    </div>
-  );
-}
-
-function MakeGif({ onDone }: { onDone: (f: File) => void }) {
-  const [files, setFiles] = useState<File[]>([]);
-  const [delay, setDelay] = useState(500);
-  const [preview, setPreview] = useState<{ file: File; url: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => () => void (preview && URL.revokeObjectURL(preview.url)), [preview]);
-
-  async function build(list = files, d = delay) {
-    if (!list.length) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const gif = await imagesToGif(list, { delayMs: d });
-      setPreview({ file: gif, url: URL.createObjectURL(gif) });
-    } catch (e) {
-      setError(`Couldn’t make a GIF from those pictures: ${errorMessage(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="make-gif">
-      <p className="small muted">Pick one picture to convert it, or several to make an animated slideshow. It’s made on your device and sent encrypted.</p>
-      <label className="btn secondary small">
-        <Icon name="image" size={16} /> Choose pictures
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          hidden
-          onChange={(e) => {
-            const list = [...(e.target.files ?? [])].filter((f) => f.type.startsWith('image/'));
-            setFiles(list);
-            build(list);
-            e.target.value = '';
-          }}
-        />
-      </label>
-      {files.length > 1 && (
-        <label className="make-gif-delay">
-          Speed: {(delay / 1000).toFixed(1)}s per picture
-          <input type="range" min={100} max={2000} step={100} value={delay} onChange={(e) => setDelay(Number(e.target.value))} onMouseUp={() => build()} onTouchEnd={() => build()} />
-        </label>
-      )}
-      {error && <div className="form-error">{error}</div>}
-      {busy && <div className="spinner small" />}
-      {preview && !busy && (
-        <>
-          <img className="make-gif-preview" src={preview.url} alt="GIF preview" />
-          <div className="small muted">{(preview.file.size / 1024).toFixed(0)} KB</div>
-          <button className="btn primary small" onClick={() => onDone(preview.file)}>
-            Send GIF
-          </button>
-        </>
-      )}
     </div>
   );
 }
