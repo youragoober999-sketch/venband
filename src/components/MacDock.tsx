@@ -8,7 +8,20 @@ import { openServer } from '../hooks/data';
 import { unreadStore } from '../lib/notify';
 import { getSettings, updateSettings, useSettings } from '../lib/settings';
 import { useDragSort, type DropWhere } from '../lib/useDragSort';
-import { Icon, Logo, initials } from './ui';
+import { Icon, initials } from './ui';
+
+/** Two chat bubbles: Home is where your messages live. */
+function ChatGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M9.5 5.5h7a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-.5v2.4l-3.1-2.4H9.5a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3z" fill="#ffffff" opacity=".45" transform="translate(1.8 -1.6)" />
+      <path d="M6.5 7.5h8a3 3 0 0 1 3 3v4.2a3 3 0 0 1-3 3H10l-3.6 2.8v-2.8a3 3 0 0 1-2.9-3v-4.2a3 3 0 0 1 3-3z" fill="#ffffff" />
+      <circle cx="7.9" cy="12.6" r="1.05" fill="#5b3fd6" />
+      <circle cx="10.8" cy="12.6" r="1.05" fill="#5b3fd6" />
+      <circle cx="13.7" cy="12.6" r="1.05" fill="#5b3fd6" />
+    </svg>
+  );
+}
 
 export type DockPosition = 'top' | 'left' | 'right' | 'bottom' | 'custom';
 
@@ -148,7 +161,7 @@ export function MacDock({
       onPointerLeave={rest}
     >
       <DockItem id="home" label="Home & messages" active={current === null && !discover} mentions={dmUnread} onOpen={() => openServer(null)} className="dock-home">
-        <Logo size={26} />
+        <ChatGlyph />
       </DockItem>
       {sorted.length > 0 && <span className="dock-sep" aria-hidden />}
       {sorted.map((s) => {
