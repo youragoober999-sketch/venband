@@ -1,9 +1,11 @@
 // Memories: story-style photos and short videos pinned to a profile.
-// Limits (also enforced by the database): 10 per account, videos up to 30 s.
-import { supabase } from './supabase';
+// Limits (also enforced by the database): keep up to 30, up to 10 showing at
+// once (the rest are archived), videos up to 30 s.
+import { supabase, isOldSchema } from './supabase';
 import { sessionStore } from './session';
 
-export const MAX_MEMORIES = 10;
+export const MAX_MEMORIES = 30;
+export const MAX_SHOWING = 10;
 export const MAX_VIDEO_MS = 30_000;
 export const IMAGE_MS = 6_000;
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -19,8 +21,17 @@ export interface Memory {
   width: number | null;
   height: number | null;
   created_at: string;
+  /** false = archived (only the owner sees it) */
+  active?: boolean;
+  expires_at?: string | null;
+  audience?: Audience;
   url?: string;
 }
+export type Audience = 'everyone' | 'friends' | 'only_me';
+export const AUDIENCE_LABEL: Record<Audience, string> = { everyone: 'Everyone who can see your profile', friends: 'Friends only', only_me: 'Only me' };
+
+/** Showing on the profile: not archived and not expired. */
+export const isShowing = (m: Memory) => m.active !== false && (!m.expires_at || new Date(m.expires_at).getTime() > Date.now());
 
 const cache = new Map<string, { at: number; list: Memory[] }>();
 const listeners = new Set<() => void>();
@@ -102,10 +113,20 @@ async function prepareImage(file: File): Promise<{ blob: Blob; width: number; he
   return { blob, width: w, height: h };
 }
 
-export async function addMemory(file: File, caption = '', onStage?: (s: string) => void): Promise<Memory> {
+export interface NewMemory {
+  caption?: string;
+  audience?: Audience;
+  /** hours until it stops showing; null = never */
+  expiresInHours?: number | null;
+}
+
+export async function addMemory(file: File, opts: NewMemory = {}, onStage?: (s: string) => void): Promise<Memory> {
   const uid = me();
+  const caption = opts.caption ?? '';
   const existing = await listMemories(uid, true);
-  if (existing.length >= MAX_MEMORIES) throw new Error(`You can have up to ${MAX_MEMORIES} memories at a time. Delete one to add another.`);
+  if (existing.length >= MAX_MEMORIES) throw new Error(`You can keep up to ${MAX_MEMORIES} memories. Delete one to add another.`);
+  // with 10 already showing, the new one goes straight to the archive
+  const active = existing.filter(isShowing).length < MAX_SHOWING;
   const isVideo = file.type.startsWith('video/');
   if (!isVideo && !file.type.startsWith('image/')) throw new Error('Memories can be photos or videos.');
   if (file.size > MAX_BYTES) throw new Error('That file is over 25 MB.');
@@ -125,10 +146,18 @@ export async function addMemory(file: File, caption = '', onStage?: (s: string) 
   onStage?.('Uploading…');
   const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: isVideo ? file.type : ext === 'gif' ? 'image/gif' : 'image/webp' });
   if (upErr) throw upErr;
-  const { data, error } = await supabase.from('memories').insert({
+  const row = {
     user_id: uid, path, media_type: isVideo ? 'video' : 'image', duration_ms: duration,
     caption: caption.trim().slice(0, 200), width: width || null, height: height || null,
+  };
+  let { data, error } = await supabase.from('memories').insert({
+    ...row,
+    active,
+    audience: opts.audience ?? 'everyone',
+    expires_at: opts.expiresInHours ? new Date(Date.now() + opts.expiresInHours * 3_600_000).toISOString() : null,
   }).select('*').single();
+  // database without the archive / audience update yet: add it the old way
+  if (error && isOldSchema(error)) ({ data, error } = await supabase.from('memories').insert(row).select('*').single());
   if (error) {
     await supabase.storage.from(BUCKET).remove([path]);
     throw error;
@@ -136,6 +165,14 @@ export async function addMemory(file: File, caption = '', onStage?: (s: string) 
   cache.delete(uid);
   changed();
   return data as Memory;
+}
+
+/** Archive / show again, change who sees it, or when it expires. */
+export async function updateMemory(m: Memory, patch: Partial<Pick<Memory, 'active' | 'audience' | 'expires_at' | 'caption'>>) {
+  const { error } = await supabase.from('memories').update(patch).eq('id', m.id);
+  if (error) throw error;
+  cache.delete(m.user_id);
+  changed();
 }
 
 export async function deleteMemory(m: Memory) {

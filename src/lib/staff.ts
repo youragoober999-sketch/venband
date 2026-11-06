@@ -49,8 +49,8 @@ export function useStaffPerms(): StaffPerm[] {
 }
 export const refreshStaffPerms = () => permStore.set({ perms: null, for: null });
 
-/** Report a marketplace item or a bot (goes to the Report Centre). */
-export async function reportItem(kind: 'theme' | 'app', id: string, reason: string) {
+/** Report a marketplace item, a bot or a memory (goes to the Report Centre). */
+export async function reportItem(kind: 'theme' | 'app' | 'memory', id: string, reason: string) {
   const { error } = await supabase.rpc('report_item', { p_kind: kind, p_ref: id, p_reason: reason });
   if (error) throw error;
 }

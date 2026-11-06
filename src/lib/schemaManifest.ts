@@ -695,5 +695,17 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "mod_set_badges": "5dadcc79894e2e78be3d3e21188e88ff",
       "theme_set_status": "c2c2235b9dab4dc2ad35f26e976a6dcd"
     }
+  },
+  {
+    "migration": "20261106060000_memories_archive.sql",
+    "tables": [],
+    "functions": [
+      "memory_showing",
+      "memory_visible"
+    ],
+    "bodies": {
+      "guard_memory": "19657bceecce4939145236a78df81b3b",
+      "report_item": "63b4e3cf2b1d20ffc4bf9e5136e2b640"
+    }
   }
 ];

@@ -504,10 +504,18 @@ function BadgeEditor({ user, myRank, top, onClose, onSave }: { user: ModUser; my
 
 // ------------------------------------------------------------ report centre --
 
+/** Staff: delete a reported memory and its file. */
+async function deleteReportedMemory(id: string) {
+  const { data } = await supabase.from('memories').select('path').eq('id', id).maybeSingle();
+  const res = await supabase.from('memories').delete().eq('id', id);
+  if (!res.error && data?.path) await supabase.storage.from('memories').remove([data.path as string]);
+  return res;
+}
+
 interface ReportRow {
   id: string;
   reporter_id: string | null;
-  kind: 'message' | 'user' | 'theme' | 'app';
+  kind: 'message' | 'user' | 'theme' | 'app' | 'memory';
   target_ref?: string | null;
   target_user: string | null;
   message_id: string | null;
@@ -562,16 +570,18 @@ export function ReportCentre() {
   }
 
   async function removeItem(r: ReportRow) {
-    const reason = await askText({ title: r.kind === 'theme' ? 'Remove from the Marketplace' : 'Disable this bot', label: 'Reason (the creator sees it and can appeal)', initial: r.reason, maxLength: 500 });
+    const reason = await askText({ title: r.kind === 'theme' ? 'Remove from the Marketplace' : r.kind === 'memory' ? 'Delete this memory' : 'Disable this bot', label: r.kind === 'memory' ? 'Note for the staff log' : 'Reason (the creator sees it and can appeal)', initial: r.reason, maxLength: 500 });
     if (!reason?.trim()) return;
     const { error } =
-      r.kind === 'theme'
+      r.kind === 'memory'
+        ? await deleteReportedMemory(r.target_ref!)
+        : r.kind === 'theme'
         ? await supabase.rpc('theme_set_status', { p_theme: r.target_ref, p_status: 'removed', p_reason: reason.trim() })
         : await supabase.rpc('mod_app_action', { p_app: r.target_ref, p_action: 'disable', p_reason: reason.trim() });
     if (error) return setMsg({ ok: false, text: errorMessage(error) });
     const { error: e2 } = await supabase.rpc('handle_report', { p_report: r.id, p_status: 'actioned', p_note: reason.trim() });
     if (e2) return setMsg({ ok: false, text: errorMessage(e2) });
-    setMsg({ ok: true, text: r.kind === 'theme' ? 'Removed and report closed.' : 'Bot disabled and report closed.' });
+    setMsg({ ok: true, text: r.kind === 'theme' ? 'Removed and report closed.' : r.kind === 'memory' ? 'Memory deleted and report closed.' : 'Bot disabled and report closed.' });
     load();
   }
 
@@ -604,7 +614,7 @@ export function ReportCentre() {
         {(rows ?? []).filter((r) => reportMatches(r, filter, q)).map((r) => (
           <div key={r.id} className="mod-card report-card">
             <div className="mod-card-head">
-              <span className={`pill ${r.kind === 'message' ? 'review' : 'limited'}`}>{{ message: 'Message', user: 'User', theme: 'Marketplace item', app: 'Bot' }[r.kind]}</span>
+              <span className={`pill ${r.kind === 'message' ? 'review' : 'limited'}`}>{{ message: 'Message', user: 'User', theme: 'Marketplace item', app: 'Bot', memory: 'Memory' }[r.kind]}</span>
               <div className="grow small">
                 <b>{displayName(r.reporter_id ?? '')}</b> reported <b className="link-like" onClick={() => r.target_user && openProfile(r.target_user)}>{displayName(r.target_user ?? '')}</b>
                 <span className="muted"> · @{getProfile(r.target_user ?? '')?.username} · {new Date(r.created_at).toLocaleString()}</span>
@@ -636,9 +646,9 @@ export function ReportCentre() {
                   <Icon name="message" size={14} /> DM them
                 </button>
               )}
-              {r.status === 'under_review' && (r.kind === 'theme' || r.kind === 'app') && r.target_ref && (
+              {r.status === 'under_review' && (r.kind === 'theme' || r.kind === 'app' || r.kind === 'memory') && r.target_ref && (
                 <button className="btn danger small" onClick={() => removeItem(r)}>
-                  <Icon name="trash" size={14} /> {r.kind === 'theme' ? 'Remove from Marketplace' : 'Disable bot'}
+                  <Icon name="trash" size={14} /> {r.kind === 'theme' ? 'Remove from Marketplace' : r.kind === 'memory' ? 'Delete memory' : 'Disable bot'}
                 </button>
               )}
               {r.status === 'under_review' ? (
