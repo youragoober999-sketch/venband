@@ -387,3 +387,74 @@ checked on a temporary local page (removed): all 15 medallions at 40 px and
 
 Limits: custom badges keep their uploaded picture (no medallion frame). Moderation
 views still show every badge a person holds, on purpose.
+
+## 13. Live fixes, drag & drop, cosmetics, translation (done 2026-11-06)
+
+Reported from venband.com while the live database was still on the old schema:
+
+* **`column themes.status does not exist`** — the app now falls back to the old
+  query on an un-updated database, and any "column / function does not exist"
+  error says a database update is needed instead of raw Postgres text.
+* **"one of you has blocked the other" between friends** — `dm_blocked()` had its
+  force-contact check inverted (`can_force_contact OR blocked`), so owners /
+  admins / founders could send **no** DMs at all. Fixed in
+  `20261106030000_fix_dm_blocked.sql` (+ `tests/db/dm_test.sql`). That bug also
+  hid a second one, fixed in the same file: a server's owner kept every
+  permission while the server was in review / closed / banned.
+  Sending also refreshes keys and retries once when the database refuses a
+  message (a key epoch that just changed), then names the real reason.
+* **macOS dock crashed the app (React #310)** — a hook called inside a condition
+  in `Shell`; and the dock's drop handler called a hook too (reorder never worked).
+* **Long right-click menus** shrink (compact / dense) and scroll.
+* **Drag & drop** (`src/lib/useDragSort.ts`): one pointer-based system for the
+  server rail + folders, channels, whole categories, roles and the dock — mouse,
+  touch long-press (HTML5 drag never worked in the Android / iOS apps) and
+  Alt + arrow keys; floating preview, auto-scroll, Esc cancels.
+* **Cosmetics** (`src/components/Cosmetics.tsx`): 13 illustrated animated
+  nameplates, 13 rebuilt avatar frames (+ galaxy, storm, crystal; the sakura
+  frame's garbled emoji is gone), 11 canvas profile effects. Badges simplified to
+  flat tiles; new Venband Developer (always shown), Verified, Verified Bot
+  Developer, Verified Server Owner, Contributor, Beta Tester (developer and the
+  verified ones are admin-only). `20261106040000_cosmetics_badges.sql`.
+* **Translation** — the app never sent the sign-in token, so the online
+  translator always refused and messages fell back to a letter-by-letter
+  "spelling" (gibberish). Now: provider chain that needs no keys (DeepL / Google
+  Cloud if configured, then Google's free endpoint, then MyMemory), 130 languages,
+  server-side language detection, code / links / mentions / emoji kept out, chat
+  slang spelled out first. `tests/translateText.test.ts`.
+* `supabase/update-2026-11.sql` is generated (and CI-checked) by
+  `scripts/build-setup-sql.mjs`: every migration since 20261105000000 in one paste.
+
+## 14. Phase F — staff permissions, appeals, audit search (done 2026-11-06)
+
+`20261106050000_staff_permissions_appeals.sql`, `tests/db/staff_test.sql`.
+Granular staff permissions (defaults = what each rank could do before; owners
+narrow them per person; enforced by `staff_can()` in every moderation function).
+Appeals for account restrictions, removed Marketplace items and disabled bots
+(accept undoes it, deny needs a reply, one open appeal at a time, 7-day wait
+after a denial). Reports for themes and bots; staff can disable / enable bots
+(nothing could before). Audit-log search, action / date filters, paging.
+
+## 15. Phase G — GIF maker (done 2026-11-06)
+
+Pictures, animated GIFs (every frame via ImageDecoder) and videos (incl. WebM
+without a stored length); trim, fps, speed, size, square crop, meme captions;
+encoding in a Web Worker with progress and Cancel. Encoder rewritten for speed
+(byte-identical output, ~2×). `tests/gifenc.test.ts`; checked in the browser
+with a generated video and GIF (extract, encode, both cancel paths).
+
+## 16. Phase H — Memories (done 2026-11-06)
+
+`20261106060000_memories_archive.sql`, `tests/db/memories_test.sql`. Keep 30,
+show 10 (archive the rest), optional expiry, audience (everyone / friends / only
+me), reporting. **Privacy fix:** memory media was readable per folder, so anyone
+who could see a profile could list archived / friends-only files; now only
+media of memories the viewer may see is served.
+
+## 17. Not done
+
+* **Phase I (design pass of the signed-in app)** needs a test account on a test
+  environment; venband.com is production, so it wasn't done.
+* **Phase J (VDL migration)** — long-running infrastructure work, not started.
+* Features from the brief beyond A–H (Worlds, Friend Spaces, automation…) were
+  not started.
