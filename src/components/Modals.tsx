@@ -1,12 +1,23 @@
-import { CommunityTemplatePicker } from './ServerTemplates';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
-import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
+import {
+  displayName,
+  getProfile,
+  loadProfiles,
+  putProfile,
+} from '../lib/directory';
 import { socialStore } from '../lib/social';
 import type { Channel, DmChannel, Profile } from '../lib/types';
 import { openChannel, openServer, type ServerData } from '../hooks/data';
-import { Avatar, ColorPicker, Field, Icon, Modal, randomColor } from './ui';
+import {
+  Avatar,
+  ColorPicker,
+  Field,
+  Icon,
+  Modal,
+  randomColor,
+} from './ui';
 import { Select } from './Select';
 import { ImageCropper } from './ImageCropper';
 import { askConfirm, showAlert } from './Dialogs';
@@ -17,214 +28,550 @@ import { PERMISSION_GROUPS, PERMISSION_INFO } from '../lib/permissions';
 
 // ------------------------------------------------------ create/join server --
 
-export const SERVER_TEMPLATES = [
-  { id: 'default', emoji: '✨', name: 'Start from scratch', desc: 'A welcome channel, a chat and a voice channel.' },
-  { id: 'gaming', emoji: '🎮', name: 'Gaming', desc: 'LFG, clips, guides forum, voice lobbies and a tournament stage.' },
-  { id: 'friends', emoji: '🫶', name: 'Friends', desc: 'General, memes, photos, plans and a hangout call.' },
-  { id: 'hangout', emoji: '🛋️', name: 'Hangout Server', desc: 'Introductions, music, pets, food and chill voice rooms.' },
-  { id: 'school', emoji: '🎒', name: 'School Club', desc: 'Announcements, homework help, resources, Q&A forum, meeting stage.' },
-  { id: 'community', emoji: '🏘️', name: 'Local Community', desc: 'Local news, events, marketplace, suggestions and a town hall.' },
-  { id: 'creators', emoji: '🎨', name: 'Artists & Creators', desc: 'Showcase, work-in-progress, feedback forum, commissions, live workshop.' },
-] as const;
+const DEFAULT_SERVER_TEMPLATE = 'default';
 
-const DISCOVERY_CATEGORIES = ['Gaming', 'Music', 'Art', 'Education', 'Science & Tech', 'Entertainment', 'Community', 'Anime', 'Sports', 'Creators'];
+const DISCOVERY_CATEGORIES = [
+  'Gaming',
+  'Music',
+  'Art',
+  'Education',
+  'Science & Tech',
+  'Entertainment',
+  'Community',
+  'Anime',
+  'Sports',
+  'Creators',
+];
 
-async function uploadServerPicture(serverId: string, kind: 'icon' | 'banner', blob: Blob) {
-  const path = `${serverId}/${kind}-${crypto.randomUUID()}.webp`;
-  const { error } = await supabase.storage.from('server-assets').upload(path, blob, { contentType: blob.type || 'image/webp', upsert: true });
-  if (error) throw error;
-  const url = supabase.storage.from('server-assets').getPublicUrl(path).data.publicUrl;
-  const { error: e2 } = await supabase.from('servers').update(kind === 'icon' ? { icon_url: url } : { banner_url: url }).eq('id', serverId);
-  if (e2) throw e2;
+type ServerPicture = {
+  blob: Blob;
+  url: string;
+};
+
+async function uploadServerPicture(
+  serverId: string,
+  kind: 'icon' | 'banner',
+  blob: Blob,
+): Promise<void> {
+  if (blob.size > 8 * 1024 * 1024) {
+    throw new Error('Images must be smaller than 8 MB.');
+  }
+
+  const extension =
+    blob.type === 'image/png'
+      ? 'png'
+      : blob.type === 'image/jpeg'
+        ? 'jpg'
+        : 'webp';
+
+  const path = `${serverId}/${kind}-${crypto.randomUUID()}.${extension}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('server-assets')
+    .upload(path, blob, {
+      contentType: blob.type || 'image/webp',
+      upsert: false,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const publicUrl = supabase.storage
+    .from('server-assets')
+    .getPublicUrl(path).data.publicUrl;
+
+  const update =
+    kind === 'icon'
+      ? { icon_url: publicUrl }
+      : { banner_url: publicUrl };
+
+  const { error: updateError } = await supabase
+    .from('servers')
+    .update(update)
+    .eq('id', serverId);
+
+  if (updateError) throw updateError;
 }
 
-export function CreateJoinModal({ onClose, initialTemplate }: { onClose: () => void; initialTemplate?: string }) {
+export function CreateJoinModal({
+  onClose,
+}: {
+  onClose: () => void;
+  initialTemplate?: string;
+}) {
   const [tab, setTab] = useState<'create' | 'join'>('create');
-  // a shared template's code (venband.com/template/CODE), instead of a built-in layout
-  const [communityCode, setCommunityCode] = useState<string | null>(initialTemplate ?? null);
   const [step, setStep] = useState(0);
-  const [template, setTemplate] = useState<string>('default');
+
   const [name, setName] = useState('');
-  const [color, setColor] = useState(randomColor());
-  const [icon, setIcon] = useState<{ blob: Blob; url: string } | null>(null);
-  const [banner, setBanner] = useState<{ blob: Blob; url: string } | null>(null);
-  const [cropping, setCropping] = useState<{ file: File; kind: 'icon' | 'banner' } | null>(null);
   const [description, setDescription] = useState('');
+  const [color, setColor] = useState(randomColor());
+
+  const [icon, setIcon] = useState<ServerPicture | null>(null);
+  const [banner, setBanner] = useState<ServerPicture | null>(null);
+
+  const [cropping, setCropping] = useState<{
+    file: File;
+    kind: 'icon' | 'banner';
+  } | null>(null);
+
   const [apply, setApply] = useState(false);
   const [pitch, setPitch] = useState('');
   const [cats, setCats] = useState<string[]>([]);
+
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const me = sessionStore.use((s) => s.me)!;
 
+  useEffect(() => {
+    return () => {
+      if (icon?.url) URL.revokeObjectURL(icon.url);
+      if (banner?.url) URL.revokeObjectURL(banner.url);
+    };
+  }, [icon?.url, banner?.url]);
+
+  function choosePicture(kind: 'icon' | 'banner') {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp,image/gif';
+
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      if (!file.type.startsWith('image/')) {
+        setError('Please choose an image file.');
+        return;
+      }
+
+      if (file.size > 8 * 1024 * 1024) {
+        setError('Choose an image smaller than 8 MB.');
+        return;
+      }
+
+      setError(null);
+      setCropping({ file, kind });
+    };
+
+    input.click();
+  }
+
+  function finishCrop(blob: Blob) {
+    if (!cropping) return;
+
+    const picture: ServerPicture = {
+      blob,
+      url: URL.createObjectURL(blob),
+    };
+
+    if (cropping.kind === 'icon') {
+      setIcon(picture);
+    } else {
+      setBanner(picture);
+    }
+
+    setCropping(null);
+  }
+
+  function toggleCategory(category: string) {
+    setCats((current) => {
+      if (current.includes(category)) {
+        return current.filter((item) => item !== category);
+      }
+
+      if (current.length >= 3) return current;
+
+      return [...current, category];
+    });
+  }
+
   async function create() {
+    const serverName = name.trim() || `${me.display_name}'s server`;
+
+    if (serverName.length < 2) {
+      setError('Your server name must contain at least 2 characters.');
+      setStep(0);
+      return;
+    }
+
+    if (apply && pitch.trim().length < 10) {
+      setError(
+        'Write at least 10 characters explaining why people should join.',
+      );
+      return;
+    }
+
+    if (apply && cats.length === 0) {
+      setError('Choose at least one discovery category.');
+      return;
+    }
+
     setBusy(true);
     setError(null);
-    const serverName = name.trim() || `${me.display_name}'s server`;
-    const { data, error } = communityCode
-      ? await supabase.rpc('create_server_from_template', { p_code: communityCode, p_name: serverName, p_icon_color: color })
-      : await supabase.rpc('create_server', { p_name: serverName, p_icon_color: color, p_template: template });
-    if (error) {
-      setBusy(false);
-      return setError(errorMessage(error));
-    }
-    const id = data as string;
-    const problems: string[] = [];
+
     try {
-      if (icon) await uploadServerPicture(id, 'icon', icon.blob);
-      if (banner) await uploadServerPicture(id, 'banner', banner.blob);
-    } catch (e) {
-      problems.push(`pictures: ${errorMessage(e)}`);
+      const result = await supabase.rpc('create_server', {
+        p_name: serverName,
+        p_icon_color: color,
+        p_template: DEFAULT_SERVER_TEMPLATE,
+      });
+
+      if (result.error) throw result.error;
+
+      const serverId = result.data as string;
+
+      if (!serverId) {
+        throw new Error('The database did not return the new server ID.');
+      }
+
+      const warnings: string[] = [];
+
+      if (icon) {
+        try {
+          await uploadServerPicture(serverId, 'icon', icon.blob);
+        } catch (pictureError) {
+          warnings.push(
+            `Icon upload failed: ${errorMessage(pictureError)}`,
+          );
+        }
+      }
+
+      if (banner) {
+        try {
+          await uploadServerPicture(serverId, 'banner', banner.blob);
+        } catch (pictureError) {
+          warnings.push(
+            `Banner upload failed: ${errorMessage(pictureError)}`,
+          );
+        }
+      }
+
+      if (description.trim()) {
+        const { error: descriptionError } = await supabase
+          .from('servers')
+          .update({
+            description: description.trim().slice(0, 300),
+          })
+          .eq('id', serverId);
+
+        if (descriptionError) {
+          warnings.push(
+            `Description was not saved: ${errorMessage(descriptionError)}`,
+          );
+        }
+      }
+
+      if (apply) {
+        const { error: discoveryError } = await supabase.rpc(
+          'apply_for_discovery',
+          {
+            p_server: serverId,
+            p_pitch: pitch.trim(),
+            p_categories: cats,
+            p_language: navigator.language.split('-')[0] || 'en',
+          },
+        );
+
+        if (discoveryError) {
+          warnings.push(
+            `Discovery application failed: ${errorMessage(discoveryError)}`,
+          );
+        }
+      }
+
+      openServer(serverId);
+
+      if (warnings.length > 0) {
+        showAlert(
+          `Your server was created, but some optional steps failed:\n\n${warnings.join('\n')}`,
+        );
+      }
+
+      onClose();
+    } catch (creationError) {
+      setError(errorMessage(creationError));
+    } finally {
+      setBusy(false);
     }
-    if (description.trim()) await supabase.from('servers').update({ description: description.trim().slice(0, 300) }).eq('id', id);
-    if (apply) {
-      const { error: ae } = await supabase.rpc('apply_for_discovery', { p_server: id, p_pitch: pitch.trim(), p_categories: cats, p_language: navigator.language.split('-')[0] });
-      if (ae) problems.push(`discovery: ${errorMessage(ae)}`);
-    }
-    setBusy(false);
-    openServer(id);
-    if (problems.length) showAlert(`Your server was created, but: ${problems.join('; ')}`);
-    onClose();
   }
 
   async function join(e: FormEvent) {
     e.preventDefault();
+
+    const raw = code.trim();
+
+    if (!raw) {
+      setError('Enter an invite code or link.');
+      return;
+    }
+
+    const parsed =
+      inviteCodeFrom(raw) ??
+      raw.replace(/\/+$/, '').split('/').pop() ??
+      raw;
+
+    if (!parsed) {
+      setError('That invite code does not look valid.');
+      return;
+    }
+
     setBusy(true);
     setError(null);
-    const raw = code.trim();
-    const parsed = inviteCodeFrom(raw) ?? raw.replace(/\/+$/, '').split('/').pop() ?? raw;
-    const { data, error } = await supabase.rpc('join_server', { p_code: parsed });
-    setBusy(false);
-    if (error) return setError(errorMessage(error));
-    openServer(data as string);
-    onClose();
+
+    try {
+      const { data, error: joinError } = await supabase.rpc('join_server', {
+        p_code: parsed,
+      });
+
+      if (joinError) throw joinError;
+      if (!data) throw new Error('The server could not be opened.');
+
+      openServer(data as string);
+      onClose();
+    } catch (joinError) {
+      setError(errorMessage(joinError));
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const pick = (kind: 'icon' | 'banner') => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = () => input.files?.[0] && setCropping({ file: input.files[0], kind });
-    input.click();
-  };
-
   return (
-    <Modal title={tab === 'create' ? 'Create a server' : 'Join a server'} onClose={onClose} wide={tab === 'create' && step === 0}>
+    <Modal
+      title={tab === 'create' ? 'Create a server' : 'Join a server'}
+      onClose={onClose}
+      wide={tab === 'create'}
+    >
       {cropping && (
         <ImageCropper
           file={cropping.file}
-          opts={cropping.kind === 'icon' ? { aspect: 1, size: 512, round: true, title: 'Server icon' } : { aspect: 16 / 9, size: 1280, title: 'Server banner' }}
+          opts={
+            cropping.kind === 'icon'
+              ? {
+                  aspect: 1,
+                  size: 512,
+                  round: true,
+                  title: 'Server icon',
+                }
+              : {
+                  aspect: 16 / 9,
+                  size: 1280,
+                  title: 'Server banner',
+                }
+          }
           onCancel={() => setCropping(null)}
-          onDone={(blob) => {
-            const v = { blob, url: URL.createObjectURL(blob) };
-            if (cropping.kind === 'icon') setIcon(v);
-            else setBanner(v);
-            setCropping(null);
-          }}
+          onDone={finishCrop}
         />
       )}
+
       <div className="tabs">
-        <button className={tab === 'create' ? 'active' : ''} onClick={() => setTab('create')}>
+        <button
+          type="button"
+          className={tab === 'create' ? 'active' : ''}
+          onClick={() => {
+            setTab('create');
+            setError(null);
+          }}
+        >
           Create
         </button>
-        <button className={tab === 'join' ? 'active' : ''} onClick={() => setTab('join')}>
+
+        <button
+          type="button"
+          className={tab === 'join' ? 'active' : ''}
+          onClick={() => {
+            setTab('join');
+            setError(null);
+          }}
+        >
           Join
         </button>
       </div>
+
       {error && <div className="form-error">{error}</div>}
+
       {tab === 'create' ? (
         <>
-          <div className="steps" aria-hidden>
-            {[0, 1, 2].map((i) => (
-              <span key={i} className={i <= step ? 'on' : ''} />
+          <div className="steps" aria-label={`Step ${step + 1} of 2`}>
+            {[0, 1].map((index) => (
+              <span
+                key={index}
+                className={index <= step ? 'on' : ''}
+              />
             ))}
           </div>
+
           {step === 0 && (
             <>
-              <p className="muted">Pick a starting point. You can change every channel later.</p>
-              <div className="template-grid" role="radiogroup" aria-label="Template">
-                {SERVER_TEMPLATES.map((t) => (
-                  <button key={t.id} type="button" role="radio" aria-checked={!communityCode && template === t.id} className={`template-card${!communityCode && template === t.id ? ' selected' : ''}`} onClick={() => (setTemplate(t.id), setCommunityCode(null))}>
-                    <span className="tpl-emoji">{t.emoji}</span>
-                    <b>{t.name}</b>
-                    <span className="tpl-desc">{t.desc}</span>
-                  </button>
-                ))}
-              </div>
-              <CommunityTemplatePicker selected={communityCode} onSelect={setCommunityCode} initialCode={initialTemplate} />
-              <div className="modal-actions">
-                <button className="btn primary" onClick={() => setStep(1)}>
-                  Next
-                </button>
-              </div>
-            </>
-          )}
-          {step === 1 && (
-            <>
+              <h2>Personalize your server</h2>
+
+              <p className="muted">
+                Give your server an identity. Customize its appearance
+                and description before inviting your community.
+              </p>
+
               <div className="create-pictures">
-                <button type="button" className={`pic-slot icon${icon ? ' has' : ''}`} style={icon ? { backgroundImage: `url(${icon.url})` } : { background: color }} onClick={() => pick('icon')} aria-label="Upload server icon">
-                  <Icon name="upload" size={20} /> Icon
+                <button
+                  type="button"
+                  className={`pic-slot icon${icon ? ' has' : ''}`}
+                  style={
+                    icon
+                      ? { backgroundImage: `url(${icon.url})` }
+                      : { background: color }
+                  }
+                  onClick={() => choosePicture('icon')}
+                  aria-label="Upload server icon"
+                >
+                  {!icon && <Icon name="upload" size={20} />}
+                  {!icon && 'Icon'}
+                  {icon && 'Change icon'}
                 </button>
-                <button type="button" className={`pic-slot${banner ? ' has' : ''}`} style={banner ? { backgroundImage: `url(${banner.url})` } : undefined} onClick={() => pick('banner')} aria-label="Upload server banner">
-                  <Icon name="image" size={20} /> Banner (optional)
+
+                <button
+                  type="button"
+                  className={`pic-slot${banner ? ' has' : ''}`}
+                  style={
+                    banner
+                      ? { backgroundImage: `url(${banner.url})` }
+                      : undefined
+                  }
+                  onClick={() => choosePicture('banner')}
+                  aria-label="Upload server banner"
+                >
+                  <Icon name="image" size={20} />
+                  {banner ? 'Change banner' : 'Banner (optional)'}
                 </button>
               </div>
+
               <Field label="Server name">
-                <input autoFocus maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder={`${me.display_name}'s server`} />
+                <input
+                  autoFocus
+                  required
+                  minLength={2}
+                  maxLength={100}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={`${me.display_name}'s server`}
+                />
               </Field>
-              <Field label="Description" hint="Shown on invites and in discovery">
-                <textarea maxLength={300} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What's this server about?" />
+
+              <Field
+                label="Description"
+                hint="Shown on invites and in discovery. Maximum 300 characters."
+              >
+                <textarea
+                  maxLength={300}
+                  rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What's this server about?"
+                />
               </Field>
+
               {!icon && (
                 <Field label="Icon color">
                   <ColorPicker value={color} onChange={setColor} />
                 </Field>
               )}
+
               <div className="modal-actions">
-                <button className="btn secondary" onClick={() => setStep(0)}>
-                  Back
-                </button>
-                <button className="btn primary" onClick={() => setStep(2)}>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => {
+                    if (name.trim() && name.trim().length < 2) {
+                      setError(
+                        'Server names must contain at least 2 characters.',
+                      );
+                      return;
+                    }
+
+                    setError(null);
+                    setStep(1);
+                  }}
+                >
                   Next
                 </button>
               </div>
             </>
           )}
-          {step === 2 && (
+
+          {step === 1 && (
             <>
+              <h2>Server discovery</h2>
+
               <label className="check-row">
-                <input type="checkbox" checked={apply} onChange={(e) => setApply(e.target.checked)} /> <b>Apply for Server Discovery</b>
+                <input
+                  type="checkbox"
+                  checked={apply}
+                  onChange={(e) => setApply(e.target.checked)}
+                />
+                <b>Apply for Server Discovery</b>
               </label>
-              <p className="small muted">Venband staff review applications. Approved servers appear on the Discover page where anyone can find and join them.</p>
+
+              <p className="small muted">
+                Apply to have your server reviewed. Approved servers can
+                appear on Venband's Discover page.
+              </p>
+
               {apply && (
                 <>
-                  <Field label="Why should people join?">
-                    <textarea maxLength={1000} rows={3} value={pitch} onChange={(e) => setPitch(e.target.value)} placeholder="A friendly place for…" />
+                  <Field
+                    label="Why should people join?"
+                    hint="Tell people what makes your server worth joining."
+                  >
+                    <textarea
+                      maxLength={1000}
+                      rows={4}
+                      value={pitch}
+                      onChange={(e) => setPitch(e.target.value)}
+                      placeholder="A friendly place for people who..."
+                    />
                   </Field>
-                  <Field label="Categories" hint="up to 3">
+
+                  <Field
+                    label="Categories"
+                    hint={`Choose up to 3 categories (${cats.length}/3 selected).`}
+                  >
                     <div className="chip-row">
-                      {DISCOVERY_CATEGORIES.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          className={`chip${cats.includes(c) ? ' on' : ''}`}
-                          aria-pressed={cats.includes(c)}
-                          onClick={() => setCats((x) => (x.includes(c) ? x.filter((y) => y !== c) : [...x, c].slice(0, 3)))}
-                        >
-                          {c}
-                        </button>
-                      ))}
+                      {DISCOVERY_CATEGORIES.map((category) => {
+                        const selected = cats.includes(category);
+
+                        return (
+                          <button
+                            key={category}
+                            type="button"
+                            className={`chip${selected ? ' on' : ''}`}
+                            aria-pressed={selected}
+                            onClick={() => toggleCategory(category)}
+                          >
+                            {category}
+                          </button>
+                        );
+                      })}
                     </div>
                   </Field>
                 </>
               )}
+
               <div className="modal-actions">
-                <button className="btn secondary" onClick={() => setStep(1)}>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => {
+                    setError(null);
+                    setStep(0);
+                  }}
+                >
                   Back
                 </button>
-                <button className="btn primary" disabled={busy} onClick={create}>
-                  {busy ? 'Creating…' : 'Create server'}
+
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={busy}
+                  onClick={create}
+                >
+                  {busy ? 'Creating server…' : 'Create server'}
                 </button>
               </div>
             </>
@@ -232,12 +579,26 @@ export function CreateJoinModal({ onClose, initialTemplate }: { onClose: () => v
         </>
       ) : (
         <form onSubmit={join}>
-          <p className="muted">Enter an invite code or link, like venband.com/invite/abc123 or a custom link.</p>
+          <p className="muted">
+            Enter an invite code or link, such as
+            {' '}venband.com/invite/abc123.
+          </p>
+
           <Field label="Invite">
-            <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. Ab3dEf9hIjKl" />
+            <input
+              required
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="Invite code or link"
+            />
           </Field>
-          <button className="btn primary full" disabled={busy}>
-            Join Server
+
+          <button
+            type="submit"
+            className="btn primary full"
+            disabled={busy}
+          >
+            {busy ? 'Joining…' : 'Join server'}
           </button>
         </form>
       )}
@@ -247,7 +608,15 @@ export function CreateJoinModal({ onClose, initialTemplate }: { onClose: () => v
 
 // ---------------------------------------------------------------- invites --
 
-export function InviteModal({ serverId, serverName, onClose }: { serverId: string; serverName: string; onClose: () => void }) {
+export function InviteModal({
+  serverId,
+  serverName,
+  onClose,
+}: {
+  serverId: string;
+  serverName: string;
+  onClose: () => void;
+}) {
   const [code, setCode] = useState<string | null>(null);
   const [hours, setHours] = useState<number | null>(24 * 7);
   const [maxUses, setMaxUses] = useState<number | null>(null);
@@ -256,20 +625,43 @@ export function InviteModal({ serverId, serverName, onClose }: { serverId: strin
 
   useEffect(() => {
     setCode(null);
-    supabase.rpc('create_invite', { p_server: serverId, p_max_uses: maxUses, p_expires_in_hours: hours, p_min_account_days: 0, p_label: null }).then(({ data, error }) => {
-      if (error) setError(errorMessage(error));
-      else setCode(data as string);
-    });
+
+    supabase
+      .rpc('create_invite', {
+        p_server: serverId,
+        p_max_uses: maxUses,
+        p_expires_in_hours: hours,
+        p_min_account_days: 0,
+        p_label: null,
+      })
+      .then(({ data, error }) => {
+        if (error) setError(errorMessage(error));
+        else setCode(data as string);
+      });
   }, [serverId, hours, maxUses]);
 
   const link = code ? inviteUrl(code) : '';
+
   return (
-    <Modal title={`Invite friends to ${serverName}`} onClose={onClose}>
+    <Modal
+      title={`Invite friends to ${serverName}`}
+      onClose={onClose}
+    >
       {error && <div className="form-error">{error}</div>}
-      <InviteFriendsList serverId={serverId} serverName={serverName} />
+
+      <InviteFriendsList
+        serverId={serverId}
+        serverName={serverName}
+      />
+
       <Field label="Invite link">
         <div className="copy-row">
-          <input readOnly value={link || 'Generating…'} onFocus={(e) => e.target.select()} />
+          <input
+            readOnly
+            value={link || 'Generating…'}
+            onFocus={(e) => e.target.select()}
+          />
+
           <button
             className="btn primary"
             disabled={!code}
@@ -283,9 +675,11 @@ export function InviteModal({ serverId, serverName, onClose }: { serverId: strin
           </button>
         </div>
       </Field>
+
       <p className="small muted">
         Code: <code>{code}</code>
       </p>
+
       <div className="row">
         <Field label="Expire after">
           <Select
@@ -302,6 +696,7 @@ export function InviteModal({ serverId, serverName, onClose }: { serverId: strin
             ]}
           />
         </Field>
+
         <Field label="Max uses">
           <Select
             value={maxUses == null ? '' : String(maxUses)}
@@ -327,29 +722,84 @@ export function InviteModal({ serverId, serverName, onClose }: { serverId: strin
 /** Every category in a server: ones that hold channels plus empty ones the server saved. */
 export function serverCategories(data: ServerData): string[] {
   const out: string[] = [];
-  for (const c of data.channels) if (c.category && !out.includes(c.category)) out.push(c.category);
-  for (const c of data.server?.categories ?? []) if (!out.includes(c)) out.push(c);
+
+  for (const channel of data.channels) {
+    if (channel.category && !out.includes(channel.category)) {
+      out.push(channel.category);
+    }
+  }
+
+  for (const category of data.server?.categories ?? []) {
+    if (!out.includes(category)) out.push(category);
+  }
+
   return out;
 }
 
-export async function createCategory(data: ServerData, name: string) {
+export async function createCategory(
+  data: ServerData,
+  name: string,
+) {
   const clean = name.trim().slice(0, 100);
   if (!clean) return;
+
   const current = data.server?.categories ?? [];
+
   if (serverCategories(data).includes(clean)) return;
-  const { error } = await supabase.from('servers').update({ categories: [...current, clean] }).eq('id', data.server!.id);
+
+  const { error } = await supabase
+    .from('servers')
+    .update({ categories: [...current, clean] })
+    .eq('id', data.server!.id);
+
   if (error) throw error;
+
   data.reload();
 }
 
-export type NewChannelType = 'text' | 'voice' | 'forum' | 'announcement' | 'stage';
+export type NewChannelType =
+  | 'text'
+  | 'voice'
+  | 'forum'
+  | 'announcement'
+  | 'stage';
 
-export const CHANNEL_TYPES: { id: NewChannelType; label: string; icon: string; desc: string }[] = [
-  { id: 'text', label: 'Text', icon: 'hash', desc: 'Encrypted messages, files, threads and polls' },
-  { id: 'voice', label: 'Voice', icon: 'speaker', desc: 'Encrypted voice, video, screen share and a side chat' },
-  { id: 'forum', label: 'Forum', icon: 'thread', desc: 'Posts with tags; each post is its own discussion' },
-  { id: 'announcement', label: 'Announcement', icon: 'megaphone', desc: 'Everyone reads, only moderators post' },
-  { id: 'stage', label: 'Stage', icon: 'stage', desc: 'Speakers talk, the audience listens and raises hands' },
+export const CHANNEL_TYPES: {
+  id: NewChannelType;
+  label: string;
+  icon: string;
+  desc: string;
+}[] = [
+  {
+    id: 'text',
+    label: 'Text',
+    icon: 'hash',
+    desc: 'Encrypted messages, files, threads and polls',
+  },
+  {
+    id: 'voice',
+    label: 'Voice',
+    icon: 'speaker',
+    desc: 'Encrypted voice, video, screen share and a side chat',
+  },
+  {
+    id: 'forum',
+    label: 'Forum',
+    icon: 'thread',
+    desc: 'Posts with tags; each post is its own discussion',
+  },
+  {
+    id: 'announcement',
+    label: 'Announcement',
+    icon: 'megaphone',
+    desc: 'Everyone reads, only moderators post',
+  },
+  {
+    id: 'stage',
+    label: 'Stage',
+    icon: 'stage',
+    desc: 'Speakers talk, the audience listens and raises hands',
+  },
 ];
 
 export function CreateChannelModal({
@@ -364,46 +814,106 @@ export function CreateChannelModal({
   initialType?: NewChannelType;
 }) {
   const categories = serverCategories(data);
+
   const [type, setType] = useState<NewChannelType>(initialType);
   const [name, setName] = useState('');
-  const [category, setCategory] = useState(initialCategory ?? categories.find((c) => /text/i.test(c)) ?? categories[0] ?? '');
+  const [category, setCategory] = useState(
+    initialCategory ??
+      categories.find((c) => /text/i.test(c)) ??
+      categories[0] ??
+      '',
+  );
   const [newCategory, setNewCategory] = useState('');
   const [isPrivate, setPrivate] = useState(false);
   const [roles, setRoles] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
   const NEW = '__new__';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const clean = type === 'text' || type === 'forum' || type === 'announcement' ? name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') : name.trim();
+
+    const clean =
+      type === 'text' ||
+      type === 'forum' ||
+      type === 'announcement'
+        ? name
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/[^a-z0-9_-]/g, '')
+        : name.trim();
+
     if (!clean) return setError('Name required');
-    const cat = category === NEW ? newCategory.trim().slice(0, 100) : category;
-    if (category === NEW && !cat) return setError('Name the new category');
+
+    const cat =
+      category === NEW
+        ? newCategory.trim().slice(0, 100)
+        : category;
+
+    if (category === NEW && !cat) {
+      return setError('Name the new category');
+    }
+
     setBusy(true);
-    // choose the id here and don't ask for the row back: the "can you see this
-    // channel" check can't see a row inserted by the same statement yet
+    setError(null);
+
     const id = crypto.randomUUID();
-    const { error } = await supabase.from('channels').insert({
-      id,
-      server_id: data.server!.id,
-      type,
-      name: clean,
-      category: cat,
-      is_private: isPrivate,
-      position: data.channels.length,
-    });
-    if (error) {
+
+    const { error: insertError } = await supabase
+      .from('channels')
+      .insert({
+        id,
+        server_id: data.server!.id,
+        type,
+        name: clean,
+        category: cat,
+        is_private: isPrivate,
+        position: data.channels.length,
+      });
+
+    if (insertError) {
       setBusy(false);
-      return setError(errorMessage(error));
+      return setError(errorMessage(insertError));
     }
+
     if (isPrivate && roles.length) {
-      await supabase.from('channel_role_access').insert(roles.map((role_id) => ({ channel_id: id, role_id })));
+      const { error: accessError } = await supabase
+        .from('channel_role_access')
+        .insert(
+          roles.map((role_id) => ({
+            channel_id: id,
+            role_id,
+          })),
+        );
+
+      if (accessError) {
+        setBusy(false);
+        return setError(errorMessage(accessError));
+      }
     }
-    if (category === NEW && cat && !(data.server?.categories ?? []).includes(cat)) {
-      await supabase.from('servers').update({ categories: [...(data.server?.categories ?? []), cat] }).eq('id', data.server!.id);
+
+    if (
+      category === NEW &&
+      cat &&
+      !(data.server?.categories ?? []).includes(cat)
+    ) {
+      const { error: categoryError } = await supabase
+        .from('servers')
+        .update({
+          categories: [...(data.server?.categories ?? []), cat],
+        })
+        .eq('id', data.server!.id);
+
+      if (categoryError) {
+        setBusy(false);
+        return setError(errorMessage(categoryError));
+      }
     }
+
     await sessionStore.get().keyring!.ensure(id).catch(() => {});
+
     data.reload();
     openChannel(data.server!.id, id);
     onClose();
@@ -413,35 +923,80 @@ export function CreateChannelModal({
     <Modal title="Create Channel" onClose={onClose}>
       <form onSubmit={submit}>
         {error && <div className="form-error">{error}</div>}
+
         <div className="type-picker">
-          {CHANNEL_TYPES.map((t) => (
-            <label key={t.id} className={`type-option${type === t.id ? ' selected' : ''}`}>
-              <input type="radio" checked={type === t.id} onChange={() => setType(t.id)} />
-              <Icon name={t.icon} />
+          {CHANNEL_TYPES.map((channelType) => (
+            <label
+              key={channelType.id}
+              className={`type-option${type === channelType.id ? ' selected' : ''}`}
+            >
+              <input
+                type="radio"
+                checked={type === channelType.id}
+                onChange={() => setType(channelType.id)}
+              />
+
+              <Icon name={channelType.icon} />
+
               <div>
-                <b>{t.label}</b>
-                <div className="small muted">{t.desc}</div>
+                <b>{channelType.label}</b>
+                <div className="small muted">
+                  {channelType.desc}
+                </div>
               </div>
             </label>
           ))}
         </div>
+
         <Field label="Channel name">
-          <input required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder={type === 'text' ? 'new-channel' : 'Lounge'} />
+          <input
+            required
+            maxLength={100}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={type === 'text' ? 'new-channel' : 'Lounge'}
+          />
         </Field>
+
         <Field label="Category">
           <Select
             value={category}
             onChange={setCategory}
-            options={[{ value: '', label: 'No category' }, ...categories.map((c) => ({ value: c, label: c })), { value: NEW, label: '+ New category…' }]}
+            options={[
+              { value: '', label: 'No category' },
+              ...categories.map((c) => ({
+                value: c,
+                label: c,
+              })),
+              { value: NEW, label: '+ New category…' },
+            ]}
           />
         </Field>
+
         {category === NEW && (
           <Field label="New category name">
-            <input autoFocus maxLength={100} value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="Gaming" />
+            <input
+              autoFocus
+              maxLength={100}
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              placeholder="Gaming"
+            />
           </Field>
         )}
-        <PrivateToggle data={data} isPrivate={isPrivate} setPrivate={setPrivate} roles={roles} setRoles={setRoles} />
-        <button className="btn primary full" disabled={busy}>
+
+        <PrivateToggle
+          data={data}
+          isPrivate={isPrivate}
+          setPrivate={setPrivate}
+          roles={roles}
+          setRoles={setRoles}
+        />
+
+        <button
+          className="btn primary full"
+          disabled={busy}
+        >
           {busy ? 'Creating…' : 'Create Channel'}
         </button>
       </form>
@@ -465,9 +1020,17 @@ function PrivateToggle({
   return (
     <>
       <label className="checkbox">
-        <input type="checkbox" checked={isPrivate} onChange={(e) => setPrivate(e.target.checked)} />
-        <Icon name="lock" size={14} /> Private channel — only selected roles (and admins) can see it
+        <input
+          type="checkbox"
+          checked={isPrivate}
+          onChange={(e) => setPrivate(e.target.checked)}
+        />
+
+        <Icon name="lock" size={14} />
+
+        Private channel — only selected roles (and admins) can see it
       </label>
+
       {isPrivate && (
         <div className="role-checks">
           {data.roles
@@ -477,12 +1040,29 @@ function PrivateToggle({
                 <input
                   type="checkbox"
                   checked={roles.includes(r.id)}
-                  onChange={(e) => setRoles(e.target.checked ? [...roles, r.id] : roles.filter((x) => x !== r.id))}
+                  onChange={(e) =>
+                    setRoles(
+                      e.target.checked
+                        ? [...roles, r.id]
+                        : roles.filter((x) => x !== r.id),
+                    )
+                  }
                 />
-                <span className="role-dot" style={{ background: r.color }} /> {r.name}
+
+                <span
+                  className="role-dot"
+                  style={{ background: r.color }}
+                />
+
+                {r.name}
               </label>
             ))}
-          {data.roles.length <= 1 && <p className="small muted">Create roles in Server Settings first.</p>}
+
+          {data.roles.length <= 1 && (
+            <p className="small muted">
+              Create roles in Server Settings first.
+            </p>
+          )}
         </div>
       )}
     </>
@@ -492,17 +1072,46 @@ function PrivateToggle({
 type OverwriteTri = 0 | 1 | 2;
 
 /** Allow / Deny / Unset tri-state for one permission bit in a channel overwrite. */
-function OverTri({ value, onChange }: { value: OverwriteTri; onChange: (v: OverwriteTri) => void }) {
-  const opts: { v: OverwriteTri; label: string; title: string }[] = [
-    { v: 0, label: 'Unset', title: 'Unset (inherit from roles)' },
-    { v: 1, label: 'Allow', title: 'Allow this permission here' },
-    { v: 2, label: 'Deny', title: 'Deny this permission here' },
+function OverTri({
+  value,
+  onChange,
+}: {
+  value: OverwriteTri;
+  onChange: (v: OverwriteTri) => void;
+}) {
+  const opts: {
+    v: OverwriteTri;
+    label: string;
+    title: string;
+  }[] = [
+    {
+      v: 0,
+      label: 'Unset',
+      title: 'Unset (inherit from roles)',
+    },
+    {
+      v: 1,
+      label: 'Allow',
+      title: 'Allow this permission here',
+    },
+    {
+      v: 2,
+      label: 'Deny',
+      title: 'Deny this permission here',
+    },
   ];
+
   return (
     <span className="over-tri">
-      {opts.map((o) => (
-        <button key={o.v} type="button" title={o.title} className={value === o.v ? 'on' : ''} onClick={() => onChange(o.v)}>
-          {o.label}
+      {opts.map((option) => (
+        <button
+          key={option.v}
+          type="button"
+          title={option.title}
+          className={value === option.v ? 'on' : ''}
+          onClick={() => onChange(option.v)}
+        >
+          {option.label}
         </button>
       ))}
     </span>
@@ -523,59 +1132,156 @@ function ChannelPermissionsEditor({
   onDone?: () => void;
 }) {
   const serverId = data.server!.id;
-  const existing = useMemo(() => data.overwritesFor({ channelId: scope.channelId ?? '', category: scope.category }), [data, scope.channelId, scope.category]);
-  const [targets, setTargets] = useState<Record<string, { role: boolean; tri: Record<number, OverwriteTri> }>>(() => {
-    const init: Record<string, { role: boolean; tri: Record<number, OverwriteTri> }> = {};
-    for (const o of existing) {
+
+  const existing = useMemo(
+    () =>
+      data.overwritesFor({
+        channelId: scope.channelId ?? '',
+        category: scope.category,
+      }),
+    [data, scope.channelId, scope.category],
+  );
+
+  const [targets, setTargets] = useState<
+    Record<
+      string,
+      {
+        role: boolean;
+        tri: Record<number, OverwriteTri>;
+      }
+    >
+  >(() => {
+    const init: Record<
+      string,
+      {
+        role: boolean;
+        tri: Record<number, OverwriteTri>;
+      }
+    > = {};
+
+    for (const overwrite of existing) {
       const tri: Record<number, OverwriteTri> = {};
-      for (const p of PERMISSION_INFO) tri[p.bit] = (o.allow & p.bit) > 0 ? 1 : (o.deny & p.bit) > 0 ? 2 : 0;
-      init[`${o.target_type}:${o.target_id}`] = { role: o.target_type === 'role', tri };
+
+      for (const permission of PERMISSION_INFO) {
+        tri[permission.bit] =
+          (overwrite.allow & permission.bit) > 0
+            ? 1
+            : (overwrite.deny & permission.bit) > 0
+              ? 2
+              : 0;
+      }
+
+      init[`${overwrite.target_type}:${overwrite.target_id}`] = {
+        role: overwrite.target_type === 'role',
+        tri,
+      };
     }
+
     return init;
   });
+
   const [addRole, setAddRole] = useState('');
   const [memberQuery, setMemberQuery] = useState('');
   const [memberResults, setMemberResults] = useState<Profile[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const roleById = useMemo(() => new Map(data.roles.map((r) => [r.id, r])), [data.roles]);
+  const roleById = useMemo(
+    () => new Map(data.roles.map((r) => [r.id, r])),
+    [data.roles],
+  );
 
-  const setTri = (key: string, bit: number, v: OverwriteTri) =>
-    setTargets((t) => ({ ...t, [key]: { ...t[key], tri: { ...t[key].tri, [bit]: v } } }));
+  const setTri = (
+    key: string,
+    bit: number,
+    value: OverwriteTri,
+  ) => {
+    setTargets((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        tri: {
+          ...current[key].tri,
+          [bit]: value,
+        },
+      },
+    }));
+  };
 
-  const removeTarget = (key: string) =>
-    setTargets((t) => {
-      const next = { ...t };
+  const removeTarget = (key: string) => {
+    setTargets((current) => {
+      const next = { ...current };
       delete next[key];
       return next;
     });
+  };
 
-  async function searchMember(q: string) {
-    setMemberQuery(q);
-    if (!q.trim()) return setMemberResults([]);
-    const { data: found } = await supabase.rpc('find_user', { p_username: q.trim() });
-    const memberIds = new Set(data.members.map((m) => m.user_id));
-    setMemberResults(((found as Profile[] | null) ?? []).filter((p) => memberIds.has(p.id)).slice(0, 8));
+  async function searchMember(query: string) {
+    setMemberQuery(query);
+
+    if (!query.trim()) {
+      setMemberResults([]);
+      return;
+    }
+
+    const { data: found } = await supabase.rpc('find_user', {
+      p_username: query.trim(),
+    });
+
+    const memberIds = new Set(
+      data.members.map((member) => member.user_id),
+    );
+
+    setMemberResults(
+      ((found as Profile[] | null) ?? [])
+        .filter((profile) => memberIds.has(profile.id))
+        .slice(0, 8),
+    );
   }
 
   function addMember(id: string) {
     const key = `member:${id}`;
-    setTargets((t) => (t[key] ? t : { ...t, [key]: { role: false, tri: {} } }));
+
+    setTargets((current) =>
+      current[key]
+        ? current
+        : {
+            ...current,
+            [key]: {
+              role: false,
+              tri: {},
+            },
+          },
+    );
+
     setMemberQuery('');
     setMemberResults([]);
   }
 
   function addRoleTarget() {
     if (!addRole) return;
+
     const key = `role:${addRole}`;
-    setTargets((t) => (t[key] ? t : { ...t, [key]: { role: true, tri: {} } }));
+
+    setTargets((current) =>
+      current[key]
+        ? current
+        : {
+            ...current,
+            [key]: {
+              role: true,
+              tri: {},
+            },
+          },
+    );
+
     setAddRole('');
   }
 
   async function save() {
     setBusy(true);
     setError(null);
+
     try {
       const toWrite: {
         server_id: string;
@@ -586,20 +1292,30 @@ function ChannelPermissionsEditor({
         allow: number;
         deny: number;
       }[] = [];
-      for (const [key, t] of Object.entries(targets)) {
+
+      for (const [key, target] of Object.entries(targets)) {
         const [type, id] = key.split(':');
+
         let allow = 0;
         let deny = 0;
-        for (const p of PERMISSION_INFO) {
-          const v = t.tri[p.bit];
-          if (v === 1) allow |= p.bit;
-          else if (v === 2) deny |= p.bit;
+
+        for (const permission of PERMISSION_INFO) {
+          const value = target.tri[permission.bit];
+
+          if (value === 1) {
+            allow |= permission.bit;
+          } else if (value === 2) {
+            deny |= permission.bit;
+          }
         }
+
         if (allow | deny) {
           toWrite.push({
             server_id: serverId,
             channel_id: scope.channelId ?? null,
-            category: scope.channelId ? null : (scope.category ?? ''),
+            category: scope.channelId
+              ? null
+              : (scope.category ?? ''),
             target_type: type === 'member' ? 'member' : 'role',
             target_id: id,
             allow,
@@ -607,20 +1323,58 @@ function ChannelPermissionsEditor({
           });
         }
       }
-      const writeKeys = new Set(toWrite.map((w) => `${w.target_type}:${w.target_id}`));
-      const delIds = existing.filter((o) => !writeKeys.has(`${o.target_type}:${o.target_id}`)).map((o) => o.id);
-      if (delIds.length) await supabase.from('channel_overwrites').delete().in('id', delIds);
-      // update existing rows in place, insert new ones (avoid duplicate-key on re-save)
-      for (const w of toWrite) {
-        const ex = existing.find((o) => o.target_type === w.target_type && o.target_id === w.target_id);
-        if (ex) {
-          const { error: e } = await supabase.from('channel_overwrites').update({ allow: w.allow, deny: w.deny }).eq('id', ex.id);
-          if (e) throw e;
+
+      const writeKeys = new Set(
+        toWrite.map(
+          (write) => `${write.target_type}:${write.target_id}`,
+        ),
+      );
+
+      const delIds = existing
+        .filter(
+          (overwrite) =>
+            !writeKeys.has(
+              `${overwrite.target_type}:${overwrite.target_id}`,
+            ),
+        )
+        .map((overwrite) => overwrite.id);
+
+      if (delIds.length) {
+        const { error: deleteError } = await supabase
+          .from('channel_overwrites')
+          .delete()
+          .in('id', delIds);
+
+        if (deleteError) throw deleteError;
+      }
+
+      // Update existing rows in place and insert new ones to avoid duplicate keys.
+      for (const write of toWrite) {
+        const previous = existing.find(
+          (overwrite) =>
+            overwrite.target_type === write.target_type &&
+            overwrite.target_id === write.target_id,
+        );
+
+        if (previous) {
+          const { error: updateError } = await supabase
+            .from('channel_overwrites')
+            .update({
+              allow: write.allow,
+              deny: write.deny,
+            })
+            .eq('id', previous.id);
+
+          if (updateError) throw updateError;
         } else {
-          const { error: e } = await supabase.from('channel_overwrites').insert(w);
-          if (e) throw e;
+          const { error: insertError } = await supabase
+            .from('channel_overwrites')
+            .insert(write);
+
+          if (insertError) throw insertError;
         }
       }
+
       data.reload();
       onDone?.();
     } catch (err) {
@@ -633,64 +1387,144 @@ function ChannelPermissionsEditor({
   return (
     <div className="over-editor">
       {error && <div className="form-error">{error}</div>}
+
       {Object.keys(targets).length === 0 && (
-        <p className="muted">No overrides here yet — everyone uses the server-wide permissions. Add a role or member to customize.</p>
+        <p className="muted">
+          No overrides here yet — everyone uses the server-wide
+          permissions. Add a role or member to customize.
+        </p>
       )}
+
       <div className="over-add">
         <Select
           value={addRole}
           onChange={setAddRole}
           options={data.roles
-            .filter((r) => !r.is_default && !targets[`role:${r.id}`])
-            .map((r) => ({ value: r.id, label: r.name }))}
+            .filter(
+              (role) =>
+                !role.is_default &&
+                !targets[`role:${role.id}`],
+            )
+            .map((role) => ({
+              value: role.id,
+              label: role.name,
+            }))}
         />
-        <button type="button" className="btn" disabled={!addRole} onClick={addRoleTarget}>
+
+        <button
+          type="button"
+          className="btn"
+          disabled={!addRole}
+          onClick={addRoleTarget}
+        >
           Add role override
         </button>
       </div>
+
       <div className="over-member-add">
-        <input value={memberQuery} onChange={(e) => searchMember(e.target.value)} placeholder="Add a member by username…" />
+        <input
+          value={memberQuery}
+          onChange={(e) => searchMember(e.target.value)}
+          placeholder="Add a member by username…"
+        />
       </div>
+
       {memberResults.length > 0 && (
         <div className="over-member-results">
           {memberResults
-            .filter((p) => !targets[`member:${p.id}`])
-            .map((p) => (
-              <button type="button" key={p.id} onClick={() => addMember(p.id)}>
-                <Avatar profile={p} size={24} /> {displayName(p.id)}
+            .filter(
+              (profile) => !targets[`member:${profile.id}`],
+            )
+            .map((profile) => (
+              <button
+                type="button"
+                key={profile.id}
+                onClick={() => addMember(profile.id)}
+              >
+                <Avatar profile={profile} size={24} />
+                {displayName(profile.id)}
               </button>
             ))}
         </div>
       )}
+
       <div className="over-targets">
-        {Object.entries(targets).map(([key, t]) => {
+        {Object.entries(targets).map(([key, target]) => {
           const [type, id] = key.split(':');
           const role = type === 'role' ? roleById.get(id) : null;
           const profile = type === 'member' ? getProfile(id) : null;
+
           return (
             <section className="over-target" key={key}>
               <div className="over-target-head">
-                {role ? <span className="role-dot" style={{ background: role.color }} /> : <Avatar profile={profile} size={22} />}
-                <b>{role ? role.name : (profile?.display_name ?? 'Member')}</b>
-                <span className="muted small">{type === 'role' ? 'role override' : 'member override'}</span>
-                <button type="button" className="icon-btn" title="Remove this override" onClick={() => removeTarget(key)} style={{ marginLeft: 'auto' }}>
+                {role ? (
+                  <span
+                    className="role-dot"
+                    style={{ background: role.color }}
+                  />
+                ) : (
+                  <Avatar profile={profile} size={22} />
+                )}
+
+                <b>
+                  {role
+                    ? role.name
+                    : (profile?.display_name ?? 'Member')}
+                </b>
+
+                <span className="muted small">
+                  {type === 'role'
+                    ? 'role override'
+                    : 'member override'}
+                </span>
+
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title="Remove this override"
+                  onClick={() => removeTarget(key)}
+                  style={{ marginLeft: 'auto' }}
+                >
                   <Icon name="x" />
                 </button>
               </div>
+
               <div className="over-list">
-                {PERMISSION_GROUPS.map((g) => {
-                  const bits = PERMISSION_INFO.filter((p) => p.group === g);
+                {PERMISSION_GROUPS.map((group) => {
+                  const bits = PERMISSION_INFO.filter(
+                    (permission) => permission.group === group,
+                  );
+
                   if (!bits.length) return null;
+
                   return (
-                    <div key={g} className="over-group">
-                      <div className="over-group-title">{g}</div>
-                      {bits.map((p) => (
-                        <label key={p.bit} className="over-row">
+                    <div key={group} className="over-group">
+                      <div className="over-group-title">
+                        {group}
+                      </div>
+
+                      {bits.map((permission) => (
+                        <label
+                          key={permission.bit}
+                          className="over-row"
+                        >
                           <div className="over-name">
-                            {p.name}
-                            <span className="muted small">{p.description}</span>
+                            {permission.name}
+                            <span className="muted small">
+                              {permission.description}
+                            </span>
                           </div>
-                          <OverTri value={t.tri[p.bit] ?? 0} onChange={(v) => setTri(key, p.bit, v)} />
+
+                          <OverTri
+                            value={target.tri[permission.bit] ?? 0}
+                            onChange={(value) =>
+                              setTri(
+                                key,
+                                permission.bit,
+                                value,
+                              )
+                            }
+                          />
                         </label>
                       ))}
                     </div>
@@ -701,8 +1535,14 @@ function ChannelPermissionsEditor({
           );
         })}
       </div>
+
       <div className="modal-actions">
-        <button type="button" className="btn primary" disabled={busy} onClick={save}>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={busy}
+          onClick={save}
+        >
           {busy ? 'Saving…' : 'Save Permissions'}
         </button>
       </div>
@@ -710,14 +1550,30 @@ function ChannelPermissionsEditor({
   );
 }
 
-export function ChannelSettingsModal({ channel, data, onClose }: { channel: Channel; data: ServerData; onClose: () => void }) {
-  const isVoice = channel.type === 'voice' || channel.type === 'stage';
-  const [tab, setTab] = useState<'overview' | 'permissions'>('overview');
+export function ChannelSettingsModal({
+  channel,
+  data,
+  onClose,
+}: {
+  channel: Channel;
+  data: ServerData;
+  onClose: () => void;
+}) {
+  const isVoice =
+    channel.type === 'voice' || channel.type === 'stage';
+
+  const [tab, setTab] = useState<'overview' | 'permissions'>(
+    'overview',
+  );
   const [name, setName] = useState(channel.name);
   const [topic, setTopic] = useState(channel.topic);
   const [category, setCategory] = useState(channel.category);
   const [isPrivate, setPrivate] = useState(channel.is_private);
-  const initialRoles = data.channelAccess.filter((a) => a.channel_id === channel.id).map((a) => a.role_id);
+
+  const initialRoles = data.channelAccess
+    .filter((access) => access.channel_id === channel.id)
+    .map((access) => access.role_id);
+
   const [roles, setRoles] = useState<string[]>(initialRoles);
   const [settings, setSettings] = useState(channel.settings ?? {});
   const [error, setError] = useState<string | null>(null);
@@ -725,49 +1581,151 @@ export function ChannelSettingsModal({ channel, data, onClose }: { channel: Chan
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    const update: Record<string, unknown> = { name: name.trim(), topic, category, is_private: isPrivate };
-    if (isVoice) update.settings = { ...(channel.settings ?? {}), user_limit: Math.max(0, settings.user_limit ?? 0) || null, bitrate: Math.min(384, Math.max(8, settings.bitrate ?? 64)) || null };
-    const { error } = await supabase.from('channels').update(update).eq('id', channel.id);
-    if (error) return setError(errorMessage(error));
-    const removed = initialRoles.filter((r) => !roles.includes(r));
-    const added = roles.filter((r) => !initialRoles.includes(r));
-    if (removed.length) await supabase.from('channel_role_access').delete().eq('channel_id', channel.id).in('role_id', removed);
-    if (added.length) await supabase.from('channel_role_access').insert(added.map((role_id) => ({ channel_id: channel.id, role_id })));
+
+    const update: Record<string, unknown> = {
+      name: name.trim(),
+      topic,
+      category,
+      is_private: isPrivate,
+    };
+
+    if (isVoice) {
+      update.settings = {
+        ...(channel.settings ?? {}),
+        user_limit:
+          Math.max(0, settings.user_limit ?? 0) || null,
+        bitrate:
+          Math.min(
+            384,
+            Math.max(8, settings.bitrate ?? 64),
+          ) || null,
+      };
+    }
+
+    const { error: updateError } = await supabase
+      .from('channels')
+      .update(update)
+      .eq('id', channel.id);
+
+    if (updateError) {
+      return setError(errorMessage(updateError));
+    }
+
+    const removed = initialRoles.filter(
+      (role) => !roles.includes(role),
+    );
+
+    const added = roles.filter(
+      (role) => !initialRoles.includes(role),
+    );
+
+    if (removed.length) {
+      const { error: removeError } = await supabase
+        .from('channel_role_access')
+        .delete()
+        .eq('channel_id', channel.id)
+        .in('role_id', removed);
+
+      if (removeError) {
+        return setError(errorMessage(removeError));
+      }
+    }
+
+    if (added.length) {
+      const { error: addError } = await supabase
+        .from('channel_role_access')
+        .insert(
+          added.map((role_id) => ({
+            channel_id: channel.id,
+            role_id,
+          })),
+        );
+
+      if (addError) {
+        return setError(errorMessage(addError));
+      }
+    }
+
     data.reload();
     setSaved(true);
     setTimeout(onClose, 700);
   }
 
   async function remove() {
-    if (!(await askConfirm({ title: `Delete #${channel.name}`, body: 'All of its encrypted messages are deleted too.', confirm: 'Delete Channel', danger: true }))) return;
-    const { error } = await supabase.from('channels').delete().eq('id', channel.id);
-    if (error) return setError(errorMessage(error));
+    if (
+      !(await askConfirm({
+        title: `Delete #${channel.name}`,
+        body: 'All of its encrypted messages are deleted too.',
+        confirm: 'Delete Channel',
+        danger: true,
+      }))
+    ) {
+      return;
+    }
+
+    const { error: deleteError } = await supabase
+      .from('channels')
+      .delete()
+      .eq('id', channel.id);
+
+    if (deleteError) {
+      return setError(errorMessage(deleteError));
+    }
+
     onClose();
   }
 
   return (
-    <Modal wide title={`Edit ${channel.type === 'voice' || channel.type === 'stage' ? 'channel' : '#'} ${channel.name}`} onClose={onClose}>
+    <Modal
+      wide
+      title={`Edit ${
+        channel.type === 'voice' || channel.type === 'stage'
+          ? 'channel'
+          : '#'
+      } ${channel.name}`}
+      onClose={onClose}
+    >
       <div className="tabs">
-        <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>
+        <button
+          className={tab === 'overview' ? 'active' : ''}
+          onClick={() => setTab('overview')}
+        >
           Overview
         </button>
-        <button className={tab === 'permissions' ? 'active' : ''} onClick={() => setTab('permissions')}>
+
+        <button
+          className={tab === 'permissions' ? 'active' : ''}
+          onClick={() => setTab('permissions')}
+        >
           Permissions
         </button>
       </div>
+
       {saved ? (
         <p className="muted center">Saved.</p>
       ) : tab === 'overview' ? (
         <form onSubmit={save}>
           {error && <div className="form-error">{error}</div>}
+
           <Field label="Name">
-            <input required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
+            <input
+              required
+              maxLength={100}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </Field>
+
           {channel.type === 'text' && (
             <Field label="Topic">
-              <textarea maxLength={1024} value={topic} onChange={(e) => setTopic(e.target.value)} />
+              <textarea
+                maxLength={1024}
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+              />
             </Field>
           )}
+
           {isVoice && (
             <div className="row">
               <Field label="User limit (0 = no limit)">
@@ -776,93 +1734,226 @@ export function ChannelSettingsModal({ channel, data, onClose }: { channel: Chan
                   min={0}
                   max={250}
                   value={settings.user_limit ?? 0}
-                  onChange={(e) => setSettings((s) => ({ ...s, user_limit: Number(e.target.value) }))}
+                  onChange={(e) =>
+                    setSettings((current) => ({
+                      ...current,
+                      user_limit: Number(e.target.value),
+                    }))
+                  }
                 />
               </Field>
+
               <Field label="Bitrate (kbps)">
                 <input
                   type="number"
                   min={8}
                   max={384}
                   value={settings.bitrate ?? 64}
-                  onChange={(e) => setSettings((s) => ({ ...s, bitrate: Number(e.target.value) }))}
+                  onChange={(e) =>
+                    setSettings((current) => ({
+                      ...current,
+                      bitrate: Number(e.target.value),
+                    }))
+                  }
                 />
               </Field>
             </div>
           )}
+
           <Field label="Category">
-              <Select value={category} onChange={setCategory} options={[{ value: '', label: 'No category' }, ...serverCategories(data).map((c) => ({ value: c, label: c }))]} />
-            </Field>
-            <p className="small muted">Position is set by dragging channels up and down in the server list.</p>
-          <PrivateToggle data={data} isPrivate={isPrivate} setPrivate={setPrivate} roles={roles} setRoles={setRoles} />
-          <p className="small muted">Removing access automatically rotates the channel’s encryption key.</p>
+            <Select
+              value={category}
+              onChange={setCategory}
+              options={[
+                { value: '', label: 'No category' },
+                ...serverCategories(data).map((item) => ({
+                  value: item,
+                  label: item,
+                })),
+              ]}
+            />
+          </Field>
+
+          <p className="small muted">
+            Position is set by dragging channels up and down in
+            the server list.
+          </p>
+
+          <PrivateToggle
+            data={data}
+            isPrivate={isPrivate}
+            setPrivate={setPrivate}
+            roles={roles}
+            setRoles={setRoles}
+          />
+
+          <p className="small muted">
+            Removing access automatically rotates the channel’s
+            encryption key.
+          </p>
+
           <div className="modal-actions">
-            <button type="button" className="btn danger" onClick={remove}>
+            <button
+              type="button"
+              className="btn danger"
+              onClick={remove}
+            >
               Delete Channel
             </button>
-            <button className="btn primary">Save Changes</button>
+
+            <button className="btn primary">
+              Save Changes
+            </button>
           </div>
         </form>
       ) : (
-        <ChannelPermissionsEditor data={data} scope={{ channelId: channel.id }} />
+        <ChannelPermissionsEditor
+          data={data}
+          scope={{ channelId: channel.id }}
+        />
       )}
     </Modal>
   );
 }
 
-export function CategorySettingsModal({ category, data, onClose }: { category: string; data: ServerData; onClose: () => void }) {
+export function CategorySettingsModal({
+  category,
+  data,
+  onClose,
+}: {
+  category: string;
+  data: ServerData;
+  onClose: () => void;
+}) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(category);
   const [error, setError] = useState<string | null>(null);
-  const affected = data.channels.filter((c) => c.category === category).length;
+
+  const affected = data.channels.filter(
+    (channel) => channel.category === category,
+  ).length;
 
   async function rename(e: FormEvent) {
     e.preventDefault();
+
     const next = name.trim();
-    if (!next || next === category) return onClose();
-    const { error: e1 } = await supabase.from('channels').update({ category: next }).eq('server_id', data.server!.id).eq('category', category);
-    if (e1) return setError(errorMessage(e1));
-    const { error: e2 } = await supabase
+
+    if (!next || next === category) {
+      return onClose();
+    }
+
+    const { error: channelError } = await supabase
+      .from('channels')
+      .update({ category: next })
+      .eq('server_id', data.server!.id)
+      .eq('category', category);
+
+    if (channelError) {
+      return setError(errorMessage(channelError));
+    }
+
+    const { error: serverError } = await supabase
       .from('servers')
-      .update({ categories: (data.server?.categories ?? []).map((c) => (c === category ? next : c)) })
+      .update({
+        categories: (data.server?.categories ?? []).map(
+          (item) => (item === category ? next : item),
+        ),
+      })
       .eq('id', data.server!.id);
-    if (e2) return setError(errorMessage(e2));
+
+    if (serverError) {
+      return setError(errorMessage(serverError));
+    }
+
     data.reload();
     onClose();
   }
 
   async function remove() {
-    if (!(await askConfirm({ title: `Delete category ${category}`, body: 'Channels stay but become uncategorized. Permissions for this category are removed.', confirm: 'Delete Category', danger: true }))) return;
-    const { error } = await supabase.from('servers').update({ categories: (data.server?.categories ?? []).filter((c) => c !== category) }).eq('id', data.server!.id);
-    if (error) return setError(errorMessage(error));
+    if (
+      !(await askConfirm({
+        title: `Delete category ${category}`,
+        body: 'Channels stay but become uncategorized. Permissions for this category are removed.',
+        confirm: 'Delete Category',
+        danger: true,
+      }))
+    ) {
+      return;
+    }
+
+    const { error: deleteError } = await supabase
+      .from('servers')
+      .update({
+        categories: (data.server?.categories ?? []).filter(
+          (item) => item !== category,
+        ),
+      })
+      .eq('id', data.server!.id);
+
+    if (deleteError) {
+      return setError(errorMessage(deleteError));
+    }
+
     data.reload();
     onClose();
   }
 
   return (
-    <Modal wide title={`Category — ${category}`} onClose={onClose}>
+    <Modal
+      wide
+      title={`Category — ${category}`}
+      onClose={onClose}
+    >
       <div className="tabs">
-        <button className={renaming ? '' : 'active'} onClick={() => setRenaming(false)}>
+        <button
+          className={renaming ? '' : 'active'}
+          onClick={() => setRenaming(false)}
+        >
           Permissions
         </button>
-        <button className={renaming ? 'active' : ''} onClick={() => setRenaming(true)}>
+
+        <button
+          className={renaming ? 'active' : ''}
+          onClick={() => setRenaming(true)}
+        >
           Rename
         </button>
       </div>
+
       {error && <div className="form-error">{error}</div>}
+
       {renaming ? (
         <form className="row" onSubmit={rename}>
           <Field label="Category name">
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={100}
+            />
           </Field>
+
           <button className="btn primary">Save</button>
         </form>
       ) : (
         <>
-          <p className="muted">Changes apply to the {affected} channel{affected === 1 ? '' : 's'} in this category, unless a channel has its own override.</p>
-          <ChannelPermissionsEditor data={data} scope={{ category }} onDone={() => setRenaming(false)} />
+          <p className="muted">
+            Changes apply to the {affected} channel
+            {affected === 1 ? '' : 's'} in this category,
+            unless a channel has its own override.
+          </p>
+
+          <ChannelPermissionsEditor
+            data={data}
+            scope={{ category }}
+            onDone={() => setRenaming(false)}
+          />
+
           <div className="modal-actions">
-            <button type="button" className="btn danger" onClick={remove}>
+            <button
+              type="button"
+              className="btn danger"
+              onClick={remove}
+            >
               Delete Category
             </button>
           </div>
@@ -874,37 +1965,73 @@ export function CategorySettingsModal({ category, data, onClose }: { category: s
 
 // -------------------------------------------------------------------- DMs --
 
-export function NewDmModal({ onClose }: { onClose: () => void }) {
+export function NewDmModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
+
   return (
-    <Modal title="New direct message" onClose={onClose}>
+    <Modal
+      title="New direct message"
+      onClose={onClose}
+    >
       <form
         onSubmit={async (e) => {
           e.preventDefault();
           setError(null);
-          const { data } = await supabase.rpc('find_user', { p_username: username.replace(/^@/, '').trim() });
+
+          const cleanUsername = username
+            .replace(/^@/, '')
+            .trim();
+
+          const { data } = await supabase.rpc('find_user', {
+            p_username: cleanUsername,
+          });
+
           const user = (data as Profile[] | null)?.[0];
-          if (!user)
+
+          if (!user) {
             return setError(
-              `Nobody has the username “${username.replace(/^@/, '').trim()}”. Use their @username (shown under their name), not their display name.`,
+              `Nobody has the username “${cleanUsername}”. Use their @username (shown under their name), not their display name.`,
             );
-          await startDm(user.id).catch((err) => setError(errorMessage(err)));
+          }
+
+          await startDm(user.id).catch((err) =>
+            setError(errorMessage(err)),
+          );
+
           onClose();
         }}
       >
         <Field label="Username" error={error}>
-          <input required value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} placeholder="@username" />
+          <input
+            required
+            value={username}
+            onChange={(e) =>
+              setUsername(e.target.value.toLowerCase())
+            }
+            placeholder="@username"
+          />
         </Field>
-        <button className="btn primary full">Open DM</button>
+
+        <button className="btn primary full">
+          Open DM
+        </button>
       </form>
     </Modal>
   );
 }
 
 export async function startDm(userId: string) {
-  const { data, error } = await supabase.rpc('open_dm', { p_other: userId });
+  const { data, error } = await supabase.rpc('open_dm', {
+    p_other: userId,
+  });
+
   if (error) throw error;
+
   await loadProfiles([userId], true);
   openChannel('@me', data as string);
 }
@@ -915,29 +2042,83 @@ export async function startDm(userId: string) {
 function useKnownPeople(): Profile[] {
   const friends = socialStore.use((s) => s.friends);
   const meId = sessionStore.use((s) => s.me?.id);
+
   const friendIds = useMemo(
-    () => Object.values(friends).filter((f) => f.accepted).map((f) => f.other).sort().join(','),
+    () =>
+      Object.values(friends)
+        .filter((friend) => friend.accepted)
+        .map((friend) => friend.other)
+        .sort()
+        .join(','),
     [friends],
   );
+
   const [people, setPeople] = useState<Profile[]>([]);
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
-      const { data: parts } = await supabase.from('dm_participants').select('channel_id, user_id');
+      const { data: parts } = await supabase
+        .from('dm_participants')
+        .select('channel_id, user_id');
+
       const byChannel = new Map<string, string[]>();
-      for (const p of parts ?? []) byChannel.set(p.channel_id, [...(byChannel.get(p.channel_id) ?? []), p.user_id]);
+
+      for (const participant of parts ?? []) {
+        byChannel.set(
+          participant.channel_id,
+          [
+            ...(byChannel.get(participant.channel_id) ?? []),
+            participant.user_id,
+          ],
+        );
+      }
+
       const channelIds = [...byChannel.keys()];
-      const { data: chans } = channelIds.length ? await supabase.from('channels').select('id, is_group').in('id', channelIds) : { data: [] };
-      const direct = ((chans ?? []) as { id: string; is_group: boolean }[]).filter((c) => !c.is_group).map((c) => c.id);
-      const fromDms = direct.flatMap((id) => byChannel.get(id) ?? []);
-      const ids = [...new Set([...friendIds.split(',').filter(Boolean), ...fromDms])].filter((id) => id !== meId);
+
+      const { data: chans } = channelIds.length
+        ? await supabase
+            .from('channels')
+            .select('id, is_group')
+            .in('id', channelIds)
+        : { data: [] };
+
+      const direct = (
+        (chans ?? []) as {
+          id: string;
+          is_group: boolean;
+        }[]
+      )
+        .filter((channel) => !channel.is_group)
+        .map((channel) => channel.id);
+
+      const fromDms = direct.flatMap(
+        (id) => byChannel.get(id) ?? [],
+      );
+
+      const ids = [
+        ...new Set([
+          ...friendIds.split(',').filter(Boolean),
+          ...fromDms,
+        ]),
+      ].filter((id) => id !== meId);
+
       await loadProfiles(ids);
+
       if (cancelled) return;
-      const list = ids.map((id) => getProfile(id)).filter(Boolean) as Profile[];
-      list.sort((a, b) => displayName(a.id).localeCompare(displayName(b.id)));
+
+      const list = ids
+        .map((id) => getProfile(id))
+        .filter(Boolean) as Profile[];
+
+      list.sort((a, b) =>
+        displayName(a.id).localeCompare(displayName(b.id)),
+      );
+
       setPeople(list);
     })();
+
     return () => {
       cancelled = true;
     };
@@ -946,13 +2127,32 @@ function useKnownPeople(): Profile[] {
   return people;
 }
 
-/** Pick people from your friends and DMs, or add someone by username. Used for creating a group and adding to one. */
-function PeoplePicker({ picked, setPicked, exclude = [] }: { picked: Profile[]; setPicked: (p: Profile[]) => void; exclude?: string[] }) {
+/** Pick people from your friends and DMs, or add someone by username. */
+function PeoplePicker({
+  picked,
+  setPicked,
+  exclude = [],
+}: {
+  picked: Profile[];
+  setPicked: (p: Profile[]) => void;
+  exclude?: string[];
+}) {
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
+
   const known = useKnownPeople();
-  const query = username.replace(/^@+/, '').trim().toLowerCase();
-  const rows = known.filter((p) => !query || displayName(p.id).toLowerCase().includes(query) || p.username.toLowerCase().includes(query));
+
+  const query = username
+    .replace(/^@+/, '')
+    .trim()
+    .toLowerCase();
+
+  const rows = known.filter(
+    (profile) =>
+      !query ||
+      displayName(profile.id).toLowerCase().includes(query) ||
+      profile.username.toLowerCase().includes(query),
+  );
 
   function pick(user: Profile) {
     putProfile(user);
@@ -960,19 +2160,46 @@ function PeoplePicker({ picked, setPicked, exclude = [] }: { picked: Profile[]; 
   }
 
   function toggle(user: Profile) {
-    if (picked.some((p) => p.id === user.id)) setPicked(picked.filter((p) => p.id !== user.id));
-    else pick(user);
+    if (picked.some((profile) => profile.id === user.id)) {
+      setPicked(
+        picked.filter((profile) => profile.id !== user.id),
+      );
+    } else {
+      pick(user);
+    }
   }
 
   async function add() {
-    const name = username.replace(/^@+/, '').trim().toLowerCase();
+    const name = username
+      .replace(/^@+/, '')
+      .trim()
+      .toLowerCase();
+
     if (!name) return;
+
     setError(null);
-    const { data } = await supabase.rpc('find_user', { p_username: name });
+
+    const { data } = await supabase.rpc('find_user', {
+      p_username: name,
+    });
+
     const user = (data as Profile[] | null)?.[0];
-    if (!user) return setError(`Nobody has the username “${name}”.`);
-    if (user.id === sessionStore.get().me?.id || exclude.includes(user.id)) return setError('They’re already in here.');
-    if (!picked.some((p) => p.id === user.id)) pick(user as Profile);
+
+    if (!user) {
+      return setError(`Nobody has the username “${name}”.`);
+    }
+
+    if (
+      user.id === sessionStore.get().me?.id ||
+      exclude.includes(user.id)
+    ) {
+      return setError('They’re already in here.');
+    }
+
+    if (!picked.some((profile) => profile.id === user.id)) {
+      pick(user as Profile);
+    }
+
     setUsername('');
   }
 
@@ -983,7 +2210,9 @@ function PeoplePicker({ picked, setPicked, exclude = [] }: { picked: Profile[]; 
           <input
             value={username}
             placeholder="Search friends or type a username"
-            onChange={(e) => setUsername(e.target.value.toLowerCase())}
+            onChange={(e) =>
+              setUsername(e.target.value.toLowerCase())
+            }
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -991,44 +2220,91 @@ function PeoplePicker({ picked, setPicked, exclude = [] }: { picked: Profile[]; 
               }
             }}
           />
-          <button type="button" className="btn secondary" onClick={add}>
+
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={add}
+          >
             Add
           </button>
         </div>
       </Field>
-      <div style={{ maxHeight: 240, overflowY: 'auto', marginBottom: 12 }}>
-        {rows.map((p) => {
-          const isPicked = picked.some((x) => x.id === p.id);
-          const locked = exclude.includes(p.id);
+
+      <div
+        style={{
+          maxHeight: 240,
+          overflowY: 'auto',
+          marginBottom: 12,
+        }}
+      >
+        {rows.map((profile) => {
+          const isPicked = picked.some(
+            (item) => item.id === profile.id,
+          );
+
+          const locked = exclude.includes(profile.id);
+
           return (
-            <div key={p.id} className="member">
-              <Avatar profile={p} size={32} />
+            <div key={profile.id} className="member">
+              <Avatar profile={profile} size={32} />
+
               <div className="member-text">
-                <span className="member-name">{displayName(p.id)}</span>
-                <span className="member-sub">@{p.username}</span>
+                <span className="member-name">
+                  {displayName(profile.id)}
+                </span>
+
+                <span className="member-sub">
+                  @{profile.username}
+                </span>
               </div>
+
               <button
                 type="button"
-                className={`btn small ${isPicked ? 'secondary' : 'primary'}`}
+                className={`btn small ${
+                  isPicked ? 'secondary' : 'primary'
+                }`}
                 disabled={locked}
                 title={isPicked ? 'Click to remove' : undefined}
-                onClick={() => toggle(p)}
+                onClick={() => toggle(profile)}
               >
-                {locked ? 'In group' : isPicked ? 'Added' : 'Add'}
+                {locked
+                  ? 'In group'
+                  : isPicked
+                    ? 'Added'
+                    : 'Add'}
               </button>
             </div>
           );
         })}
+
         {!rows.length && (
-          <p className="muted small">{query ? 'No matches. Press Enter to add by exact username.' : 'No friends or chats yet. Type a username above.'}</p>
+          <p className="muted small">
+            {query
+              ? 'No matches. Press Enter to add by exact username.'
+              : 'No friends or chats yet. Type a username above.'}
+          </p>
         )}
       </div>
+
       {picked.length > 0 && (
         <div className="role-pills">
-          {picked.map((p) => (
-            <span key={p.id} className="role-pill">
-              <Avatar profile={p} size={18} /> {p.display_name}
-              <button type="button" className="pill-x" onClick={() => setPicked(picked.filter((x) => x.id !== p.id))}>
+          {picked.map((profile) => (
+            <span key={profile.id} className="role-pill">
+              <Avatar profile={profile} size={18} />
+              {profile.display_name}
+
+              <button
+                type="button"
+                className="pill-x"
+                onClick={() =>
+                  setPicked(
+                    picked.filter(
+                      (item) => item.id !== profile.id,
+                    ),
+                  )
+                }
+              >
                 ×
               </button>
             </span>
@@ -1041,110 +2317,257 @@ function PeoplePicker({ picked, setPicked, exclude = [] }: { picked: Profile[]; 
 
 export const GROUP_MAX = 20;
 
-export function NewGroupModal({ onClose }: { onClose: () => void }) {
+export function NewGroupModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
   const [name, setName] = useState('');
   const [picked, setPicked] = useState<Profile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
   return (
     <Modal title="New group chat" onClose={onClose}>
-      <p className="muted small">Up to {GROUP_MAX} people. Everything in the group is end-to-end encrypted.</p>
+      <p className="muted small">
+        Up to {GROUP_MAX} people. Everything in the group is
+        end-to-end encrypted.
+      </p>
+
       {error && <div className="form-error">{error}</div>}
+
       <Field label="Group name (optional)">
-        <input maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder="Weekend plans" />
+        <input
+          maxLength={100}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Weekend plans"
+        />
       </Field>
-      <PeoplePicker picked={picked} setPicked={setPicked} />
+
+      <PeoplePicker
+        picked={picked}
+        setPicked={setPicked}
+      />
+
       <button
         className="btn primary full"
         disabled={!picked.length || busy}
         onClick={async () => {
           setBusy(true);
-          const fallback = [sessionStore.get().me?.display_name, ...picked.map((p) => p.display_name)].filter(Boolean).join(', ');
-          const { data, error } = await supabase.rpc('create_group', {
-            p_members: picked.map((p) => p.id),
-            p_name: name.trim() || fallback.slice(0, 100),
-          });
+
+          const fallback = [
+            sessionStore.get().me?.display_name,
+            ...picked.map((profile) => profile.display_name),
+          ]
+            .filter(Boolean)
+            .join(', ');
+
+          const { data, error: createError } =
+            await supabase.rpc('create_group', {
+              p_members: picked.map((profile) => profile.id),
+              p_name:
+                name.trim() || fallback.slice(0, 100),
+            });
+
           setBusy(false);
-          if (error) return setError(errorMessage(error));
+
+          if (createError) {
+            return setError(errorMessage(createError));
+          }
+
           openChannel('@me', data as string);
           onClose();
         }}
       >
-        Create group{picked.length ? ` with ${picked.length + 1} people` : ''}
+        Create group
+        {picked.length
+          ? ` with ${picked.length + 1} people`
+          : ''}
       </button>
     </Modal>
   );
 }
 
-export function GroupSettingsModal({ dm, onClose }: { dm: DmChannel; onClose: () => void }) {
+export function GroupSettingsModal({
+  dm,
+  onClose,
+}: {
+  dm: DmChannel;
+  onClose: () => void;
+}) {
   const [name, setName] = useState(dm.channel.name);
   const [picked, setPicked] = useState<Profile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
+
   const me = sessionStore.use((s) => s.me)!;
   const friends = socialStore.use((s) => s.friends);
+
   const owner = dm.channel.owner_id ?? null;
   const isOwner = owner === me.id;
-  const inGroup = new Set([me.id, ...dm.members.map((m) => m.id)]);
+
+  const inGroup = new Set([
+    me.id,
+    ...dm.members.map((member) => member.id),
+  ]);
+
   const full = inGroup.size >= GROUP_MAX;
+
   const addable = Object.values(friends)
-    .filter((f) => f.accepted && !inGroup.has(f.other))
-    .map((f) => getProfile(f.other))
-    .filter((p): p is Profile => Boolean(p));
+    .filter(
+      (friend) =>
+        friend.accepted && !inGroup.has(friend.other),
+    )
+    .map((friend) => getProfile(friend.other))
+    .filter((profile): profile is Profile =>
+      Boolean(profile),
+    );
+
   const add = async (ids: string[]) => {
-    const { error } = await supabase.rpc('add_group_members', { p_channel: dm.channel.id, p_members: ids });
-    if (error) return setError(errorMessage(error));
-    await sessionStore.get().keyring?.distribute(dm.channel.id);
+    const { error: addError } = await supabase.rpc(
+      'add_group_members',
+      {
+        p_channel: dm.channel.id,
+        p_members: ids,
+      },
+    );
+
+    if (addError) {
+      return setError(errorMessage(addError));
+    }
+
+    await sessionStore
+      .get()
+      .keyring?.distribute(dm.channel.id);
+
     setError(null);
   };
+
   return (
     <Modal title="Group settings" onClose={onClose}>
       {error && <div className="form-error">{error}</div>}
+
       <Field label="Group name">
         <div className="copy-row">
-          <input maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
+          <input
+            maxLength={100}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+
           <button
             className="btn secondary"
             onClick={async () => {
-              const { error } = await supabase.rpc('rename_group', { p_channel: dm.channel.id, p_name: name });
-              setError(error ? errorMessage(error) : null);
-              if (!error) onClose();
+              const { error: renameError } = await supabase.rpc(
+                'rename_group',
+                {
+                  p_channel: dm.channel.id,
+                  p_name: name,
+                },
+              );
+
+              setError(
+                renameError
+                  ? errorMessage(renameError)
+                  : null,
+              );
+
+              if (!renameError) onClose();
             }}
           >
             Save
           </button>
         </div>
       </Field>
-      <div className="field-label">Members — {dm.members.length + 1} / {GROUP_MAX}</div>
+
+      <div className="field-label">
+        Members — {dm.members.length + 1} / {GROUP_MAX}
+      </div>
+
       <div className="group-members">
-        {[me, ...dm.members].map((p) => (
-          <div key={p.id} className="member">
-            <Avatar profile={p} size={28} />
+        {[me, ...dm.members].map((profile) => (
+          <div key={profile.id} className="member">
+            <Avatar profile={profile} size={28} />
+
             <span className="member-name grow">
-              {p.display_name}
-              {p.id === owner && <OwnerCrown size={13} label="Group owner" />}
+              {profile.display_name}
+
+              {profile.id === owner && (
+                <OwnerCrown
+                  size={13}
+                  label="Group owner"
+                />
+              )}
             </span>
-            {p.id === me.id && <span className="tag-soft accent">you</span>}
-            {isOwner && p.id !== me.id && (
+
+            {profile.id === me.id && (
+              <span className="tag-soft accent">you</span>
+            )}
+
+            {isOwner && profile.id !== me.id && (
               <>
                 <button
                   className="btn link small"
                   onClick={async () => {
-                    if (!(await askConfirm({ title: `Make ${p.display_name} the owner?`, body: 'They’ll be able to remove people. You stay in the group.', confirm: 'Make owner' }))) return;
-                    const { error } = await supabase.rpc('transfer_group', { p_channel: dm.channel.id, p_user: p.id });
-                    setError(error ? errorMessage(error) : null);
-                    if (!error) onClose();
+                    if (
+                      !(await askConfirm({
+                        title: `Make ${profile.display_name} the owner?`,
+                        body: 'They’ll be able to remove people. You stay in the group.',
+                        confirm: 'Make owner',
+                      }))
+                    ) {
+                      return;
+                    }
+
+                    const { error: transferError } =
+                      await supabase.rpc('transfer_group', {
+                        p_channel: dm.channel.id,
+                        p_user: profile.id,
+                      });
+
+                    setError(
+                      transferError
+                        ? errorMessage(transferError)
+                        : null,
+                    );
+
+                    if (!transferError) onClose();
                   }}
                 >
                   Make owner
                 </button>
+
                 <button
                   className="btn link small danger-text"
                   onClick={async () => {
-                    if (!(await askConfirm({ title: `Remove ${p.display_name}?`, body: 'They stop getting new messages. The group’s key is changed so they can’t read anything new.', confirm: 'Remove', danger: true }))) return;
-                    const { error } = await supabase.rpc('remove_group_member', { p_channel: dm.channel.id, p_user: p.id });
-                    setError(error ? errorMessage(error) : null);
-                    if (!error) onClose();
+                    if (
+                      !(await askConfirm({
+                        title: `Remove ${profile.display_name}?`,
+                        body: 'They stop getting new messages. The group’s key is changed so they can’t read anything new.',
+                        confirm: 'Remove',
+                        danger: true,
+                      }))
+                    ) {
+                      return;
+                    }
+
+                    const { error: removeError } =
+                      await supabase.rpc(
+                        'remove_group_member',
+                        {
+                          p_channel: dm.channel.id,
+                          p_user: profile.id,
+                        },
+                      );
+
+                    setError(
+                      removeError
+                        ? errorMessage(removeError)
+                        : null,
+                    );
+
+                    if (!removeError) onClose();
                   }}
                 >
                   Remove
@@ -1154,33 +2577,74 @@ export function GroupSettingsModal({ dm, onClose }: { dm: DmChannel; onClose: ()
           </div>
         ))}
       </div>
+
       {addable.length > 0 && !full && (
         <>
           <div className="field-label">Add friends</div>
+
           <div className="group-members add-friends">
-            {addable.slice(0, 50).map((p) => (
-              <div key={p.id} className="member">
-                <Avatar profile={p} size={28} />
-                <span className="member-name grow">{p.display_name}</span>
-                <button className="btn secondary small" onClick={() => add([p.id])}>
-                  Add to {dm.title.length > 18 ? 'group' : dm.title}
+            {addable.slice(0, 50).map((profile) => (
+              <div key={profile.id} className="member">
+                <Avatar profile={profile} size={28} />
+
+                <span className="member-name grow">
+                  {profile.display_name}
+                </span>
+
+                <button
+                  className="btn secondary small"
+                  onClick={() => add([profile.id])}
+                >
+                  Add to{' '}
+                  {dm.title.length > 18
+                    ? 'group'
+                    : dm.title}
                 </button>
               </div>
             ))}
           </div>
         </>
       )}
-      <PeoplePicker picked={picked} setPicked={setPicked} exclude={dm.members.map((m) => m.id)} />
+
+      <PeoplePicker
+        picked={picked}
+        setPicked={setPicked}
+        exclude={dm.members.map((member) => member.id)}
+      />
+
       {picked.length > 0 && (
-        <button className="btn primary full" onClick={() => add(picked.map((p) => p.id)).then(() => setPicked([]))}>
-          Add {picked.length} {picked.length === 1 ? 'person' : 'people'}
+        <button
+          className="btn primary full"
+          onClick={() =>
+            add(picked.map((profile) => profile.id)).then(
+              () => setPicked([]),
+            )
+          }
+        >
+          Add {picked.length}{' '}
+          {picked.length === 1 ? 'person' : 'people'}
         </button>
       )}
-      <Field label="Invite link" hint="For people who aren’t your friends yet. Works for 7 days.">
+
+      <Field
+        label="Invite link"
+        hint="For people who aren’t your friends yet. Works for 7 days."
+      >
         {link ? (
           <div className="copy-row">
-            <input readOnly value={link} onFocus={(e) => e.target.select()} aria-label="Group invite link" />
-            <button className="btn primary" onClick={() => navigator.clipboard.writeText(link)}>
+            <input
+              readOnly
+              value={link}
+              onFocus={(e) => e.target.select()}
+              aria-label="Group invite link"
+            />
+
+            <button
+              className="btn primary"
+              onClick={() =>
+                navigator.clipboard.writeText(link)
+              }
+            >
               Copy
             </button>
           </div>
@@ -1189,22 +2653,54 @@ export function GroupSettingsModal({ dm, onClose }: { dm: DmChannel; onClose: ()
             className="btn secondary"
             disabled={full}
             onClick={async () => {
-              const { data, error } = await supabase.rpc('create_group_invite', { p_channel: dm.channel.id });
-              if (error) return setError(errorMessage(error));
-              setLink(`${window.location.origin}${import.meta.env.BASE_URL}join-group/${data as string}`);
+              const { data, error: inviteError } =
+                await supabase.rpc('create_group_invite', {
+                  p_channel: dm.channel.id,
+                });
+
+              if (inviteError) {
+                return setError(errorMessage(inviteError));
+              }
+
+              setLink(
+                `${window.location.origin}${import.meta.env.BASE_URL}join-group/${data as string}`,
+              );
             }}
           >
-            {full ? 'The group is full' : 'Create invite link'}
+            {full
+              ? 'The group is full'
+              : 'Create invite link'}
           </button>
         )}
       </Field>
+
       <hr />
+
       <button
         className="btn danger"
         onClick={async () => {
-          if (!(await askConfirm({ title: `Leave ${dm.title}`, body: 'You won’t see new messages unless someone adds you back.', confirm: 'Leave Group', danger: true }))) return;
-          const { error } = await supabase.rpc('leave_group', { p_channel: dm.channel.id });
-          if (error) return setError(errorMessage(error));
+          if (
+            !(await askConfirm({
+              title: `Leave ${dm.title}`,
+              body: 'You won’t see new messages unless someone adds you back.',
+              confirm: 'Leave Group',
+              danger: true,
+            }))
+          ) {
+            return;
+          }
+
+          const { error: leaveError } = await supabase.rpc(
+            'leave_group',
+            {
+              p_channel: dm.channel.id,
+            },
+          );
+
+          if (leaveError) {
+            return setError(errorMessage(leaveError));
+          }
+
           openChannel('@me', '');
           onClose();
         }}
