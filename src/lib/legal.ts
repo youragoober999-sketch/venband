@@ -362,7 +362,7 @@ const PRIVACY: LegalDoc = {
       id: 'collect-connections',
       title: 'Linked accounts',
       body: [
-        'If you link another service, we store the account ID, the display name and picture that service gives us, the permission level you approved and the date you linked it. We never receive your password for that service. Full details are in [Connections & Privacy](/privacy/connections).',
+        'If you link another service, we store the account ID, the display name and picture that service gives us, the permission level you approved and the date you linked it. Linked accounts show on your profile unless you hide them. We never receive your password for that service. Full details are in [Connections & Privacy](/privacy/connections).',
       ],
     },
     {
@@ -393,7 +393,7 @@ const PRIVACY: LegalDoc = {
       title: 'When information is shared',
       body: [
         ['ul', [
-          'With other users, according to your settings: your profile, messages (which only they can decrypt), presence and activity.',
+          'With other users, according to your settings: your profile, messages (which only they can decrypt), presence, activity and the linked accounts you show on your profile.',
           'With server owners and moderators: your membership, roles and anything you post in their server, plus what you share in reports to them.',
           'With service providers who host Venband for us and only act on our instructions (see the next section).',
           'With a linked service, only what is needed to complete the link you asked for.',
@@ -546,7 +546,8 @@ const CONNECTIONS: LegalDoc = {
       id: 'visibility',
       title: 'Who can see your connections',
       body: [
-        'Right now your linked accounts are visible only to you. Database rules stop anyone else — including other users and bots — from reading them.',
+        'Linked accounts appear in the Connections section of your profile, to the people who can already see your profile (and never to anyone you have blocked or who has blocked you). They see the service, the account name and a link to its public page — never your account picture from that service, tokens or anything else we stored.',
+        'You can hide any linked account from your profile with the eye button next to it in Settings → Connections. Hidden accounts are visible only to you. Bots can’t read your connections.',
         'If you choose to show activity from a connection (for example the song you are listening to), that activity is shown on your profile and presence to the people who can see your status. You can turn activity sharing off at any time in Settings.',
       ],
     },
@@ -555,7 +556,7 @@ const CONNECTIONS: LegalDoc = {
       title: 'How we use connection data',
       body: [
         ['ul', [
-          'To show the linked account in your Settings.',
+          'To show the linked account in your Settings, and on your profile unless you hide it.',
           'To show activity you chose to share, such as what you are playing, streaming or listening to.',
           'To power features that need it, such as Listen Along.',
         ]],

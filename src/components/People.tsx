@@ -21,6 +21,7 @@ import { reportUser } from '../lib/reports';
 import { Markdown } from './Markdown';
 import { startDm } from './Modals';
 import { MemoriesStrip, MemoryRing, MemoryViewer } from './Memories';
+import { ProfileConnections } from './ConnectionBits';
 import type { Memory } from '../lib/memories';
 
 export { NAMEPLATE_LIST as NAMEPLATES } from './Cosmetics';
@@ -371,6 +372,7 @@ export function ProfileModal({ userId, data, onClose }: { userId: string; data?:
             <ActivityCard userId={userId} />
             <RecentActivity userId={userId} />
             <MemoriesStrip userId={userId} self={self} />
+            <ProfileConnections userId={userId} />
             {ringList && <MemoryViewer list={ringList} self={self} onClose={() => setRingList(null)} />}
             {rel?.blocked && <div className="notice small">You blocked this person.</div>}
             {shown?.account_status && shown.account_status !== 'active' && (shown.platform_role === 'user' || !shown.platform_role) && me.platform_role !== 'user' && (

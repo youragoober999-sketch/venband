@@ -47,11 +47,13 @@ import {
   reloadConnections,
   removeConnection,
   connect,
+  profileUrl,
+  setConnectionVisibility,
   subscribeConnections,
   type ConnectionProvider,
   type ConnectionRow,
 } from '../lib/connections';
-import { BRAND_ICONS } from '../lib/brandIcons';
+import { BrandLogo, ConnectionAvatar } from './ConnectionBits';
 
 const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; perm?: StaffPerm; designer?: boolean; owner?: boolean }[] = [
   { id: 'account', label: 'My Account', icon: 'user', group: 'User Settings' },
@@ -348,53 +350,86 @@ function ConnectionsTab() {
           const ready = info.kind === 'ready';
           return (
             <div key={info.provider} className={`connection-card${linked.length ? ' linked' : ''}${ready ? '' : ' soon'}`} style={{ '--brand': info.color } as CSSProperties}>
-              <span className="connection-logo" aria-hidden>
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-                  <path d={BRAND_ICONS[info.provider]} />
-                </svg>
-              </span>
-              <span className="grow connection-text">
-                <b>{info.name}</b>
-                <div className="small muted">{info.desc}</div>
-                {linked.map((c) => (
-                  <div key={c.external_id} className="connection-account" title={`Linked ${new Date(c.created_at).toLocaleDateString()}`}>
-                    {c.avatar_url ? <img className="connection-avatar" src={c.avatar_url} alt="" referrerPolicy="no-referrer" /> : <span className="connection-avatar blank" />}
-                    <span className="grow">
-                      <b>{c.display_name || `${info.name} account`}</b>
-                      <span className="small muted"> · linked</span>
-                    </span>
-                    <button className="btn link small danger-text" disabled={busy === `${info.provider}-${c.external_id}`} onClick={() => disconnect(info.provider, c.external_id)}>
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </span>
-              {ready ? (
-                <button
-                  className="btn secondary small connection-btn"
-                  disabled={busy === info.provider}
-                  onClick={async () => {
-                    setBusy(info.provider);
-                    setError(null);
-                    try {
-                      await connect(info.provider);
-                    } catch (e) {
-                      setError(errorMessage(e));
-                      setBusy(null);
-                    }
-                  }}
-                >
-                  {busy === info.provider ? <span className="spinner small" /> : <Icon name={linked.length ? 'plus' : 'link'} size={14} />} {linked.length ? 'Add another' : 'Connect'}
-                </button>
-              ) : (
-                <span className="tag-soft">Soon</span>
+              <div className="connection-head">
+                <BrandLogo provider={info.provider} size={44} tile />
+                <span className="grow connection-text">
+                  <b>{info.name}</b>
+                  <span className="small muted">{info.desc}</span>
+                </span>
+                {ready ? (
+                  <button
+                    className="btn secondary small connection-btn"
+                    disabled={busy === info.provider}
+                    onClick={async () => {
+                      setBusy(info.provider);
+                      setError(null);
+                      try {
+                        await connect(info.provider);
+                      } catch (e) {
+                        setError(errorMessage(e));
+                        setBusy(null);
+                      }
+                    }}
+                  >
+                    {busy === info.provider ? <span className="spinner small" /> : <Icon name={linked.length ? 'plus' : 'link'} size={14} />} {linked.length ? 'Add' : 'Connect'}
+                  </button>
+                ) : (
+                  <span className="tag-soft">Soon</span>
+                )}
+              </div>
+              {linked.length > 0 && (
+                <div className="connection-accounts">
+                  {linked.map((c) => {
+                    const url = profileUrl({ ...c, handle: typeof c.metadata.handle === 'string' ? c.metadata.handle : null });
+                    const shown = c.show_on_profile !== false;
+                    const id = `${info.provider}-${c.external_id}`;
+                    return (
+                      <div key={c.external_id} className="connection-account">
+                        <ConnectionAvatar provider={info.provider} src={c.avatar_url} size={32} />
+                        <span className="grow connection-who">
+                          {url ? (
+                            <a href={url} target="_blank" rel="noopener noreferrer">
+                              {c.display_name || `${info.name} account`}
+                            </a>
+                          ) : (
+                            <b>{c.display_name || `${info.name} account`}</b>
+                          )}
+                          <span className="small muted">
+                            Linked {new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · {shown ? 'on your profile' : 'hidden'}
+                          </span>
+                        </span>
+                        <button
+                          className={`icon-btn${shown ? '' : ' off'}`}
+                          disabled={busy === id}
+                          title={shown ? 'Shown on your profile — click to hide' : 'Hidden from your profile — click to show'}
+                          aria-label={shown ? `Hide ${c.display_name} from your profile` : `Show ${c.display_name} on your profile`}
+                          onClick={async () => {
+                            setBusy(id);
+                            try {
+                              await setConnectionVisibility(info.provider, c.external_id, !shown);
+                            } catch (e) {
+                              setError(errorMessage(e));
+                            } finally {
+                              setBusy(null);
+                            }
+                          }}
+                        >
+                          <Icon name={shown ? 'eye' : 'eyeOff'} size={16} />
+                        </button>
+                        <button className="icon-btn danger" disabled={busy === id} onClick={() => disconnect(info.provider, c.external_id)} title="Remove" aria-label={`Remove ${c.display_name}`}>
+                          <Icon name="trash" size={16} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           );
         })}
       </div>
       <p className="small muted connections-note">
-        You sign in on the service’s own page — Venband never sees your password there. Linked accounts are only visible to you. <a href="/privacy/connections" target="_blank" rel="noreferrer">How connections work</a>
+        You sign in on the service’s own page — Venband never sees your password there. Linked accounts show on your profile to people who can see it; use the eye to hide one. <a href="/privacy/connections" target="_blank" rel="noreferrer">How connections work</a>
       </p>
     </Section>
   );

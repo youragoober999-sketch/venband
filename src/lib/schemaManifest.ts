@@ -479,7 +479,6 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     ],
     "functions": [
       "add_connection",
-      "my_connections",
       "remove_connection"
     ],
     "bodies": {}
@@ -798,5 +797,17 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "touch_online"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261107130000_connections_on_profile.sql",
+    "tables": [],
+    "functions": [
+      "my_connections",
+      "profile_connections",
+      "set_connection_visibility"
+    ],
+    "bodies": {
+      "my_connections": "a424789781e4023bbd1474f24c9431f3"
+    }
   }
 ];

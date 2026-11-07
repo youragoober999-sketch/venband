@@ -21,6 +21,51 @@ export interface ConnectionRow {
   avatar_url: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+  /** shown in the Connections section of your profile */
+  show_on_profile?: boolean;
+}
+
+/** A connection as other people see it on a profile. */
+export interface ProfileConnection {
+  provider: ConnectionProvider;
+  external_id: string;
+  display_name: string;
+  handle: string | null;
+  created_at: string;
+}
+
+/** The account's public page on that service, when there is one. */
+export function profileUrl(c: { provider: ConnectionProvider; external_id: string; display_name: string; handle?: string | null }): string | null {
+  const h = encodeURIComponent((c.handle || '').replace(/^@/, ''));
+  switch (c.provider) {
+    case 'steam':
+      return /^\d{17}$/.test(c.external_id) ? `https://steamcommunity.com/profiles/${c.external_id}` : null;
+    case 'twitch':
+      return `https://www.twitch.tv/${h || encodeURIComponent(c.display_name.toLowerCase())}`;
+    case 'github':
+      return h ? `https://github.com/${h}` : null;
+    case 'youtube':
+      return h ? `https://www.youtube.com/@${h}` : `https://www.youtube.com/channel/${encodeURIComponent(c.external_id)}`;
+    case 'spotify':
+      return `https://open.spotify.com/user/${encodeURIComponent(c.external_id)}`;
+    case 'xbox':
+      return `https://www.xbox.com/play/user/${h || encodeURIComponent(c.display_name)}`;
+    default:
+      return null;
+  }
+}
+
+/** Accounts someone shows on their profile (only what the database lets you see). */
+export async function profileConnections(userId: string): Promise<ProfileConnection[]> {
+  const { data, error } = await supabase.rpc('profile_connections', { p_user: userId });
+  if (error) return []; // database not updated yet: just show nothing
+  return ((data ?? []) as ProfileConnection[]).filter((r) => PROVIDERS.some((p) => p.provider === r.provider));
+}
+
+export async function setConnectionVisibility(provider: ConnectionProvider, externalId: string, show: boolean): Promise<void> {
+  const { error } = await supabase.rpc('set_connection_visibility', { p_provider: provider, p_external_id: externalId, p_show: show });
+  if (error) throw error;
+  await reloadConnections();
 }
 
 export interface ProviderInfo {
@@ -234,7 +279,7 @@ export async function connect(provider: ConnectionProvider): Promise<void> {
 
 const NAMES: Record<string, string> = Object.fromEntries(PROVIDERS.map((p) => [p.provider, p.name]));
 
-async function serverFinish(body: Record<string, unknown>): Promise<{ external_id: string; display_name: string; avatar_url: string | null }> {
+async function serverFinish(body: Record<string, unknown>): Promise<{ external_id: string; display_name: string; avatar_url: string | null; handle?: string }> {
   const r = await fetch('/api/oauth', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data?.error || `The server couldn’t finish connecting (HTTP ${r.status}).`);
@@ -304,7 +349,7 @@ export async function handleOAuthReturn(): Promise<OAuthResult | null> {
   if (saved && Date.now() - saved.at > 15 * 60_000) return fail(`${name} sign-in took too long. Please try again.`);
 
   try {
-    let got: { external_id: string; display_name: string; avatar_url: string | null };
+    let got: { external_id: string; display_name: string; avatar_url: string | null; handle?: string };
     const code = q.get('code') || '';
     switch (provider) {
       case 'spotify':
@@ -320,7 +365,7 @@ export async function handleOAuthReturn(): Promise<OAuthResult | null> {
         if (githubInstall && !code) return fail('GitHub didn’t send a sign-in code.');
         got = await serverFinish({ provider, code, redirect_uri: REDIRECTS[provider as keyof typeof REDIRECTS], code_verifier: saved?.verifier || undefined });
     }
-    await addConnection(provider, got.external_id, got.display_name, got.avatar_url, { verified: true });
+    await addConnection(provider, got.external_id, got.display_name, got.avatar_url, { verified: true, ...(got.handle ? { handle: got.handle } : {}) });
     return { ok: true, provider, name: got.display_name };
   } catch (e) {
     return fail(`${name} link failed: ${errorMessage(e)}`);

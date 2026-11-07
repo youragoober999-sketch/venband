@@ -13,6 +13,7 @@ import { useDirectory } from '../hooks/data';
 import { useOnline } from '../lib/online';
 import type { DmChannel, Profile } from '../lib/types';
 import { ActivityCard, ActivityMini } from './ActivityCard';
+import { ProfileConnections } from './ConnectionBits';
 import { Badges, OwnerCrown } from './Badges';
 import { NameplateArt, ProfileEffect } from './Cosmetics';
 import { Markdown } from './Markdown';
@@ -140,6 +141,7 @@ export function DmProfilePanel({ dm, inCall, onJoinCall }: { dm: DmChannel; inCa
               <p className="vpp-empty">No bio yet.</p>
             )}
             <ActivityCard userId={id} />
+            <ProfileConnections userId={id} />
             <div className="vpp-joined">
               <Icon name="calendar" size={14} /> Joined {fmtDate(p.created_at)}
             </div>

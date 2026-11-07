@@ -77,7 +77,7 @@ async function github({ code, redirect_uri, code_verifier }) {
   );
   if (!tok.access_token) throw new Fail(400, `GitHub sign-in: ${tok.error_description || tok.error || 'no token'}`);
   const u = await call('https://api.github.com/user', { headers: { authorization: `Bearer ${tok.access_token}`, accept: 'application/vnd.github+json', 'user-agent': 'Venband' } }, 'GitHub profile');
-  return { external_id: String(u.id), display_name: u.login, avatar_url: u.avatar_url || null };
+  return { external_id: String(u.id), display_name: u.name || u.login, handle: u.login, avatar_url: u.avatar_url || null };
 }
 
 async function youtube({ code, redirect_uri, code_verifier }) {
@@ -97,7 +97,7 @@ async function youtube({ code, redirect_uri, code_verifier }) {
   const ch = r.items?.[0];
   if (!ch) throw new Fail(400, 'That Google account has no YouTube channel yet.');
   const th = ch.snippet?.thumbnails ?? {};
-  return { external_id: ch.id, display_name: ch.snippet?.title || 'YouTube', avatar_url: th.medium?.url || th.default?.url || null };
+  return { external_id: ch.id, display_name: ch.snippet?.title || 'YouTube', handle: ch.snippet?.customUrl || '', avatar_url: th.medium?.url || th.default?.url || null };
 }
 
 async function tiktok({ code, redirect_uri, code_verifier }) {
@@ -127,7 +127,7 @@ async function twitch({ access_token }) {
   const r = await call('https://api.twitch.tv/helix/users', { headers: { authorization: `Bearer ${access_token}`, 'client-id': IDS.twitch } }, 'Twitch profile');
   const u = r.data?.[0];
   if (!u) throw new Fail(400, 'Twitch returned no profile.');
-  return { external_id: u.id, display_name: u.display_name || u.login, avatar_url: u.profile_image_url || null };
+  return { external_id: u.id, display_name: u.display_name || u.login, handle: u.login, avatar_url: u.profile_image_url || null };
 }
 
 async function xbox({ code, redirect_uri, code_verifier }) {
@@ -168,7 +168,7 @@ async function xbox({ code, redirect_uri, code_verifier }) {
   } catch {
     /* the picture is optional */
   }
-  return { external_id: String(claim.xid || claim.gtg), display_name: claim.gtg || 'Xbox player', avatar_url: avatar };
+  return { external_id: String(claim.xid || claim.gtg), display_name: claim.gtg || 'Xbox player', handle: claim.gtg || '', avatar_url: avatar };
 }
 
 async function steam({ query }) {
@@ -220,6 +220,7 @@ export async function POST(request) {
     return json(200, {
       external_id: String(out.external_id).slice(0, 128),
       display_name: String(out.display_name || '').slice(0, 80),
+      handle: /^[\w@.\- ]{1,80}$/.test(out.handle || '') ? out.handle : '',
       avatar_url: out.avatar_url && String(out.avatar_url).startsWith('https://') && out.avatar_url.length <= 500 ? out.avatar_url : null,
     });
   } catch (e) {
