@@ -43,6 +43,16 @@ on conflict do nothing;
 
 set role authenticated;
 select pg_temp.mt_as('ae000000-0000-4000-8000-000000000001');
+-- the app adds a memory and reads it back in one request (insert … returning):
+-- the owner must be able to see their own brand-new row
+do $t$
+declare v uuid;
+begin
+  insert into public.memories (user_id, path, media_type, active)
+  values (auth.uid(), auth.uid()::text || '/first.webp', 'image', true) returning id into v;
+  assert v is not null;
+  delete from public.memories where id = v;
+end $t$;
 -- 10 can show at once…
 select pg_temp.mt_add(10);
 select pg_temp.mt_must_fail($$select pg_temp.mt_add(1)$$, 'Up to 10 memories can show');
