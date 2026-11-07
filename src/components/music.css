@@ -1,0 +1,57 @@
+/* Music picker for memories (MusicPicker.tsx) and the song chip in the viewer. */
+.mp-add { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line-2, var(--line)); background: none; color: var(--text); text-align: left; cursor: pointer; transition: background .15s, border-color .15s; }
+.mp-add:hover { background: var(--bg-hover); border-color: var(--accent); }
+.mp-add-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #7c5cff, #ff4fa3); flex: none; }
+.mp-go { transform: rotate(-90deg); color: var(--muted); display: inline-flex; }
+.mp-back { transform: rotate(90deg); display: inline-flex; }
+.mp-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.mp-meta b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-meta span { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-meta em { font-style: normal; opacity: .8; }
+.mp-art { border-radius: 9px; object-fit: cover; flex: none; display: block; background: var(--bg-3); }
+.mp-art.blank { display: grid; place-items: center; color: var(--muted); }
+
+.mp-chosen { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 10%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.mp-chosen-row { display: flex; align-items: center; gap: 10px; }
+.mp-start { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; font-size: 12.5px; }
+.mp-start input { width: 100%; accent-color: var(--accent); }
+
+.mp-play { position: relative; flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer; color: var(--bg-1); background: var(--text); }
+.mp-play:disabled { opacity: .4; cursor: default; }
+.mp-play.over { width: 44px; height: 44px; border-radius: 9px; padding: 0; background: none; overflow: hidden; }
+.mp-play-icon { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: #0007; opacity: 0; transition: opacity .15s; }
+.mp-row:hover .mp-play-icon, .mp-row.on .mp-play-icon { opacity: 1; }
+.mp-eq { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; align-items: flex-end; height: 10px; }
+.mp-eq i { width: 3px; background: #fff; border-radius: 1px; animation: mp-eq .9s ease-in-out infinite; }
+.mp-eq i:nth-child(2) { animation-delay: .2s; }
+.mp-eq i:nth-child(3) { animation-delay: .4s; }
+@keyframes mp-eq { 0%, 100% { height: 3px; } 50% { height: 10px; } }
+
+.mp-search { display: flex; flex-direction: column; gap: 10px; }
+.mp-head { display: flex; align-items: center; gap: 6px; }
+.mp-input { flex: 1; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 11px; background: var(--bg-1); border: 1px solid var(--line); color: var(--muted); }
+.mp-input:focus-within { border-color: var(--accent); }
+.mp-input input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font-size: 14px; }
+.mp-moods { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.mp-moods::-webkit-scrollbar { display: none; }
+.mp-moods button { flex: none; padding: 5px 11px; border-radius: 99px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text-2); font-size: 12.5px; font-weight: 650; cursor: pointer; }
+.mp-moods button:hover { color: var(--text); }
+.mp-moods button.on { background: var(--text); border-color: var(--text); color: var(--bg-1); }
+.mp-list { display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.mp-row { display: flex; align-items: center; gap: 10px; padding: 5px; border-radius: 11px; transition: background .12s; }
+.mp-row:hover, .mp-row.on { background: var(--bg-hover); }
+.mp-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; padding: 0; }
+.mp-dur { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mp-use { padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; color: var(--accent-text, var(--text)); background: color-mix(in srgb, var(--accent) 16%, transparent); opacity: 0; transition: opacity .12s; }
+.mp-row:hover .mp-use, .mp-pick:focus-visible .mp-use { opacity: 1; }
+.mp-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 18px 0; margin: 0; }
+.mp-more { align-self: center; margin: 6px 0; }
+.mp-credit { margin: 0; font-size: 11px; color: var(--muted); text-align: right; }
+
+/* the song chip on a memory */
+.mem-music { position: absolute; top: 62px; left: 12px; z-index: 3; display: inline-flex; align-items: center; gap: 8px; max-width: calc(100% - 24px); padding: 4px 10px 4px 4px; border-radius: 99px; color: #fff; font-size: 12.5px; background: #0006; backdrop-filter: blur(10px); }
+.mem-music img, .mem-music .mp-art { width: 24px; height: 24px; border-radius: 50%; }
+.mem-music b { font-weight: 700; }
+.mem-music span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mem-music.playing img { animation: mem-spin 6s linear infinite; }
+@keyframes mem-spin { to { transform: rotate(360deg); } }

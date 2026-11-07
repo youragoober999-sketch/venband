@@ -12,6 +12,8 @@ import {
   addMemory, AUDIENCE_LABEL, deleteMemory, hasUnseen, isShowing, listMemories, markSeen, memoryViewers, onMemoriesChanged, updateMemory,
   MAX_MEMORIES, MAX_SHOWING, type Audience, type Memory, type NewMemory,
 } from '../lib/memories';
+import { audioFor, type MemoryMusic } from '../lib/music';
+import { MusicPicker } from './MusicPicker';
 
 function ago(v: string) {
   const s = (Date.now() - new Date(v).getTime()) / 1000;
@@ -124,6 +126,7 @@ export function AddMemoryModal({ file, onCancel, onAdd }: { file: File; onCancel
   const [caption, setCaption] = useState('');
   const [audience, setAudience] = useState<Audience>('everyone');
   const [expires, setExpires] = useState<number | null>(null);
+  const [music, setMusic] = useState<MemoryMusic | null>(null);
   const [url] = useState(() => URL.createObjectURL(file));
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
   return (
@@ -132,6 +135,9 @@ export function AddMemoryModal({ file, onCancel, onAdd }: { file: File; onCancel
         {file.type.startsWith('video/') ? <video src={url} muted playsInline autoPlay loop className="mem-new-preview" /> : <img src={url} alt="" className="mem-new-preview" />}
         <Field label="Caption (optional)">
           <input value={caption} maxLength={200} onChange={(e) => setCaption(e.target.value)} placeholder="Say something about it" autoFocus />
+        </Field>
+        <Field label="Music">
+          <MusicPicker value={music} onChange={setMusic} clipSeconds={file.type.startsWith('video/') ? 30 : 6} />
         </Field>
         <Field label="Who can see it">
           <Select value={audience} onChange={(v) => setAudience(v as Audience)} ariaLabel="Who can see it" options={(Object.keys(AUDIENCE_LABEL) as Audience[]).map((a) => ({ value: a, label: AUDIENCE_LABEL[a] }))} />
@@ -144,7 +150,7 @@ export function AddMemoryModal({ file, onCancel, onAdd }: { file: File; onCancel
         <button className="btn secondary" onClick={onCancel}>
           Cancel
         </button>
-        <button className="btn primary" onClick={() => onAdd({ caption, audience, expiresInHours: expires })}>
+        <button className="btn primary" onClick={() => onAdd({ caption, audience, expiresInHours: expires, music })}>
           Add memory
         </button>
       </div>
@@ -167,7 +173,9 @@ export function MemoryViewer({ list, start = 0, self, onClose }: { list: Memory[
   const [i, setI] = useState(Math.min(start, list.length - 1));
   const [progress, setProgress] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [muted, setMuted] = useState(true);
+  const [muted, setMuted] = useState(false);
+  const [musicOn, setMusicOn] = useState(false);
+  const song = useRef<HTMLAudioElement>(null);
   const [viewers, setViewers] = useState<{ viewer_id: string; seen_at: string }[] | null>(null);
   const video = useRef<HTMLVideoElement>(null);
   const m = list[i];
@@ -196,8 +204,38 @@ export function MemoryViewer({ list, start = 0, self, onClose }: { list: Memory[
   useEffect(() => {
     const v = video.current;
     if (!v) return;
-    if (paused) v.pause(); else v.play().catch(() => {});
+    // sound needs a click first in some browsers: fall back to muted
+    if (paused) v.pause(); else v.play().catch(() => { setMuted(true); v.muted = true; v.play().catch(() => {}); });
   }, [paused, i]);
+
+  // the memory's song: fetch a fresh link and play from the chosen spot
+  useEffect(() => {
+    const a = song.current;
+    setMusicOn(false);
+    if (!a) return;
+    a.pause();
+    if (!m?.music) {
+      a.removeAttribute('src');
+      return;
+    }
+    const music = m.music;
+    let gone = false;
+    audioFor(music)
+      .then((src) => {
+        if (gone || !src) return;
+        a.src = src;
+        a.onloadedmetadata = () => { a.currentTime = Math.min(music.start || 0, Math.max(0, a.duration - 1)); };
+        a.play().then(() => !gone && setMusicOn(true)).catch(() => {});
+      })
+      .catch(() => {});
+    return () => { gone = true; a.pause(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [m?.id]);
+  useEffect(() => {
+    const a = song.current;
+    if (!a || !a.getAttribute('src')) return;
+    if (paused) { a.pause(); setMusicOn(false); } else a.play().then(() => setMusicOn(true)).catch(() => {});
+  }, [paused]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -260,7 +298,7 @@ export function MemoryViewer({ list, start = 0, self, onClose }: { list: Memory[
             <span>{ago(m.created_at)}</span>
           </div>
           <div className="mem-tools">
-            {m.media_type === 'video' && (
+            {(m.media_type === 'video' || m.music) && (
               <button onClick={() => setMuted((v) => !v)} aria-label={muted ? 'Unmute' : 'Mute'}><Icon name="volume" size={18} />{muted && <s />}</button>
             )}
             <button onClick={() => setPaused((p) => !p)} aria-label={paused ? 'Play' : 'Pause'}><Icon name={paused ? 'play' : 'pause'} size={18} /></button>
@@ -275,6 +313,16 @@ export function MemoryViewer({ list, start = 0, self, onClose }: { list: Memory[
           </div>
         </header>
 
+        {m.music && (
+          <div className={`mem-music${musicOn ? ' playing' : ''}`} title={`${m.music.title} — ${m.music.artist}`}>
+            {m.music.artwork ? <img src={m.music.artwork} alt="" referrerPolicy="no-referrer" /> : <Icon name="music" size={16} />}
+            <span>
+              <b>{m.music.title}</b> · {m.music.artist}
+            </span>
+          </div>
+        )}
+        <audio ref={song} muted={muted} preload="auto" loop hidden />
+
         <div
           className="mem-media"
           onPointerDown={() => setPaused(true)}
@@ -288,7 +336,7 @@ export function MemoryViewer({ list, start = 0, self, onClose }: { list: Memory[
               src={m.url}
               autoPlay
               playsInline
-              muted={muted}
+              muted={muted || Boolean(m.music)}
               onTimeUpdate={(e) => { const v = e.currentTarget; if (v.duration) setProgress(v.currentTime / v.duration); }}
               onEnded={next}
             />

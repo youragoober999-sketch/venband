@@ -2,6 +2,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
 const VERSION: string = pkg.version;
@@ -105,6 +106,8 @@ function csp(env: Record<string, string>): Plugin {
         // GIF search (Klipy). GIF images/videos load from Klipy's CDN.
         connect.push('https://api.klipy.com');
         const gifs = 'https://*.klipy.com';
+        // memory music: audio and artist/cover art from the music services (/api/music)
+        const music = 'https://cdn.soundstripe.com https://*.imgix.net https://*.freetouse.com';
         // click-to-load embeds
         const frames = [
           'https://www.youtube-nocookie.com',
@@ -116,8 +119,8 @@ function csp(env: Record<string, string>): Plugin {
           "default-src 'self'",
           "script-src 'self' 'wasm-unsafe-eval'",
           "style-src 'self' 'unsafe-inline'",
-          `img-src 'self' blob: data: ${gifs}${supa ? ` ${supa.origin}` : ''}`,
-          `media-src 'self' blob: ${gifs}`,
+          `img-src 'self' blob: data: ${gifs} ${music}${supa ? ` ${supa.origin}` : ''}`,
+          `media-src 'self' blob: ${gifs} ${music}`,
           `connect-src ${connect.join(' ')}`,
           "font-src 'self'",
           "object-src 'none'",
@@ -149,7 +152,8 @@ function devApi(env: Record<string, string>): Plugin {
         const m = req.url?.match(/^\/api\/([a-z-]+)(\?|$)/);
         if (!m) return next();
         try {
-          const mod = await import(/* @vite-ignore */ `${process.cwd()}/api/${m[1]}.js?t=${Date.now()}`);
+          // a file:// URL, so this also works on Windows (C:\ paths can't be imported)
+          const mod = await import(/* @vite-ignore */ `${pathToFileURL(`${process.cwd()}/api/${m[1]}.js`).href}?t=${Date.now()}`);
           const headers = new Headers();
           for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v);
           const method = (req.method ?? 'GET').toUpperCase();

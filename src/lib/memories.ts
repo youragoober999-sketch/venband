@@ -3,6 +3,7 @@
 // once (the rest are archived), videos up to 30 s.
 import { supabase, isOldSchema } from './supabase';
 import { sessionStore } from './session';
+import type { MemoryMusic } from './music';
 
 export const MAX_MEMORIES = 30;
 export const MAX_SHOWING = 10;
@@ -25,6 +26,8 @@ export interface Memory {
   active?: boolean;
   expires_at?: string | null;
   audience?: Audience;
+  /** a song playing over it (optional) */
+  music?: MemoryMusic | null;
   url?: string;
 }
 export type Audience = 'everyone' | 'friends' | 'only_me';
@@ -118,6 +121,7 @@ export interface NewMemory {
   audience?: Audience;
   /** hours until it stops showing; null = never */
   expiresInHours?: number | null;
+  music?: MemoryMusic | null;
 }
 
 export async function addMemory(file: File, opts: NewMemory = {}, onStage?: (s: string) => void): Promise<Memory> {
@@ -155,7 +159,9 @@ export async function addMemory(file: File, opts: NewMemory = {}, onStage?: (s: 
     active,
     audience: opts.audience ?? 'everyone',
     expires_at: opts.expiresInHours ? new Date(Date.now() + opts.expiresInHours * 3_600_000).toISOString() : null,
+    ...(opts.music ? { music: opts.music } : {}),
   }).select('*').single();
+  if (error && opts.music && /music/i.test(error.message)) throw new Error('Music on memories needs the latest database update (supabase/update-2026-11.sql).');
   // database without the archive / audience update yet: add it the old way
   if (error && isOldSchema(error)) ({ data, error } = await supabase.from('memories').insert(row).select('*').single());
   if (error) {
@@ -168,7 +174,7 @@ export async function addMemory(file: File, opts: NewMemory = {}, onStage?: (s: 
 }
 
 /** Archive / show again, change who sees it, or when it expires. */
-export async function updateMemory(m: Memory, patch: Partial<Pick<Memory, 'active' | 'audience' | 'expires_at' | 'caption'>>) {
+export async function updateMemory(m: Memory, patch: Partial<Pick<Memory, 'active' | 'audience' | 'expires_at' | 'caption' | 'music'>>) {
   const { error } = await supabase.from('memories').update(patch).eq('id', m.id);
   if (error) throw error;
   cache.delete(m.user_id);

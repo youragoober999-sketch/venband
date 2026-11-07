@@ -295,6 +295,7 @@ const ICONS: Record<string, string> = {
   code: 'M16 18l6-6-6-6M8 6l-6 6 6 6',
   external: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3',
   play: 'M6 3l14 9-14 9z',
+  music: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
   pause: 'M7 4h3v16H7zM14 4h3v16h-3z',
   calendar: 'M3 4h18v18H3zM16 2v4M8 2v4M3 10h18',
   compass: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM16.2 7.8l-2.1 6.4-6.4 2.1 2.1-6.4z',
