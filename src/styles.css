@@ -2279,6 +2279,14 @@ a.bot-embed-title { color: var(--link); }
 .styled-name.fx-glow.gradient { text-shadow: none; filter: drop-shadow(0 0 5px var(--glow)); }
 .styled-name.fx-rainbow { animation: name-rainbow 4s linear infinite; }
 .styled-name.fx-pulse { display: inline-block; animation: name-pulse 2s ease-in-out infinite; }
+/* owner-only "Special": Sovereign — molten gold with violet light running through it */
+.styled-name.fx-sovereign { position: relative; display: inline-block; font-weight: 850;
+  background-image: linear-gradient(100deg, #b8860b 0%, #ffd56b 18%, #fff4cc 26%, #ffd56b 34%, #a78bfa 50%, #ffd56b 66%, #fff4cc 74%, #ffd56b 82%, #b8860b 100%) !important;
+  background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 4px #ffd56b88) drop-shadow(0 0 10px #7c3aed66); animation: name-shimmer 2.6s linear infinite; }
+.styled-name.fx-sovereign::after { content: "✦"; position: absolute; right: -.7em; top: -.35em; font-size: .62em; -webkit-text-fill-color: #fff4cc; color: #fff4cc;
+  text-shadow: 0 0 6px #ffd56b; animation: name-sov-spark 1.8s ease-in-out infinite; }
+@keyframes name-sov-spark { 0%, 100% { opacity: .2; transform: scale(.6) rotate(0); } 50% { opacity: 1; transform: scale(1.1) rotate(45deg); } }
 .styled-name.fx-wave { display: inline-block; animation: name-wave 2.5s ease-in-out infinite; }
 .styled-name.fx-aurora { background-image: linear-gradient(120deg, #ff6ec7, #7873f5, #4ade80, #facc15, #ff6ec7); -webkit-background-clip: text; background-clip: text; color: transparent; background-size: 300% 100%; animation: name-aurora 6s linear infinite; }
 .styled-name.fx-fire { background-image: linear-gradient(120deg, #ff4500, #ff8c00, #ffd700, #ff4500); -webkit-background-clip: text; background-clip: text; color: transparent; background-size: 200% 100%; animation: name-fire 2s linear infinite; text-shadow: 0 0 8px #ff450080; }

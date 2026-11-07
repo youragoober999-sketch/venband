@@ -1,6 +1,7 @@
 // Profile effects from the Venband Shop: palette-driven particle systems for
 // the profile-card canvas in Cosmetics.tsx (same EffectDef shape).
 import { ITEMS } from '../lib/shop';
+import { LOGO_PATH } from './logoPath';
 
 export interface FxP {
   x: number; y: number; vx: number; vy: number; size: number; rot: number; vr: number;
@@ -315,6 +316,139 @@ const BASES: Record<string, Base> = {
       c.globalAlpha = 1;
     },
   }),
+};
+
+
+// ---------------------------------------------- owner-only "Special": Genesis --
+let sigil: Path2D | null = null;
+// the sigil hovers over the banner like a crest, clear of the name and bio
+const genesisCenter = (w: number, h: number) => [w / 2, h * 0.2, Math.min(w, h) * 0.2] as const;
+BASES.sovereign = (col) => {
+  const [gold, violet, light] = col;
+  return {
+    count: 70,
+    additive: true,
+    // golden motes spiralling into the sigil (polar coords in vx = angle, vy = radius)
+    spawn: (w, h) => {
+      const [cx, cy] = genesisCenter(w, h);
+      const x = R() * w, y = R() * h;
+      return P({ x, y, vx: Math.atan2(y - cy, x - cx), vy: Math.hypot(x - cx, y - cy), size: 0.8 + R() * 1.8, max: 30, hue: R() < 0.25 ? 1 : 0 });
+    },
+    step: (p, dt, _t, w, h) => {
+      const [cx, cy, r0] = genesisCenter(w, h);
+      p.k = p.vx;
+      p.vx += (0.9 + 40 / Math.max(20, p.vy)) * dt;
+      p.vy -= (26 + 2200 / Math.max(30, p.vy)) * dt;
+      p.x = cx + Math.cos(p.vx) * p.vy;
+      p.y = cy + Math.sin(p.vx) * p.vy * 0.82;
+      if (p.vy < r0 * 0.35) p.life = p.max + 1; // swallowed: respawn
+    },
+    draw: (c, p) => {
+      const a = Math.min(1, p.life / 0.5);
+      const tx = -Math.sin(p.vx) * 9, ty = Math.cos(p.vx) * 9 * 0.82; // trail along the orbit
+      const g = c.createLinearGradient(0, 0, -tx, -ty);
+      g.addColorStop(0, p.hue ? violet : gold);
+      g.addColorStop(1, '#00000000');
+      c.globalAlpha = a;
+      c.strokeStyle = g;
+      c.lineWidth = p.size;
+      c.beginPath(); c.moveTo(0, 0); c.lineTo(-tx, -ty); c.stroke();
+      c.fillStyle = p.hue ? light : '#fff6d6';
+      c.beginPath(); c.arc(0, 0, p.size * 0.8, 0, TAU); c.fill();
+    },
+    backdrop: (c, w, h, t) => {
+      const [cx, cy, R0] = genesisCenter(w, h);
+      const big = Math.hypot(w, h);
+      // vortex glow
+      let g = c.createRadialGradient(cx, cy, 0, cx, cy, big * 0.7);
+      g.addColorStop(0, `${violet}55`); g.addColorStop(0.35, `${violet}22`); g.addColorStop(1, '#00000000');
+      c.fillStyle = g; c.fillRect(0, 0, w, h);
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      // god rays
+      c.translate(cx, cy);
+      c.rotate(t * 0.12);
+      for (let i = 0; i < 14; i++) {
+        c.rotate(TAU / 14);
+        const rg = c.createLinearGradient(0, 0, big * 0.7, 0);
+        rg.addColorStop(0, i % 2 ? `${gold}2a` : `${violet}30`); rg.addColorStop(1, '#00000000');
+        c.fillStyle = rg;
+        c.beginPath(); c.moveTo(0, 0); c.lineTo(big * 0.7, -big * 0.05); c.lineTo(big * 0.7, big * 0.05); c.closePath(); c.fill();
+      }
+      c.rotate(-t * 0.12 * 2.6);
+      // spiral arms
+      for (let arm = 0; arm < 3; arm++) {
+        c.beginPath();
+        for (let k = 0; k < 60; k++) {
+          const th = k * 0.11 + arm * (TAU / 3) - t * 0.5, rr = R0 * 0.5 + k * (big * 0.006);
+          const x = Math.cos(th) * rr, y = Math.sin(th) * rr * 0.82;
+          k ? c.lineTo(x, y) : c.moveTo(x, y);
+        }
+        c.strokeStyle = arm === 1 ? `${violet}66` : `${gold}55`;
+        c.lineWidth = 2;
+        c.stroke();
+      }
+      c.restore();
+      // rune ring
+      c.save();
+      c.translate(cx, cy);
+      c.globalCompositeOperation = 'lighter';
+      c.rotate(-t * 0.35);
+      c.strokeStyle = `${gold}cc`; c.lineWidth = 1.6; c.setLineDash([R0 * 0.18, R0 * 0.06, 3, R0 * 0.06]);
+      c.beginPath(); c.arc(0, 0, R0 * 1.12, 0, TAU); c.stroke();
+      c.setLineDash([]);
+      for (let i = 0; i < 12; i++) {
+        c.rotate(TAU / 12);
+        c.fillStyle = i % 3 ? gold : light;
+        c.beginPath(); c.moveTo(R0 * 1.12, -4); c.lineTo(R0 * 1.12 + 4, 0); c.lineTo(R0 * 1.12, 4); c.lineTo(R0 * 1.12 - 4, 0); c.closePath(); c.fill();
+      }
+      c.rotate(t * 0.9);
+      c.strokeStyle = `${violet}bb`; c.lineWidth = 1.2; c.setLineDash([2, 7]);
+      c.beginPath(); c.arc(0, 0, R0 * 0.95, 0, TAU); c.stroke();
+      c.setLineDash([]);
+      c.restore();
+      // shockwave every 3.2s
+      const sw = (t % 3.2) / 3.2;
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      c.strokeStyle = gold; c.globalAlpha = (1 - sw) * 0.7; c.lineWidth = 3 * (1 - sw) + 0.5;
+      c.beginPath(); c.ellipse(cx, cy, R0 * 0.6 + sw * big * 0.6, (R0 * 0.6 + sw * big * 0.6) * 0.82, 0, 0, TAU); c.stroke();
+      if (sw < 0.06) { c.globalAlpha = (0.06 - sw) * 3; c.fillStyle = light; c.fillRect(0, 0, w, h); }
+      c.restore();
+      // the sigil
+      sigil ??= new Path2D(LOGO_PATH);
+      const pulse = 1 + 0.05 * Math.sin(t * 3) + (sw < 0.1 ? (0.1 - sw) * 1.2 : 0);
+      const sz = R0 * 1.25 * pulse;
+      c.save();
+      c.translate(cx - sz / 2, cy - (sz * 609) / 696 / 2);
+      c.scale(sz / 696, sz / 696);
+      const sg = c.createLinearGradient(0, 0, 696, 609);
+      sg.addColorStop(0, light); sg.addColorStop(0.45, gold); sg.addColorStop(1, '#c08a10');
+      c.shadowColor = gold; c.shadowBlur = 30 + 14 * Math.sin(t * 3);
+      c.globalAlpha = 0.82;
+      c.fillStyle = sg;
+      c.fill(sigil, 'evenodd');
+      c.shadowBlur = 0;
+      c.restore();
+      // lightning from the sigil to the edge
+      const bolt = Math.floor(t / 1.7), phase = t % 1.7;
+      if (phase < 0.14) {
+        const ang = ((bolt * 2.399) % TAU), len = big * 0.6;
+        c.save(); c.globalCompositeOperation = 'lighter';
+        c.strokeStyle = light; c.shadowColor = violet; c.shadowBlur = 14; c.lineWidth = 1.8; c.globalAlpha = 1 - phase / 0.14;
+        c.beginPath();
+        let x = cx + Math.cos(ang) * R0 * 0.7, y = cy + Math.sin(ang) * R0 * 0.6;
+        c.moveTo(x, y);
+        for (let i = 1; i <= 10; i++) {
+          const rr = R0 * 0.7 + (len * i) / 10;
+          x = cx + Math.cos(ang) * rr + Math.sin(bolt * 7 + i * 3.1) * 12;
+          y = cy + Math.sin(ang) * rr * 0.82 + Math.cos(bolt * 5 + i * 2.3) * 12;
+          c.lineTo(x, y);
+        }
+        c.stroke(); c.restore();
+      }
+    },
+  };
 };
 
 export const EFFECT_BASES = Object.keys(BASES);

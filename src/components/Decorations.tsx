@@ -7,6 +7,7 @@
 // (transform / opacity only, see decorations.css) and stop with reduce motion.
 import { useId, type CSSProperties, type ReactNode } from 'react';
 import { ITEMS, type Palette } from '../lib/shop';
+import { LOGO_PATH } from './logoPath';
 import './decorations.css';
 
 type Art = (p: string[], u: (s: string) => string) => ReactNode;
@@ -1418,6 +1419,68 @@ const ART: Record<string, Art> = {
       <path d="M4 136l6-2-2 6ZM60 136l-6-2 2 6Z" fill={b} />
     </>
   ),
+};
+
+
+// ---------------------------------------------- owner-only "Special" set --
+ART.sovereign = ([a, b, c, d], u) => {
+  const ring = 'M72 14a58 58 0 1 1 -0.01 0';
+  return (
+    <>
+      <defs>
+        {lin(u('gold'), [[0, c], [0.35, a], [0.7, '#e0a526'], [1, '#8a5a00']], 1, 1)}
+        {rad(u('aura'), [[0.6, b, 0], [0.78, b, 0.55], [0.9, a, 0.25], [1, b, 0]])}
+        {lin(u('spike'), [[0, '#ffffff'], [0.4, c], [1, a]])}
+        <path id={u('rp')} d={ring} />
+      </defs>
+      <circle cx="72" cy="72" r="72" fill={`url(#${u('aura')})`} className="dk-pulse" style={o('72px 72px', 0, 2.6)} />
+      {/* outer rune ring, clockwise */}
+      <g className="dk-spin" style={o('72px 72px', 0, 26)}>
+        <circle cx="72" cy="72" r="58" fill="none" stroke={`url(#${u('gold')})`} strokeWidth="3.2" />
+        <circle cx="72" cy="72" r="58" fill="none" stroke={d} strokeWidth="1" strokeDasharray="1.5 4.5" opacity=".6" />
+        <text fontSize="5.4" fontWeight="800" fill={c} letterSpacing="2.4" style={{ textTransform: 'uppercase' }}>
+          <textPath href={`#${u('rp')}`} startOffset="0">✦ VENBAND ✦ SOVEREIGN ✦ OWNER ✦ VENBAND ✦ SOVEREIGN ✦ OWNER ✦</textPath>
+        </text>
+      </g>
+      {/* inner ring, counter-clockwise, with glyph ticks */}
+      <g className="dk-spin rev" style={o('72px 72px', 0, 16)}>
+        <circle cx="72" cy="72" r="52.5" fill="none" stroke={b} strokeWidth="2.4" strokeDasharray="14 5 2 5" />
+        {Array.from({ length: 12 }, (_, i) => {
+          const [x, y] = pt(i * 30, 52.5);
+          return <path key={i} d={`M${x} ${y - 2.6}l2.6 2.6-2.6 2.6-2.6-2.6Z`} fill={a} />;
+        })}
+      </g>
+      {/* energy arcs */}
+      <circle cx="72" cy="72" r="63" fill="none" stroke={a} strokeWidth="1.6" strokeDasharray="40 160" strokeLinecap="round" className="dk-spin" style={o('72px 72px', 0, 3.4)} opacity=".9" />
+      <circle cx="72" cy="72" r="63" fill="none" stroke={c} strokeWidth="1.2" strokeDasharray="22 178" strokeLinecap="round" className="dk-spin rev" style={o('72px 72px', -1, 4.6)} opacity=".8" />
+      {/* crown of light */}
+      <g className="dk-bob" style={o('72px 10px', 0, 3)}>
+        {[-42, -28, -14, 0, 14, 28, 42].map((dx, i) => {
+          const h = [10, 15, 20, 26, 20, 15, 10][i];
+          return <path key={i} d={`M${72 + dx - 4.5} 20L${72 + dx} ${20 - h}L${72 + dx + 4.5} 20Z`} fill={`url(#${u('spike')})`} stroke="#8a5a00" strokeWidth=".8" transform={`rotate(${dx * 0.55} 72 72)`} />;
+        })}
+        <path d="M50 18c14 4 30 4 44 0l-2 6c-13 3-27 3-40 0Z" fill={`url(#${u('gold')})`} stroke="#8a5a00" strokeWidth=".8" />
+        <path d="M72 -12l5 7-5 7-5-7Z" fill={b} stroke={c} strokeWidth="1.2" className="dk-pulse" style={o('72px -5px', 0, 1.6)} />
+        <path d={star4(72, -5, 12)} fill="#fff" opacity=".85" className="dk-twinkle" style={o('72px -5px', -0.4, 2)} />
+        <rect x="40" y="16" width="64" height="3" fill="#fff" opacity=".5" className="dk-shine" />
+      </g>
+      {/* orbiting gems */}
+      {[0, 1, 2].map((i) => (
+        <g key={i} className="dk-orbit" style={o('72px 72px', -i * 2.4, 7.2)}>
+          <g transform={`rotate(${i * 120} 72 72)`}>
+            <circle cx="72" cy="6" r="6" fill={i === 1 ? b : a} opacity=".25" />
+            <path d="M72 1l4 5-4 5-4-5Z" fill={i === 1 ? b : a} stroke={c} strokeWidth="1" />
+          </g>
+        </g>
+      ))}
+      {/* the seal: Venband logo in a gold shield */}
+      <g className="dk-glow" style={o('72px 130px', 0, 2.4)}>
+        <path d="M58 118h28v12c0 7-6 12-14 15-8-3-14-8-14-15Z" fill={d} stroke={`url(#${u('gold')})`} strokeWidth="2.4" />
+        <path d={LOGO_PATH} transform="translate(63.5 122) scale(0.0245)" fill={`url(#${u('gold')})`} fillRule="evenodd" />
+      </g>
+      <Twinkles pts={[[14, 40, 4], [130, 36, 4.4], [8, 104, 3.4], [136, 100, 3.6], [36, 136, 3], [108, 138, 3]]} fill={c} />
+    </>
+  );
 };
 
 export const DECORATION_BASES = Object.keys(ART);

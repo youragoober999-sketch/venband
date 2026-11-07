@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { sessionStore } from '../lib/session';
 import { useSettings } from '../lib/settings';
 import { errorMessage } from '../lib/supabase';
-import { BUNDLES, COLLECTIONS, ITEMS, PRODUCTS, RARITY, variantsOf, type Product, type ShopItem, type ShopKind } from '../lib/shop';
+import { BUNDLES, COLLECTIONS, ITEMS, PRODUCTS, RARITY, SPECIAL_ITEMS, variantsOf, type Product, type ShopItem, type ShopKind } from '../lib/shop';
 import { equip, getItems, inventoryStore, loadInventory, owns, shopTheme } from '../lib/inventory';
 import type { Profile } from '../lib/types';
 import { ProfileEffect, NameplateArt } from './Cosmetics';
@@ -53,7 +53,7 @@ export function ShopView() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, q, coll, mine, owned]);
-  const itemCount = ITEMS.size;
+  const itemCount = ITEMS.size - SPECIAL_ITEMS.length; // the owner-only set isn't sold
 
   return (
     <div className="shop-view">
@@ -372,7 +372,7 @@ function ProductModal({ p, me, onClose }: { p: Product; me: Profile; onClose: ()
 }
 
 /** A profile card with the item (or the whole bundle) applied. */
-function ProfilePreview({ me, item, bundle }: { me: Profile; item: ShopItem; bundle?: string[] }) {
+export function ProfilePreview({ me, item, bundle }: { me: Profile; item: ShopItem; bundle?: string[] }) {
   const ids = bundle ?? [item.id];
   const pick = (kind: ShopKind, fallback: string | null | undefined) => ids.find((id) => ITEMS.get(id)?.kind === kind) ?? fallback;
   const deco = pick('decoration', me.avatar_frame);

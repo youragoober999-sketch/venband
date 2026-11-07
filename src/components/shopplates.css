@@ -179,3 +179,15 @@
 .sp-rays { inset: 0; background: repeating-linear-gradient(100deg, transparent 0 18px, #ffffff1c 18px 26px); animation: sp-rays 8s ease-in-out infinite alternate; }
 @keyframes sp-rays { to { transform: translateX(-20px); } }
 .sp-bubble { border-radius: 50%; border: 1px solid #ffffffaa; animation-name: sp-rise !important; }
+
+/* owner-only "Special": Throne Room */
+.sp-sovereign .sp-sky { background: linear-gradient(90deg, #07000f, #1a0b38 45%, #2b1160 75%, #3b1a7a); }
+.sp-throne-glow { inset: 0; background: radial-gradient(ellipse 45% 120% at 88% 50%, #ffd56b55, transparent 70%), radial-gradient(ellipse 50% 140% at 60% 120%, #7c3aed88, transparent 70%); animation: sp-throne-glow 4s ease-in-out infinite alternate; }
+@keyframes sp-throne-glow { to { filter: brightness(1.35) saturate(1.2); } }
+.sp-throne-sheen { background: linear-gradient(100deg, transparent 35%, #ffe9a8aa 47%, #ffffffcc 50%, #ffe9a8aa 53%, transparent 65%) !important; background-size: 300% 100% !important; animation-duration: 3.2s !important; mix-blend-mode: screen; }
+.sp-filigree { fill: none; stroke: #ffd56b; stroke-width: 1.4; stroke-linecap: round; opacity: .85; filter: drop-shadow(0 0 2px #ffd56b); stroke-dasharray: 220; animation: sp-filigree 6s ease-in-out infinite; }
+.sp-filigree.thin { stroke-width: .8; opacity: .5; animation-delay: -3s; }
+@keyframes sp-filigree { 0% { stroke-dashoffset: 220; } 50%, 100% { stroke-dashoffset: 0; } }
+.sp-throne-crown { fill: #ffd56b; filter: drop-shadow(0 0 4px #ffd56b); animation: sp-bob 3s ease-in-out infinite; }
+.sp-throne-crown .gem { fill: #c4b5fd; animation: sp-twinkle 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.sp-sigil { color: #ffd56b; opacity: .55; filter: drop-shadow(0 0 3px #ffd56b); height: calc(var(--s) * .88px) !important; animation-name: sp-drift-left !important; }

@@ -4,6 +4,7 @@ import { createStore } from './store';
 export type SettingsTab =
   | 'account'
   | 'profile'
+  | 'special'
   | 'privacy'
   | 'security'
   | 'devices'

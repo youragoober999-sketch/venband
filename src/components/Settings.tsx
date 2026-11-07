@@ -6,6 +6,7 @@ import { fingerprint, passwordStrength } from '../lib/crypto';
 import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
 import { closeSettings, uiStore, type SettingsTab } from '../lib/ui';
 import { inventoryStore, loadInventory, ownedOptions } from '../lib/inventory';
+import { SpecialTab } from './Special';
 import { openFriends } from '../hooks/data';
 import { DEFAULT_SETTINGS, updateChat, updateSettings, updateVoice, useSettings } from '../lib/settings';
 import { BUILT_IN_THEMES } from '../lib/themes';
@@ -53,9 +54,10 @@ import {
   type ConnectionRow,
 } from '../lib/connections';
 
-const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; perm?: StaffPerm; designer?: boolean }[] = [
+const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; perm?: StaffPerm; designer?: boolean; owner?: boolean }[] = [
   { id: 'account', label: 'My Account', icon: 'user', group: 'User Settings' },
   { id: 'profile', label: 'Profiles', icon: 'edit', group: 'User Settings' },
+  { id: 'special', label: 'Special', icon: 'sparkles', group: 'User Settings', owner: true },
   { id: 'privacy', label: 'Privacy & Safety', icon: 'eye', group: 'User Settings' },
   { id: 'security', label: 'Security', icon: 'shield', group: 'User Settings' },
   { id: 'devices', label: 'Devices', icon: 'monitor', group: 'User Settings' },
@@ -97,7 +99,7 @@ export function SettingsPage() {
             <input placeholder="Search settings…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           {groups.map((g) => {
-            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.perm || perms.includes(t.perm)) && (!t.designer || designer) && (!search || t.label.toLowerCase().includes(search.toLowerCase())));
+            const items = TABS.filter((t) => t.group === g && (!t.staff || staff) && (!t.perm || perms.includes(t.perm)) && (!t.designer || designer) && (!t.owner || me.platform_role === 'owner') && (!search || t.label.toLowerCase().includes(search.toLowerCase())));
             if (!items.length) return null;
             return (
               <div key={g}>
@@ -143,7 +145,7 @@ export function SettingsPage() {
                   const matches = entries.filter((e) => e.label.toLowerCase().includes(q));
                   if (!matches.length) {
                     // fall back to tab matches
-                    const tabMatches = TABS.filter((t) => (!t.staff || staff) && (!t.perm || perms.includes(t.perm)) && (!t.designer || designer) && t.label.toLowerCase().includes(q));
+                    const tabMatches = TABS.filter((t) => (!t.staff || staff) && (!t.perm || perms.includes(t.perm)) && (!t.designer || designer) && (!t.owner || me.platform_role === 'owner') && t.label.toLowerCase().includes(q));
                     if (!tabMatches.length) return <p className="muted small">No settings match "{search}".</p>;
                     return tabMatches.map((t) => (
                       <button key={t.id} className="settings-search-item" onClick={() => { uiStore.set({ settings: t.id }); setSearch(''); }}>
@@ -169,6 +171,7 @@ export function SettingsPage() {
             <>
               {tab === 'account' && <AccountTab />}
               {tab === 'profile' && <ProfileTab />}
+              {tab === 'special' && me.platform_role === 'owner' && <SpecialTab />}
               {tab === 'privacy' && <PrivacyTab />}
               {tab === 'security' && <SecurityTab />}
               {tab === 'devices' && <DevicesTab />}
@@ -905,7 +908,7 @@ function ProfileTab() {
               <Select
                 value={preview.name_style?.effect ?? 'none'}
                 onChange={(v) => set({ name_style: { ...(preview.name_style ?? {}), effect: v as NameEffect } })}
-                options={NAME_EFFECTS.map((f) => ({ value: f.id, label: f.label }))}
+                options={[...NAME_EFFECTS, ...(me.platform_role === 'owner' ? [{ id: 'sovereign' as NameEffect, label: 'Sovereign (owners only)' }] : [])].map((f) => ({ value: f.id, label: f.label }))}
                 ariaLabel="Animation"
               />
               <div className="name-colors">

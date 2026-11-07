@@ -361,6 +361,24 @@ for (const b of BUNDLES) {
   ITEMS.set(b.id, { id: b.id, kind: 'bundle', base: b.id, name: b.name, palette: PALETTES.gold, product });
 }
 
+// ------------------------------------------------- owner-only "Special" set --
+// Not sold in the Shop and can't be collected: only people with the owner
+// role can equip these (enforced by the database, see 20261106160000).
+export const SPECIAL_PALETTE: Palette = PAL('owner', 'Sovereign', '#ffd56b', '#7c3aed', '#fff4cc', '#0a0016');
+export const SPECIAL_ITEMS = ['deco.sovereign.owner', 'effect.sovereign.owner', 'plate.sovereign.owner', 'theme.sovereign'] as const;
+export const SPECIAL_NAME_EFFECT = 'sovereign';
+for (const [id, kind, name, desc] of [
+  ['deco.sovereign.owner', 'decoration', 'Sovereign Halo', 'Counter-rotating rune rings, a crown of light and orbiting gems around the Venband seal.'],
+  ['effect.sovereign.owner', 'effect', 'Genesis', 'A living vortex: the Venband sigil pulses, light pours in, shockwaves ripple out and lightning cracks the edges.'],
+  ['plate.sovereign.owner', 'nameplate', 'Throne Room', 'Gold filigree, violet light and drifting sigils behind your name.'],
+  ['theme.sovereign', 'theme', 'Sovereign', 'Deep violet and gold, with a glass wallpaper of light.'],
+] as const) {
+  const product: Product = { key: id, kind, base: 'sovereign', name, desc, collection: 'originals', rarity: 'mythic', palettes: [] };
+  ITEMS.set(id, { id, kind, base: 'sovereign', name, palette: SPECIAL_PALETTE, product });
+}
+THEME_COLORS.set('theme.sovereign', { bg: '#0a0016', panel: '#140829', text: '#fff4dc', accent: '#ffd56b', wallpaper: 'radial-gradient(circle at 50% -10%,#7c3aed66,transparent 55%),radial-gradient(circle at 90% 110%,#ffd56b33,transparent 50%),linear-gradient(160deg,#0a0016,#1a0b38 60%,#0a0016)', mode: 'glass' });
+export const isSpecialItem = (id: string) => (SPECIAL_ITEMS as readonly string[]).includes(id);
+
 export function variantsOf(p: Product): ShopItem[] {
   if (p.kind === 'theme' || p.kind === 'bundle') return [ITEMS.get(p.key)!];
   return p.palettes.map((pid) => ITEMS.get(`${p.key}.${pid}`)!);

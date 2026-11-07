@@ -39,7 +39,7 @@ export interface Profile {
 
 export type AvatarFrame = 'none' | 'neon' | 'flame' | 'frost' | 'rainbow' | 'gold' | 'sakura' | 'pixel' | 'orbit' | 'hearts' | 'glitch' | 'galaxy' | 'lightning' | 'crystal' | (string & {});
 export type NameFont = 'default' | 'serif' | 'mono' | 'rounded' | 'handwritten' | 'display' | 'pixel';
-export type NameEffect = 'none' | 'shimmer' | 'glow' | 'rainbow' | 'pulse' | 'wave' | 'aurora' | 'fire' | 'ice' | 'holographic' | 'sparkle';
+export type NameEffect = 'none' | 'shimmer' | 'glow' | 'rainbow' | 'pulse' | 'wave' | 'aurora' | 'fire' | 'ice' | 'holographic' | 'sparkle' | 'sovereign';
 export interface NameStyle {
   font?: NameFont;
   /** 1–3 colours; two or more make a gradient */

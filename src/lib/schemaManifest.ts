@@ -776,5 +776,16 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "cosmetic_free"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261106160000_owner_special.sql",
+    "tables": [],
+    "functions": [
+      "cosmetic_owner_only"
+    ],
+    "bodies": {
+      "check_cosmetic_equip": "a1a851f8a42b68ea989d7213a732e281",
+      "claim_cosmetics": "a3739b50f2b0432ff7762c92c07d1920"
+    }
   }
 ];
