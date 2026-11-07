@@ -12,6 +12,7 @@ import { Avatar, Icon, Slider } from './ui';
 import { openMenu, type MenuItem } from './ContextMenu';
 import { Resizer } from './Resizer';
 import { openAudioMenu } from './audioMenu';
+import { Stackdown } from './Stackdown';
 
 /** Plays every remote audio stream while in a call (kept mounted app-wide). */
 export function CallAudio() {
@@ -121,6 +122,7 @@ export function VoiceView({ data, compact, headerExtra }: { data?: ServerData; c
   const me = sessionStore.use((s) => s.me)!;
   const [focus, setFocus] = useState<string | null>(null);
   const callHeight = useSettings((s) => s.layout.callHeight);
+  const [playing, setPlaying] = useState(false);
   if (!call) return null;
 
   const tiles: Tile[] = [
@@ -173,10 +175,14 @@ export function VoiceView({ data, compact, headerExtra }: { data?: ServerData; c
           <Icon name="screen" />
         </button>
         <SoundboardButton call={call} canUse={canSoundboard} />
+        <button className={`round-btn${playing ? ' on' : ''}`} onClick={() => setPlaying(true)} title="Start an activity — play Stackdown with everyone in this call">
+          <Icon name="gamepad" />
+        </button>
         <button className="round-btn hangup" onClick={() => leaveCall()} title="Disconnect">
           <Icon name="phoneOff" />
         </button>
       </div>
+      {playing && <Stackdown channelId={call.channelId} onClose={() => setPlaying(false)} />}
       {compact && <Resizer axis="y" value={callHeight} min={180} max={Math.round(window.innerHeight * 0.8)} onChange={(v) => updateLayout({ callHeight: v })} />}
     </div>
   );

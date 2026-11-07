@@ -64,6 +64,8 @@ import { themeVars } from './ServerSettingsExtra';
 import { ForumView, StageView, TimeoutBar, VoogleGate, WarningsNotice, WelcomeScreen } from './ServerViews';
 import { SavedView, SearchPanel } from './Search';
 import { useReminderRunner } from './Reminders';
+import { DmProfilePanel, GroupMembersPanel } from './DmPanels';
+import { startOnlineHeartbeat, stopOnlineHeartbeat } from '../lib/online';
 import { mentionsMe } from './Markdown';
 import { openAudioMenu, openAudioMenuAt } from './audioMenu';
 
@@ -274,6 +276,10 @@ export function Shell() {
   const [serversForAlerts, setServersForAlerts] = useState<Server[]>([]);
   const onMessage = useMessageAlerts(serversForAlerts);
   useReminderRunner();
+  useEffect(() => {
+    startOnlineHeartbeat();
+    return stopOnlineHeartbeat;
+  }, []);
   const { servers, dms, loaded, reload } = useMyServers(onMessage);
   const me = sessionStore.use((s) => s.me)!;
   useEffect(() => setServersForAlerts(servers), [servers]);
@@ -751,6 +757,23 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
   const waiting = alone && !call?.everJoined && othersInCall.length === 0;
   const [noAnswer, setNoAnswer] = useState(false);
   const incoming = Object.values(friends).filter((f) => !f.accepted && f.incoming).length;
+  // right-hand panel in conversations (profile in 1:1, members in groups); remembered
+  const [sidePanel, setSidePanelState] = useState(() => {
+    try {
+      return localStorage.getItem('venband:convo-panel') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const setSidePanel = (v: boolean) => {
+    setSidePanelState(v);
+    try {
+      localStorage.setItem('venband:convo-panel', v ? '1' : '0');
+    } catch {
+      /* storage blocked */
+    }
+  };
+  const startCall = () => current && joinCall(identity, current.channel.id, current.channel.id, current.title, { ring: !othersInCall.length });
   useEffect(() => {
     setNoAnswer(false);
     if (!waiting) return;
@@ -966,7 +989,8 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
       </Sidebar>
       <main className="main">
         {current ? (
-          <>
+          <div className="convo-layout">
+          <div className="convo-main">
             {inCall && (
               <div className="dm-call">
                 {alone && !waiting && (
@@ -999,25 +1023,37 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
                   {!inCall && (
                     <button
                       className={`btn small ${othersInCall.length ? 'success' : 'secondary'}`}
-                      onClick={() => joinCall(identity, current.channel.id, current.channel.id, current.title, { ring: !othersInCall.length })}
+                      onClick={startCall}
                     >
                       <Icon name="phone" size={16} /> {othersInCall.length ? 'Join call' : 'Call'}
                     </button>
                   )}
                   {current.channel.is_group && (
-                    <button className="icon-btn" title="Group settings — add people, rename, leave" onClick={() => setGroupSettings(true)}>
+                    <button className="icon-btn" title="Group settings — add people, rename, leave" aria-label="Group settings" onClick={() => setGroupSettings(true)}>
+                      <Icon name="settings" />
+                    </button>
+                  )}
+                  {current.channel.is_group && (
+                    <button className={`icon-btn${sidePanel ? ' on' : ''}`} title={sidePanel ? 'Hide member list' : 'Show member list'} aria-label="Member list" aria-pressed={sidePanel} onClick={() => setSidePanel(!sidePanel)}>
                       <Icon name="users" />
                     </button>
                   )}
-                  {current.other && (
-                    <button className="icon-btn" title="Profile" onClick={() => openProfile(current.other!.id)}>
+                  {current.other && !current.bot && (
+                    <button className={`icon-btn${sidePanel ? ' on' : ''}`} title={sidePanel ? 'Hide user profile' : 'Show user profile'} aria-label="User profile" aria-pressed={sidePanel} onClick={() => setSidePanel(!sidePanel)}>
                       <Icon name="user" />
                     </button>
                   )}
                 </>
               }
             />
-          </>
+          </div>
+          {sidePanel && !current.bot && !isRequest && current.channel.is_group && (
+            <GroupMembersPanel dm={current} inCall={[...othersInCall.map((p) => p.user_id), ...(inCall ? [identity.userId] : [])]} onInvite={() => setGroupSettings(true)} />
+          )}
+          {sidePanel && !current.bot && !isRequest && !current.channel.is_group && current.other && (
+            <DmProfilePanel dm={current} inCall={{ here: Boolean(inCall), others: othersInCall.map((p) => p.user_id) }} onJoinCall={startCall} />
+          )}
+          </div>
         ) : homeTab === 'requests' ? (
           <MessageRequestsView requests={requests} onOpen={(d) => openChannel('@me', d.channel.id)} />
         ) : homeTab === 'donate' ? (

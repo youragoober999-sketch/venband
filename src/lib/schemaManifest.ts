@@ -787,5 +787,16 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "check_cosmetic_equip": "a1a851f8a42b68ea989d7213a732e281",
       "claim_cosmetics": "a3739b50f2b0432ff7762c92c07d1920"
     }
+  },
+  {
+    "migration": "20261106180000_online_status.sql",
+    "tables": [
+      "online_seen"
+    ],
+    "functions": [
+      "online_users",
+      "touch_online"
+    ],
+    "bodies": {}
   }
 ];

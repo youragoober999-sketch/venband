@@ -502,7 +502,7 @@ export function ProfileHost({ data }: { data?: ServerData }) {
 
 
 /** The custom status as a real speech bubble floating beside the avatar. Long ones expand on click. */
-function StatusCloud({ text, emoji }: { text: string; emoji: string }) {
+export function StatusCloud({ text, emoji }: { text: string; emoji: string }) {
   const [open, setOpen] = useState(false);
   const long = text.length > 60;
   return (
