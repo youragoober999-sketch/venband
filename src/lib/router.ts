@@ -59,7 +59,7 @@ export type Route =
   | { kind: 'root' }
   | { kind: 'storage' };
 
-export type PublicPage = 'status' | 'tos' | 'privacy' | 'guidelines' | 'changelog' | 'discovery' | 'bots' | 'voogle' | 'download';
+export type PublicPage = 'status' | 'tos' | 'privacy' | 'policy' | 'guidelines' | 'changelog' | 'discovery' | 'bots' | 'voogle' | 'download';
 const PAGES: Record<string, PublicPage> = {
   status: 'status',
   tos: 'tos',
@@ -69,6 +69,9 @@ const PAGES: Record<string, PublicPage> = {
   privacy: 'privacy',
   privacypolicy: 'privacy',
   'privacy-policy': 'privacy',
+  policy: 'policy',
+  policies: 'policy',
+  legal: 'tos',
   guidelines: 'guidelines',
   'community-guidelines': 'guidelines',
   rules: 'guidelines',

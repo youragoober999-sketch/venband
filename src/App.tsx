@@ -29,8 +29,11 @@ const DownloadPage = lazyNamed(() => import('./components/Download'), 'DownloadP
 const VooglePage = lazyNamed(() => import('./components/Voogle'), 'VooglePage');
 const publicPages = () => import('./components/PublicPages');
 const StatusPage = lazyNamed(publicPages, 'StatusPage');
-const TermsPage = lazyNamed(publicPages, 'TermsPage');
-const PrivacyPage = lazyNamed(publicPages, 'PrivacyPage');
+const legalPages = () => import('./components/Legal');
+const TermsPage = lazyNamed(legalPages, 'TermsPage');
+const PrivacyPage = lazyNamed(legalPages, 'PrivacyPage');
+const ConnectionsPolicyPage = lazyNamed(legalPages, 'ConnectionsPolicyPage');
+const ConsumerUsePage = lazyNamed(legalPages, 'ConsumerUsePage');
 const GuidelinesPage = lazyNamed(publicPages, 'GuidelinesPage');
 const ChangelogPage = lazyNamed(publicPages, 'ChangelogPage');
 const PublicDiscovery = lazyNamed(publicPages, 'PublicDiscovery');
@@ -101,9 +104,7 @@ export default function App() {
   if (window.location.hostname.toLowerCase().startsWith('privacy.')) {
     return (
       <>
-        <Load>
-          <PrivacyPage />
-        </Load>
+        <Load>{/connections/i.test(window.location.pathname) ? <ConnectionsPolicyPage /> : <PrivacyPage />}</Load>
         <DialogHost />
         <ContextMenuHost />
       </>
@@ -190,7 +191,9 @@ function PublicRoute({ route }: { route: Extract<Route, { kind: 'page' }> }) {
     case 'tos':
       return <TermsPage />;
     case 'privacy':
-      return <PrivacyPage />;
+      return route.id === 'connections' ? <ConnectionsPolicyPage /> : <PrivacyPage />;
+    case 'policy':
+      return route.id === 'connections' ? <ConnectionsPolicyPage /> : <ConsumerUsePage />;
     case 'guidelines':
       return <GuidelinesPage />;
     case 'changelog':

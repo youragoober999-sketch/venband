@@ -472,7 +472,7 @@ function Signup({ email, setEmail, setMode }: FormProps) {
       <label className="checkbox">
         <input type="checkbox" checked={tosAccepted} onChange={(e) => setTosAccepted(e.target.checked)} required />
         <span>
-          I accept the <a href="/tos" target="_blank" rel="noreferrer">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
+          I accept the <a href="/tos" target="_blank" rel="noreferrer">Terms of Service</a>, <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a> and <a href="/policy/consumer-use" target="_blank" rel="noreferrer">Consumer Use Policy</a>.
           <small>This is a binding agreement. By creating an account you take responsibility for your use of Venband.</small>
         </span>
       </label>
