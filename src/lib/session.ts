@@ -339,6 +339,37 @@ export async function makeAccountPermanent(): Promise<void> {
   if (error) throw error;
 }
 
+// The password typed at sign-up (or at a login that turned out to be unconfirmed),
+// kept in memory only, so entering the emailed code can sign you straight in.
+let pendingSignup: { email: string; password: string } | null = null;
+export function rememberPendingSignup(email: string, password: string) {
+  pendingSignup = { email: email.trim(), password };
+}
+
+/** The 6-digit code from the sign-up email: confirms the address, then signs in. */
+export async function verifySignupCode(email: string, code: string, remember = true): Promise<'signed-in' | 'confirmed'> {
+  const token = code.replace(/\s/g, '');
+  if (!/^\d{6,10}$/.test(token)) throw new Error('Enter the code from the email.');
+  const pending = pendingSignup && pendingSignup.email.toLowerCase() === email.trim().toLowerCase() ? pendingSignup : null;
+  authInProgress++;
+  try {
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token, type: 'signup' });
+    if (error) throw new Error(/expired|invalid/i.test(error.message) ? 'That code is wrong or expired. Check the newest email, or send a new code.' : error.message);
+    if (!pending) {
+      // confirmed, but we don't have the password here (the page was reloaded): log in normally
+      signingOut = true;
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+      signingOut = false;
+      return 'confirmed';
+    }
+  } finally {
+    authInProgress--;
+  }
+  pendingSignup = null;
+  await signIn(pending.email, pending.password, remember);
+  return 'signed-in';
+}
+
 export async function resendVerification(email: string) {
   const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: appUrl() } });
   if (error) throw error;

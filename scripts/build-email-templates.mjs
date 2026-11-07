@@ -35,7 +35,7 @@ function code(token) {
           </table>`;
 }
 
-function layout({ preheader, title, body, action, fallbackUrl, footnote }) {
+function layout({ preheader, title, body, action, fallbackUrl, footnote, fallbackLabel = '' }) {
   return `<!doctype html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -66,7 +66,7 @@ function layout({ preheader, title, body, action, fallbackUrl, footnote }) {
               <p style="margin:0 0 28px;font-family:${FONT};font-size:15px;line-height:1.6;color:${C.text2}">${body}</p>
               ${action}
               ${fallbackUrl ? `
-              <p style="margin:28px 0 0;font-family:${FONT};font-size:12px;line-height:1.5;color:${C.muted}">Button not working? Paste this link into your browser:<br>
+              <p style="margin:28px 0 0;font-family:${FONT};font-size:12px;line-height:1.5;color:${C.muted}">${fallbackLabel || 'Button not working? Paste this link into your browser:'}<br>
                 <a href="${fallbackUrl}" target="_blank" style="color:${C.text2};word-break:break-all">${fallbackUrl}</a></p>` : ''}
             </td>
           </tr>
@@ -89,11 +89,12 @@ const TEMPLATES = {
   confirmation: {
     subject: 'Confirm your Venband account',
     html: layout({
-      preheader: 'One tap to finish setting up your Venband account.',
+      preheader: 'Your Venband sign-up code: {{ .Token }}',
       title: 'Welcome to Venband',
-      body: 'Confirm your email to finish setting up your account. This link expires in 24 hours.',
-      action: button('{{ .ConfirmationURL }}', 'Confirm email'),
+      body: 'Enter this code in Venband to finish setting up your account. It expires in 1 hour.',
+      action: code('{{ .Token }}'),
       fallbackUrl: '{{ .ConfirmationURL }}',
+      fallbackLabel: 'Or confirm with this link instead:',
       footnote: 'Didn’t sign up? You can safely ignore this email — no account will be created.',
     }),
   },

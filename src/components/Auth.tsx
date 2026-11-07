@@ -1,5 +1,5 @@
 import { QrLoginPanel } from './QrLogin';
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { currentPath, go, parseRoute, useRoute } from '../lib/router';
 import { supabase } from '../lib/supabase';
 import { vdlResolve } from '../lib/vdl';
@@ -11,8 +11,10 @@ import {
   friendlyError,
   requestEmailCode,
   requestPasswordReset,
+  rememberPendingSignup,
   resendVerification,
   sessionStore,
+  verifySignupCode,
   verifyEmailSignIn,
   verifyMfa,
   signIn,
@@ -188,6 +190,7 @@ function Login({ email, setEmail, setMode }: FormProps) {
     setError(null);
     setBanned(null);
     sessionStore.set({ notice: null });
+    let loginEmail = email.trim();
     try {
       const raw = email.trim();
       // Resolves a username or an email to the account, and flags a ban so the
@@ -212,9 +215,17 @@ function Login({ email, setEmail, setMode }: FormProps) {
       if (!hit?.email && raw.includes('@')) hit = { email: raw, username: raw.split('@')[0], banned: false };
       if (!hit?.email) throw new Error('No account with that username or email.');
       if (hit.banned) return setBanned({ username: (hit.username as string) || raw.replace(/@.*$/, '') });
+      loginEmail = hit.email as string;
       await signIn(hit.email as string, password, remember);
     } catch (err) {
       if (/not confirmed/i.test(String((err as Error)?.message))) {
+        // the account exists but the email isn't confirmed yet: send a fresh code and ask for it
+        const addr = loginEmail.includes('@') ? loginEmail : '';
+        if (addr) {
+          setEmail(addr);
+          rememberPendingSignup(addr, password);
+          resendVerification(addr).catch(() => {});
+        }
         setMode('verify');
         return;
       }
@@ -424,6 +435,7 @@ function Signup({ email, setEmail, setMode }: FormProps) {
     setBusy(true);
     try {
       await signUp({ email, password, username, displayName });
+      rememberPendingSignup(email, password);
       setMode('verify');
     } catch (err) {
       setError(friendlyError(err));
@@ -534,38 +546,116 @@ function Signup({ email, setEmail, setMode }: FormProps) {
 }
 
 function VerifySent({ email, setMode }: { email: string; setMode: (m: Mode) => void }) {
+  const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [status, setStatus] = useState<string | null>(null);
-  const [cooldown, setCooldown] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [cooldown, setCooldown] = useState(60);
+  const boxes = useRef<(HTMLInputElement | null)[]>([]);
   useEffect(() => {
     if (!cooldown) return;
     const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [cooldown]);
+  useEffect(() => boxes.current[0]?.focus(), []);
+
+  const submit = async (code: string) => {
+    if (busy || code.length < 6) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await verifySignupCode(email, code);
+      if (r === 'confirmed') {
+        sessionStore.set({ notice: 'Your email is confirmed. Log in to finish setting up.' });
+        setMode('login');
+      }
+    } catch (e) {
+      const msg = (e as Error)?.message ?? '';
+      setError(/code/i.test(msg) ? msg : friendlyError(e));
+      setDigits(['', '', '', '', '', '']);
+      boxes.current[0]?.focus();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const put = (i: number, value: string) => {
+    const clean = value.replace(/\D/g, '');
+    if (!clean) {
+      const next = [...digits];
+      next[i] = '';
+      setDigits(next);
+      return;
+    }
+    // typing or pasting several digits fills the boxes in order
+    const next = [...digits];
+    let k = i;
+    for (const ch of clean) {
+      if (k > 5) break;
+      next[k++] = ch;
+    }
+    setDigits(next);
+    boxes.current[Math.min(k, 5)]?.focus();
+    if (next.every(Boolean)) void submit(next.join(''));
+  };
+
   return (
     <div>
-      <h1>Check your email</h1>
+      <h1>Enter your code</h1>
       <p className="sub">
-        We sent a link to <b>{email || 'your email'}</b>. Open it to confirm it’s you, then come back and log in.
+        We emailed a 6-digit code to <b>{email || 'your email'}</b>. Enter it to finish creating your account.
       </p>
-      <ul className="tips">
-        <li>It can take a minute. Check spam too.</li>
-        <li>Opening the link on another device is fine — just log in here afterwards.</li>
-      </ul>
+      <form
+        className="code-boxes"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit(digits.join(''));
+        }}
+      >
+        {digits.map((d, i) => (
+          <input
+            key={i}
+            ref={(el) => {
+              boxes.current[i] = el;
+            }}
+            value={d}
+            inputMode="numeric"
+            autoComplete={i === 0 ? 'one-time-code' : 'off'}
+            maxLength={6}
+            aria-label={`Digit ${i + 1}`}
+            disabled={busy}
+            onChange={(e) => put(i, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Backspace' && !digits[i] && i > 0) boxes.current[i - 1]?.focus();
+              if (e.key === 'ArrowLeft' && i > 0) boxes.current[i - 1]?.focus();
+              if (e.key === 'ArrowRight' && i < 5) boxes.current[i + 1]?.focus();
+            }}
+            onFocus={(e) => e.target.select()}
+          />
+        ))}
+      </form>
+      {error && <div className="form-error">{error}</div>}
       {status && <div className="notice">{status}</div>}
+      <button className="btn primary full" disabled={busy || digits.some((d) => !d)} onClick={() => void submit(digits.join(''))}>
+        {busy ? 'Checking…' : 'Confirm'}
+      </button>
+      <ul className="tips">
+        <li>It can take a minute. Check spam too. The code works for 1 hour.</li>
+        <li>The email also has a link — opening it works too, then log in here.</li>
+      </ul>
       <button
         className="btn secondary full"
         disabled={!email || cooldown > 0}
         onClick={async () => {
           try {
             await resendVerification(email);
-            setStatus('Sent another one.');
+            setStatus('Sent a new code. Use the newest email.');
             setCooldown(60);
           } catch (e) {
             setStatus(friendlyError(e));
           }
         }}
       >
-        {cooldown ? `Resend (${cooldown}s)` : 'Resend the email'}
+        {cooldown ? `Send a new code (${cooldown}s)` : 'Send a new code'}
       </button>
       <p className="switch">
         <button className="btn link" onClick={() => setMode('login')}>
