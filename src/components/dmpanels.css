@@ -61,3 +61,50 @@
 
 @media (max-width: 1100px) { .dm-profile-panel { width: 300px; } }
 @media (max-width: 900px) { .dm-profile-panel, .group-members-panel { display: none; } }
+
+/* ---------------------------------------------- Venband profile panel (1:1) ---- */
+.dm-profile-panel.vb-pp { position: relative; isolation: isolate; padding: 0; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pc1) 16%, var(--bg-1)) 0%, var(--bg-1) 46%); }
+.vpp-fx { position: absolute !important; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+.vpp-glow { position: absolute; left: -20%; right: -20%; top: -30px; height: 200px; z-index: -1; filter: blur(34px) saturate(1.4); opacity: .55; background-size: cover; background-position: center; }
+.vpp-glow img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vpp-top { display: flex; justify-content: flex-end; padding: 10px 10px 0; }
+.vpp-icon { width: 32px; height: 32px; border-radius: 10px; border: 0; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  color: var(--text); background: color-mix(in srgb, var(--bg-0) 45%, transparent); backdrop-filter: blur(8px); }
+.vpp-icon:hover { background: color-mix(in srgb, var(--bg-0) 65%, transparent); }
+.vpp-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 0 18px 4px; }
+.vpp-avatar { padding: 4px; border-radius: 50%; margin-bottom: 8px;
+  background: conic-gradient(from 210deg, var(--pc1), var(--pc2), var(--pc1)); box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--pc1) 70%, #000); }
+.vpp-avatar .avatar { box-shadow: 0 0 0 3px var(--bg-1); border-radius: 50%; }
+.vpp-name { margin: 0; font-size: 22px; font-weight: 850; letter-spacing: -.015em; line-height: 1.15; word-break: break-word; }
+.vpp-handle { font-size: 13.5px; color: var(--text-2); display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
+.vpp-tags { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin-top: 4px; }
+.vpp-status { margin-top: 8px; max-width: 100%; padding: 6px 12px; border-radius: 12px; font-size: 13px; background: color-mix(in srgb, var(--text) 8%, transparent); display: inline-flex; gap: 6px; word-break: break-word; }
+.vpp-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 14px 16px 0; }
+.vpp-action { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: 14px; border: 1px solid var(--line); cursor: pointer;
+  background: color-mix(in srgb, var(--bg-2) 80%, transparent); color: var(--text); font-size: 12px; font-weight: 700; transition: background .15s, transform .15s, border-color .15s; }
+.vpp-action:hover { background: var(--bg-3); border-color: color-mix(in srgb, var(--pc1) 50%, var(--line-2)); transform: translateY(-1px); }
+.vpp-action svg { color: color-mix(in srgb, var(--pc1) 55%, var(--text)); }
+.vpp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px 16px 0; }
+.vpp-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 10px 12px; border-radius: 14px; border: 0; text-align: left; color: var(--text);
+  background: color-mix(in srgb, var(--text) 5%, transparent); }
+button.vpp-stat { cursor: pointer; }
+button.vpp-stat:hover { background: color-mix(in srgb, var(--text) 9%, transparent); }
+.vpp-stat b { font-size: 19px; font-weight: 850; line-height: 1.1; }
+.vpp-stat span { font-size: 11px; color: var(--muted); font-weight: 600; line-height: 1.2; }
+.vpp-live { display: flex; align-items: center; gap: 10px; margin: 10px 16px 0; padding: 10px 12px; border-radius: 14px; font-size: 13px; font-weight: 700;
+  background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--text); }
+.vpp-live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 0 var(--success); animation: vpp-live 1.6s ease-out infinite; }
+@keyframes vpp-live { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 60%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+.vpp-tabs { display: flex; gap: 4px; margin: 16px 16px 0; padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--text) 6%, transparent); }
+.vpp-tabs button { flex: 1; padding: 7px; border-radius: 9px; border: 0; background: none; color: var(--text-2); font-weight: 700; font-size: 13px; cursor: pointer; }
+.vpp-tabs button.on { background: var(--bg-3); color: var(--text); box-shadow: 0 2px 8px -4px #0008; }
+.vpp-body { padding: 12px 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.vpp-about { font-size: 14px; line-height: 1.5; word-break: break-word; }
+.vpp-empty { margin: 0; color: var(--muted); font-size: 13px; }
+.vpp-joined { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.vpp-mutuals { display: flex; flex-direction: column; gap: 4px; }
+.vpp-mutual { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 10px; border: 0; background: none; color: var(--text); text-align: left; font-weight: 600; font-size: 13.5px; }
+button.vpp-mutual { cursor: pointer; }
+button.vpp-mutual:hover { background: var(--bg-hover); }
+.vpp-server { width: 28px; height: 28px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 800; color: #fff; flex: none; }

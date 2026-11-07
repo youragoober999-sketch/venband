@@ -99,7 +99,14 @@ export function AuthScreen() {
       go('sign-in', { replace: true, keepQuery: true });
     }
   }, []);
-  const [email, setEmail] = useState('');
+  // switching to a saved account whose sign-in expired lands here pre-filled (?account=)
+  const [email, setEmail] = useState(() => {
+    try {
+      return new URLSearchParams(location.search).get('account') ?? '';
+    } catch {
+      return '';
+    }
+  });
   const nav: NavActions = {
     onLogin: () => setMode('login'),
     onSignup: () => setMode('signup'),
@@ -188,13 +195,6 @@ function Login({ email, setEmail, setMode }: FormProps) {
       if (!hit?.email) throw new Error('No account with that username or email.');
       if (hit.banned) return setBanned({ username: (hit.username as string) || raw.replace(/@.*$/, '') });
       await signIn(hit.email as string, password, remember);
-      // save up to 2 accounts for the switcher
-      try {
-        const saved = JSON.parse(localStorage.getItem('venband:accounts') || '[]') as any[];
-        const entry = { username: hit.username, displayName: hit.username, avatarUrl: null };
-        if (!saved.some((a) => a.username === hit.username)) { saved.push(entry); if (saved.length > 2) saved.shift(); }
-        localStorage.setItem('venband:accounts', JSON.stringify(saved));
-      } catch {}
     } catch (err) {
       if (/not confirmed/i.test(String((err as Error)?.message))) {
         setMode('verify');

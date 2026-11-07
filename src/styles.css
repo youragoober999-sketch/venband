@@ -3190,3 +3190,35 @@ input[type=range].vb-slider::-moz-range-progress { height: 6px; border-radius: 9
 input[type=range].vb-slider::-moz-range-thumb { width: var(--thumb); height: var(--thumb); border-radius: 50%; border: 0; background: #fff; box-shadow: 0 1px 4px #0009; }
 input[type=range].vb-slider:disabled { opacity: .5; cursor: default; }
 .mic-hear { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); white-space: nowrap; cursor: pointer; }
+
+/* =========================================================== account switcher */
+.acct-modal { max-width: 460px !important; }
+.acct-lead { margin: -4px 0 14px; color: var(--text-2); font-size: 13.5px; }
+.acct-current { position: relative; display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 16px; overflow: hidden;
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), var(--bg-2);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.acct-info { display: flex; flex-direction: column; min-width: 0; flex: 1; text-align: left; }
+.acct-name { font-weight: 800; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.acct-current .acct-name { font-size: 18px; }
+.acct-user { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.acct-seen { color: var(--muted); }
+.acct-active { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 800;
+  color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.acct-active i { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); }
+.acct-label { margin: 18px 4px 8px; font-size: 11.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.acct-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.acct-label + .acct-list { margin-top: 0; }
+.acct-row { position: relative; display: flex; align-items: center; border-radius: 14px; background: var(--bg-2); border: 1px solid var(--line); transition: border-color .15s, transform .15s, background .15s; }
+.acct-row:hover { border-color: var(--line-2); background: var(--bg-3); transform: translateY(-1px); }
+.acct-row.busy { opacity: .7; }
+.acct-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 11px 6px 11px 12px; background: none; border: 0; color: inherit; cursor: pointer; border-radius: 14px; }
+.acct-main:disabled { cursor: default; }
+.acct-go { color: var(--muted); display: inline-flex; transform: rotate(-90deg); }
+.acct-row:hover .acct-go { color: var(--text); }
+.acct-more { margin-right: 6px; }
+.acct-pill { font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 999px; }
+.acct-pill.warn { color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+.acct-add { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 14px; border: 1.5px dashed var(--line-2); background: none; color: inherit; cursor: pointer; transition: border-color .15s, background .15s; }
+.acct-add:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.acct-add-icon { width: 48px; height: 48px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-3); color: var(--text); }
+.acct-footer { display: flex; justify-content: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }

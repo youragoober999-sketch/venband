@@ -16,7 +16,7 @@ import { ActivityCard, ActivityMini } from './ActivityCard';
 import { Badges, OwnerCrown } from './Badges';
 import { NameplateArt, ProfileEffect } from './Cosmetics';
 import { Markdown } from './Markdown';
-import { bannerStyle, openProfile, ServerTag, StatusCloud, userMenu } from './People';
+import { bannerStyle, openProfile, ServerTag, userMenu } from './People';
 import { openMenu } from './ContextMenu';
 import { Avatar, Icon, StyledName } from './ui';
 import './dmpanels.css';
@@ -43,83 +43,126 @@ export function DmProfilePanel({ dm, inCall, onJoinCall }: { dm: DmChannel; inCa
       live = false;
     };
   }, [id]);
-  // the panel takes the person's own colours (accent → banner) like a profile card
+  const [tab, setTab] = useState<'about' | 'mutuals'>('about');
+  // Venband's own look: their colours become a soft glow behind a centred avatar
   const c1 = p.accent_color ?? p.banner_color ?? p.avatar_color ?? '#2a2d36';
   const c2 = p.banner_color2 ?? p.banner_color ?? c1;
   const style = { '--pc1': c1, '--pc2': c2 } as CSSProperties;
+  const days = p.created_at ? Math.max(1, Math.round((Date.now() - new Date(p.created_at).getTime()) / 86_400_000)) : null;
   return (
-    <aside className="dm-profile-panel" style={style} aria-label={`${displayName(id)}’s profile`}>
-      <div className="dpp-card">
-        <ProfileEffect id={p.profile_effect} className="dpp-fx" />
-        <div className="dpp-banner" style={bannerStyle(p)}>
-          {p.banner_url && <img src={p.banner_url} alt="" />}
-          <div className="dpp-banner-actions">
-            <button className="dpp-round" title="More" aria-label="More" onClick={(e) => openMenu(e, userMenu(id))}>
-              <Icon name="more" size={16} />
-            </button>
-          </div>
-        </div>
-        <div className="dpp-head">
-          <div className="dpp-avatar">
-            <Avatar profile={p} size={84} online={onlineNow} frame />
-          </div>
-          {!!(p.status_text || p.status_emoji) && <StatusCloud text={p.status_text ?? ''} emoji={p.status_emoji ?? ''} />}
-        </div>
-        <div className="dpp-body">
-          <h2 className="dpp-name">
-            <StyledName style={p.name_style}>{displayName(id)}</StyledName>
-          </h2>
-          <div className="dpp-handle">
-            <span>{p.username}</span>
-            {p.pronouns && <span className="muted">· {p.pronouns}</span>}
-            <ServerTag tag={p.server_tag} serverId={p.tag_server_id} />
-            <Badges ids={p.badges} display={p.badge_display} size={16} />
-          </div>
-          {(mutualFriends.length > 0 || mutualServers.length > 0) && (
-            <button className="dpp-mutuals" onClick={() => openProfile(id)}>
-              <span className="dpp-mutual-avatars">
-                {mutualFriends.slice(0, 3).map((f) => (
-                  <Avatar key={f} profile={getProfile(f)} size={18} />
-                ))}
-              </span>
-              {mutualFriends.length > 0 && `${mutualFriends.length} Mutual Friend${mutualFriends.length === 1 ? '' : 's'}`}
-              {mutualFriends.length > 0 && mutualServers.length > 0 && <span className="dot">•</span>}
-              {mutualServers.length > 0 && `${mutualServers.length} Mutual Server${mutualServers.length === 1 ? '' : 's'}`}
-            </button>
-          )}
-          {p.about && (
-            <div className="dpp-about">
-              <Markdown text={p.about} />
-            </div>
-          )}
-          <div className="dpp-section">
-            <h4>Member Since</h4>
-            <div>{fmtDate(p.created_at)}</div>
-          </div>
-          {inCall.others.includes(id) && (
-            <div className="dpp-box">
-              <h4>In a call</h4>
-              <div className="dpp-call">
-                <span className="dpp-call-avatars">
-                  <Avatar profile={p} size={28} />
-                  {inCall.here && <Avatar profile={sessionStore.get().me} size={28} />}
-                </span>
-                <span className="grow">
-                  <Icon name="phone" size={13} /> This conversation
-                </span>
-              </div>
-              {!inCall.here && (
-                <button className="btn dpp-btn" onClick={onJoinCall}>
-                  Join Call
-                </button>
-              )}
-            </div>
-          )}
-          <ActivityCard userId={id} />
-        </div>
-        <button className="btn dpp-btn dpp-full" onClick={() => openProfile(id)}>
-          View Full Profile
+    <aside className="dm-profile-panel vb-pp" style={style} aria-label={`${displayName(id)}’s profile`}>
+      <ProfileEffect id={p.profile_effect} className="vpp-fx" />
+      <div className="vpp-glow" style={bannerStyle(p)}>
+        {p.banner_url && <img src={p.banner_url} alt="" />}
+      </div>
+      <div className="vpp-top">
+        <button className="vpp-icon" title="More" aria-label="More" onClick={(e) => openMenu(e, userMenu(id))}>
+          <Icon name="more" size={16} />
         </button>
+      </div>
+      <div className="vpp-hero">
+        <div className="vpp-avatar">
+          <Avatar profile={p} size={96} online={onlineNow} frame />
+        </div>
+        <h2 className="vpp-name">
+          <StyledName style={p.name_style}>{displayName(id)}</StyledName>
+        </h2>
+        <div className="vpp-handle">
+          @{p.username}
+          {p.pronouns && <span>· {p.pronouns}</span>}
+        </div>
+        <div className="vpp-tags">
+          <ServerTag tag={p.server_tag} serverId={p.tag_server_id} />
+          <Badges ids={p.badges} display={p.badge_display} size={16} />
+        </div>
+        {!!(p.status_text || p.status_emoji) && (
+          <div className="vpp-status">
+            {p.status_emoji && <span>{p.status_emoji}</span>}
+            {p.status_text}
+          </div>
+        )}
+      </div>
+      <div className="vpp-actions">
+        <button className="vpp-action" onClick={onJoinCall} title={inCall.others.includes(id) ? 'Join their call' : 'Start a call'}>
+          <Icon name="phone" size={17} />
+          <span>{inCall.others.includes(id) && !inCall.here ? 'Join' : 'Call'}</span>
+        </button>
+        <button className="vpp-action" onClick={() => openProfile(id)}>
+          <Icon name="user" size={17} />
+          <span>Profile</span>
+        </button>
+        <button className="vpp-action" onClick={(e) => openMenu(e, userMenu(id))}>
+          <Icon name="more" size={17} />
+          <span>More</span>
+        </button>
+      </div>
+      <div className="vpp-stats">
+        <button className="vpp-stat" onClick={() => setTab('mutuals')}>
+          <b>{mutualFriends.length}</b>
+          <span>mutual friend{mutualFriends.length === 1 ? '' : 's'}</span>
+        </button>
+        <button className="vpp-stat" onClick={() => setTab('mutuals')}>
+          <b>{mutualServers.length}</b>
+          <span>mutual server{mutualServers.length === 1 ? '' : 's'}</span>
+        </button>
+        <div className="vpp-stat">
+          <b>{days ?? '—'}</b>
+          <span>day{days === 1 ? '' : 's'} on Venband</span>
+        </div>
+      </div>
+      {inCall.others.includes(id) && (
+        <div className="vpp-live">
+          <span className="vpp-live-dot" />
+          <span className="grow">In a call with you{inCall.here ? '' : ' — waiting'}</span>
+          {!inCall.here && (
+            <button className="btn small success" onClick={onJoinCall}>
+              Join
+            </button>
+          )}
+        </div>
+      )}
+      <div className="vpp-tabs" role="tablist">
+        <button role="tab" aria-selected={tab === 'about'} className={tab === 'about' ? 'on' : ''} onClick={() => setTab('about')}>
+          About
+        </button>
+        <button role="tab" aria-selected={tab === 'mutuals'} className={tab === 'mutuals' ? 'on' : ''} onClick={() => setTab('mutuals')}>
+          Mutuals
+        </button>
+      </div>
+      <div className="vpp-body">
+        {tab === 'about' ? (
+          <>
+            {p.about ? (
+              <div className="vpp-about">
+                <Markdown text={p.about} />
+              </div>
+            ) : (
+              <p className="vpp-empty">No bio yet.</p>
+            )}
+            <ActivityCard userId={id} />
+            <div className="vpp-joined">
+              <Icon name="calendar" size={14} /> Joined {fmtDate(p.created_at)}
+            </div>
+          </>
+        ) : (
+          <div className="vpp-mutuals">
+            {!mutualFriends.length && !mutualServers.length && <p className="vpp-empty">Nothing in common yet.</p>}
+            {mutualServers.map((s) => (
+              <div key={s.id} className="vpp-mutual">
+                <span className="vpp-server" style={{ background: s.icon_color }}>
+                  {s.name.slice(0, 2).toUpperCase()}
+                </span>
+                <span className="grow">{s.name}</span>
+              </div>
+            ))}
+            {mutualFriends.map((f) => (
+              <button key={f} className="vpp-mutual" onClick={() => openProfile(f)}>
+                <Avatar profile={getProfile(f)} size={28} frame={false} />
+                <span className="grow">{displayName(f)}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </aside>
   );
