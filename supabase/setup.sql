@@ -6,7 +6,7 @@
 --
 -- How to use: Supabase dashboard → SQL Editor → New query → paste this whole
 -- file → Run. It creates every table, function, policy and storage bucket the
--- app needs, in order (68 migrations).
+-- app needs, in order (71 migrations).
 --
 -- Run it ONCE, on a project that doesn't have Venband set up yet. If Venband is
 -- already installed it stops right away (nothing is changed) — then run only the
@@ -12239,12 +12239,16 @@ select '3fff0000-0000-4000-8000-0000000000bd', 'Comet', 'comet',
  where exists (select 1 from public.profiles where id = '3fff0000-0000-4000-8000-0000000000bd')
    and not exists (select 1 from public.applications where owner_id = '3fff0000-0000-4000-8000-0000000000bd' and preset = 'comet');
 
--- (status changes are a staff action: the guard wants venband.mod on for this transaction)
-select set_config('venband.mod', 'on', true);
-update public.applications set status = 'disabled'
- where owner_id = '3fff0000-0000-4000-8000-0000000000bd' and status <> 'disabled'
-   and name in ('Greeter', 'Gatekeeper', 'Word Guess', 'Announcer', 'Mod Toolkit');
-select set_config('venband.mod', 'off', true);
+-- (status changes are a staff action: the guard wants venband.mod on for this transaction;
+-- done in a block so the SQL editor doesn't print a stray "set_config" result)
+do $$
+begin
+  perform set_config('venband.mod', 'on', true);
+  update public.applications set status = 'disabled'
+   where owner_id = '3fff0000-0000-4000-8000-0000000000bd' and status <> 'disabled'
+     and name in ('Greeter', 'Gatekeeper', 'Word Guess', 'Announcer', 'Mod Toolkit');
+  perform set_config('venband.mod', 'off', true);
+end $$;
 
 -- ---------------------------------------------------------------- data ----
 alter table public.server_members add column if not exists voice_muted_until timestamptz;
@@ -12372,6 +12376,17 @@ create or replace function public.comet_name(p_user uuid) returns text language 
   select coalesce(nullif(display_name, ''), username) from public.profiles where id = p_user;
 $$;
 
+-- readable names for embeds (mention codes don't render inside embed fields)
+create or replace function public.comet_u(p_user uuid) returns text language sql stable security definer set search_path = '' as $$
+  select '@' || username from public.profiles where id = p_user;
+$$;
+create or replace function public.comet_r(p_role uuid) returns text language sql stable security definer set search_path = '' as $$
+  select '@' || name from public.roles where id = p_role;
+$$;
+create or replace function public.comet_c(p_channel uuid) returns text language sql stable security definer set search_path = '' as $$
+  select '#' || name from public.channels where id = p_channel;
+$$;
+
 create or replace function public.comet_reply(p_app uuid, p_channel uuid, p_title text, p_desc text, p_color text default '#7c5cff', p_fields jsonb default null, p_interaction uuid default null)
 returns void language sql security definer set search_path = '' as $$
   select public.bot_post(p_app, p_channel, '',
@@ -12386,7 +12401,7 @@ declare
 begin
   if v_chan is null or not exists (select 1 from public.channels where id = v_chan and server_id = p_server) then return; end if;
   perform public.bot_post(public.comet_app(), v_chan, '', jsonb_build_object('title', p_title, 'description', left(p_desc, 3500), 'color', p_color,
-    'fields', jsonb_build_array(jsonb_build_object('name', 'By', 'value', coalesce('<@' || auth.uid() || '>', 'Comet')))), null, null);
+    'fields', jsonb_build_array(jsonb_build_object('name', 'By', 'value', coalesce('' || public.comet_u(auth.uid()) || '', 'Comet')))), null, null);
 end;
 $$;
 
@@ -12453,7 +12468,7 @@ begin
          last_xp_at = case when v_gain > 0 then now() else last_xp_at end, quests = v_quests
    where server_id = v_server and user_id = new.author_id;
   if public.comet_level_for(r.xp + v_gain) > v_old then
-    perform public.bot_post(public.comet_app(), new.channel_id, '<@' || new.author_id || '> reached **level ' || public.comet_level_for(r.xp + v_gain) || '** ✨', null, null, null);
+    perform public.bot_post(public.comet_app(), new.channel_id, '' || public.comet_u(new.author_id) || ' reached **level ' || public.comet_level_for(r.xp + v_gain) || '** ✨', null, null, null);
   end if;
   return null;
 end;
@@ -12466,7 +12481,7 @@ create or replace function public.comet_on_report() returns trigger language plp
 begin
   if new.server_id is not null then
     perform public.comet_log(new.server_id, 'New report',
-      coalesce('Reported user: <@' || new.target_user || '>' || E'\n', '') || coalesce('Channel: <#' || new.channel_id || '>' || E'\n', '') || 'Reason: ' || left(new.reason, 500),
+      coalesce('Reported user: ' || public.comet_u(new.target_user) || '' || E'\n', '') || coalesce('Channel: ' || public.comet_c(new.channel_id) || '' || E'\n', '') || 'Reason: ' || left(new.reason, 500),
       '#ff9f0a');
   end if;
   return null;
@@ -12500,7 +12515,7 @@ begin
   if v_log is null then return; end if;
   if (select count(*) from public.bot_messages where channel_id = v_log and created_at > now() - interval '10 seconds') > 10 then return; end if;
   perform public.bot_post(public.comet_app(), v_log, '', jsonb_build_object('title', 'Word logged', 'color', '#ff9f0a',
-    'description', '<@' || auth.uid() || '> used a logged word in <#' || p_channel || '>',
+    'description', '' || public.comet_u(auth.uid()) || ' used a logged word in ' || public.comet_c(p_channel) || '',
     'fields', jsonb_build_array(
       jsonb_build_object('name', 'Word', 'value', '||' || left(array_to_string(p_words[1:5], ', '), 200) || '||'),
       jsonb_build_object('name', 'Message', 'value', '||' || left(coalesce(p_excerpt, ''), 400) || '||'))), null, null);
@@ -12528,7 +12543,7 @@ begin
   if v_server is null or not public.channel_has_permission(p_channel, 256) then raise exception 'you need the Manage Messages permission to purge'; end if;
   with gone as (delete from public.messages where channel_id = p_channel and id = any(p_ids[1:500]) returning 1) select count(*) into v_n from gone;
   perform public.comet_reply(public.comet_app(), p_channel, 'Purged', 'Deleted ' || v_n || ' message' || case when v_n = 1 then '' else 's' end || ' with ' || left(coalesce(p_label, 'that filter'), 40) || '.', '#ff6b81');
-  perform public.comet_log(v_server, 'Purge', v_n || ' messages with ' || left(coalesce(p_label, 'a filter'), 40) || ' in <#' || p_channel || '>', '#ff6b81');
+  perform public.comet_log(v_server, 'Purge', v_n || ' messages with ' || left(coalesce(p_label, 'a filter'), 40) || ' in ' || public.comet_c(p_channel) || '', '#ff6b81');
   return v_n;
 end;
 $$;
@@ -12595,7 +12610,7 @@ begin
       if not found then perform public.comet_reply(p_app, p_channel, 'Not banned', '**' || v_name || '** isn''t banned here.', warn, null, p_id); return; end if;
       perform public.audit(p_server, 'unban', v_u, null, '{}'::jsonb);
       perform public.comet_reply(p_app, p_channel, 'Unbanned', '**' || v_name || '** can join again.', ok, null, p_id);
-      perform public.comet_log(p_server, 'Unban', '<@' || v_u || '>', ok);
+      perform public.comet_log(p_server, 'Unban', '' || public.comet_u(v_u) || '', ok);
       return;
     end if;
     if not public.can_moderate(p_server, v_u, case when cmd = 'ban' then 32 else 16 end) then
@@ -12612,7 +12627,7 @@ begin
     perform public.audit(p_server, cmd, v_u, null, jsonb_build_object('reason', left(v_txt, 200)));
     perform public.comet_reply(p_app, p_channel, case when cmd = 'ban' then 'Banned' else 'Kicked' end, '**' || v_name || '** was ' || case when cmd = 'ban' then 'banned' else 'kicked' end || '.', bad,
       jsonb_build_array(jsonb_build_object('name', 'Reason', 'value', coalesce(nullif(v_txt, ''), 'No reason given.'))), p_id);
-    perform public.comet_log(p_server, initcap(cmd), '<@' || v_u || '> · ' || coalesce(nullif(v_txt, ''), 'no reason'), bad);
+    perform public.comet_log(p_server, initcap(cmd), '' || public.comet_u(v_u) || ' · ' || coalesce(nullif(v_txt, ''), 'no reason'), bad);
 
   -- ------------------------------- timeouts, voice mute / deafen, warn -----
   elsif cmd in ('timeout', 'mute', 'deafen', 'untimeout', 'unmute', 'undeafen') then
@@ -12631,7 +12646,7 @@ begin
       else update public.server_members set voice_deafened_until = null where server_id = p_server and user_id = v_u; end if;
       perform public.audit(p_server, cmd, v_u, null, '{}'::jsonb);
       perform public.comet_reply(p_app, p_channel, 'Done', '**' || v_name || '** is no longer ' || case cmd when 'untimeout' then 'timed out' when 'unmute' then 'muted' else 'deafened' end || '.', ok, null, p_id);
-      perform public.comet_log(p_server, initcap(cmd), '<@' || v_u || '>', ok);
+      perform public.comet_log(p_server, initcap(cmd), '' || public.comet_u(v_u) || '', ok);
       return;
     end if;
     v_iv := public.comet_duration(tok[2]);
@@ -12648,7 +12663,7 @@ begin
     perform public.comet_reply(p_app, p_channel, case cmd when 'timeout' then 'Timed out' when 'mute' then 'Muted in voice' else 'Deafened in voice' end,
       '**' || v_name || '** ' || case when v_iv is null then 'until a moderator lifts it (**/un' || cmd || '**).' else 'until ' || to_char(v_until at time zone 'utc', 'Mon DD, YYYY HH24:MI') || ' UTC.' end, warn,
       case when v_txt <> '' then jsonb_build_array(jsonb_build_object('name', 'Reason', 'value', v_txt)) end, p_id);
-    perform public.comet_log(p_server, initcap(cmd), '<@' || v_u || '> ' || case when v_iv is null then 'indefinitely' else 'for ' || tok[2] end, warn);
+    perform public.comet_log(p_server, initcap(cmd), '' || public.comet_u(v_u) || ' ' || case when v_iv is null then 'indefinitely' else 'for ' || tok[2] end, warn);
 
   elsif cmd = 'warn' then
     v_u := public.comet_user(p_server, tok[1]);
@@ -12658,7 +12673,7 @@ begin
     end if;
     perform public.warn_member(p_server, v_u, v_txt);
     perform public.comet_reply(p_app, p_channel, 'Warned', '**' || public.comet_name(v_u) || '** was warned.', warn, jsonb_build_array(jsonb_build_object('name', 'Reason', 'value', v_txt)), p_id);
-    perform public.comet_log(p_server, 'Warn', '<@' || v_u || '> · ' || v_txt, warn);
+    perform public.comet_log(p_server, 'Warn', '' || public.comet_u(v_u) || ' · ' || v_txt, warn);
 
   elsif cmd in ('warnings', 'clearwarns') then
     v_u := public.comet_user(p_server, tok[1]);
@@ -12686,8 +12701,8 @@ begin
     else
       delete from public.member_roles where server_id = p_server and user_id = v_u and role_id = v_r;
     end if;
-    perform public.comet_reply(p_app, p_channel, case when cmd = 'role' then 'Role added' else 'Role removed' end, '<@&' || v_r || '> ' || case when cmd = 'role' then '→' else '✕' end || ' **' || public.comet_name(v_u) || '**', ok, null, p_id);
-    perform public.comet_log(p_server, initcap(cmd), '<@&' || v_r || '> · <@' || v_u || '>', ok);
+    perform public.comet_reply(p_app, p_channel, case when cmd = 'role' then 'Role added' else 'Role removed' end, '' || public.comet_r(v_r) || ' ' || case when cmd = 'role' then '→' else '✕' end || ' **' || public.comet_name(v_u) || '**', ok, null, p_id);
+    perform public.comet_log(p_server, initcap(cmd), '' || public.comet_r(v_r) || ' · ' || public.comet_u(v_u) || '', ok);
 
   elsif cmd = 'rollall' then
     v_r := public.comet_role(p_server, tok[1]);
@@ -12696,8 +12711,8 @@ begin
     if me <> v_owner and (select position from public.roles where id = v_r) >= my_top then raise exception 'that role is as high as or higher than yours'; end if;
     with added as (insert into public.member_roles (server_id, user_id, role_id) select p_server, user_id, v_r from public.server_members where server_id = p_server on conflict do nothing returning 1)
     select count(*) into v_n from added;
-    perform public.comet_reply(p_app, p_channel, 'Role given to everyone', '<@&' || v_r || '> → ' || v_n || ' member' || case when v_n = 1 then '' else 's' end || '.', ok, null, p_id);
-    perform public.comet_log(p_server, 'Roll all', '<@&' || v_r || '> to ' || v_n || ' members', ok);
+    perform public.comet_reply(p_app, p_channel, 'Role given to everyone', '' || public.comet_r(v_r) || ' → ' || v_n || ' member' || case when v_n = 1 then '' else 's' end || '.', ok, null, p_id);
+    perform public.comet_log(p_server, 'Roll all', '' || public.comet_r(v_r) || ' to ' || v_n || ' members', ok);
 
   elsif cmd = 'autorole' then
     if not public.has_permission(p_server, 4) then raise exception 'you need the Manage Roles permission'; end if;
@@ -12709,7 +12724,7 @@ begin
     if v_r is null then perform public.comet_reply(p_app, p_channel, 'Usage', '**/autorole @role** (or **/autorole off**)', warn, null, p_id); return; end if;
     if me <> v_owner and (select position from public.roles where id = v_r) >= my_top then raise exception 'that role is as high as or higher than yours'; end if;
     perform public.comet_set(p_server, 'autorole', to_jsonb(v_r::text));
-    perform public.comet_reply(p_app, p_channel, 'Auto-role on', 'Everyone who joins now gets <@&' || v_r || '>.', ok, null, p_id);
+    perform public.comet_reply(p_app, p_channel, 'Auto-role on', 'Everyone who joins now gets ' || public.comet_r(v_r) || '.', ok, null, p_id);
 
   elsif cmd = 'roleinfo' then
     v_r := public.comet_role(p_server, tok[1]);
@@ -12739,7 +12754,7 @@ begin
     v_c := public.comet_channel(p_server, case when sub = 'set' then tok[2] else tok[1] end);
     if v_c is null then perform public.comet_reply(p_app, p_channel, 'Usage', '**/staff log set #channel** — mod actions and reports get logged there.', warn, null, p_id); return; end if;
     perform public.comet_set(p_server, 'log_channel', to_jsonb(v_c::text));
-    perform public.comet_reply(p_app, p_channel, 'Staff log set', 'Mod actions and reports will be posted in <#' || v_c || '>.', ok, null, p_id);
+    perform public.comet_reply(p_app, p_channel, 'Staff log set', 'Mod actions and reports will be posted in ' || public.comet_c(v_c) || '.', ok, null, p_id);
     perform public.comet_log(p_server, 'Staff log connected', 'This channel now receives Comet''s mod log.', ok);
 
   elsif cmd = 'wordlogger' then
@@ -12752,11 +12767,11 @@ begin
     v_c := public.comet_channel(p_server, case when sub = 'set' then tok[2] else tok[1] end);
     v_txt := array_to_string(case when sub = 'set' then tok[3:] else tok[2:] end, ' ');
     if v_c is null or btrim(v_txt) = '' then
-      perform public.comet_reply(p_app, p_channel, 'Word logger', 'Usage: **/wordlogger #log-channel word1, word2, word 3**' || E'\n' || coalesce('Now logging ' || jsonb_array_length(public.comet_cfg(p_server) -> 'wordlog_words') || ' words to <#' || (public.comet_cfg(p_server) ->> 'wordlog_channel') || '>.', 'Not set up yet.'), warn, null, p_id); return;
+      perform public.comet_reply(p_app, p_channel, 'Word logger', 'Usage: **/wordlogger #log-channel word1, word2, word 3**' || E'\n' || coalesce('Now logging ' || jsonb_array_length(public.comet_cfg(p_server) -> 'wordlog_words') || ' words to ' || public.comet_c((public.comet_cfg(p_server) ->> 'wordlog_channel')::uuid) || '.', 'Not set up yet.'), warn, null, p_id); return;
     end if;
     perform public.comet_set(p_server, 'wordlog_channel', to_jsonb(v_c::text));
     perform public.comet_set(p_server, 'wordlog_words', (select coalesce(jsonb_agg(distinct w), '[]') from (select lower(btrim(x)) w from unnest(string_to_array(v_txt, ',')) x where btrim(x) <> '' limit 100) q));
-    perform public.comet_reply(p_app, p_channel, 'Word logger on', 'Watching ' || jsonb_array_length(public.comet_cfg(p_server) -> 'wordlog_words') || ' word(s). Hits are logged in <#' || v_c || '>.', ok, null, p_id);
+    perform public.comet_reply(p_app, p_channel, 'Word logger on', 'Watching ' || jsonb_array_length(public.comet_cfg(p_server) -> 'wordlog_words') || ' word(s). Hits are logged in ' || public.comet_c(v_c) || '.', ok, null, p_id);
 
   elsif cmd = 'servercount' then
     if array_length(tok, 1) is null then
@@ -12784,16 +12799,16 @@ begin
                         jsonb_build_object('name', 'Bots', 'value', (select count(*) from public.server_bots where server_id = p_server)::text),
                         jsonb_build_object('name', 'Channels', 'value', (select count(*) from public.channels where server_id = p_server)::text),
                         jsonb_build_object('name', 'Roles', 'value', (select count(*) from public.roles where server_id = p_server)::text),
-                        jsonb_build_object('name', 'Owner', 'value', '<@' || v_owner || '>'),
+                        jsonb_build_object('name', 'Owner', 'value', '' || public.comet_u(v_owner) || ''),
                         jsonb_build_object('name', 'Created', 'value', to_char((select created_at from public.servers where id = p_server), 'Mon DD, YYYY'))), p_id);
 
   elsif cmd = 'userinfo' then
     v_u := coalesce(public.comet_user(p_server, tok[1]), me);
-    perform public.comet_reply(p_app, p_channel, public.comet_name(v_u), '<@' || v_u || '>', (select avatar_color from public.profiles where id = v_u),
+    perform public.comet_reply(p_app, p_channel, public.comet_name(v_u), '' || public.comet_u(v_u) || '', (select avatar_color from public.profiles where id = v_u),
       jsonb_build_array(jsonb_build_object('name', 'Username', 'value', '@' || (select username from public.profiles where id = v_u)),
                         jsonb_build_object('name', 'Joined server', 'value', coalesce((select to_char(joined_at, 'Mon DD, YYYY') from public.server_members where server_id = p_server and user_id = v_u), 'Not a member')),
                         jsonb_build_object('name', 'Account created', 'value', (select to_char(created_at, 'Mon DD, YYYY') from public.profiles where id = v_u)),
-                        jsonb_build_object('name', 'Roles', 'value', coalesce((select string_agg('<@&' || r.id || '>', ' ' order by r.position desc) from public.member_roles mr join public.roles r on r.id = mr.role_id where mr.server_id = p_server and mr.user_id = v_u), 'None')),
+                        jsonb_build_object('name', 'Roles', 'value', coalesce((select string_agg('' || public.comet_r(r.id) || '', ' ' order by r.position desc) from public.member_roles mr join public.roles r on r.id = mr.role_id where mr.server_id = p_server and mr.user_id = v_u), 'None')),
                         jsonb_build_object('name', 'Level', 'value', coalesce((select level || ' (' || xp || ' XP)' from public.comet_levels where server_id = p_server and user_id = v_u), '—'))), p_id);
 
   -- -------------------------------------------------------------- channels ----
@@ -12813,7 +12828,7 @@ begin
       if (select type from public.channels where id = v_c) = 'text' then v_txt := left(regexp_replace(regexp_replace(lower(v_txt), '\s+', '-', 'g'), '[^a-z0-9_\- -￿]', '', 'g'), 100); end if;
       if v_txt = '' then perform public.comet_reply(p_app, p_channel, 'Usage', '**/rename #channel "new name"**', warn, null, p_id); return; end if;
       update public.channels set name = left(v_txt, 100) where id = v_c;
-      perform public.comet_reply(p_app, p_channel, 'Renamed', '#' || v_name || ' → <#' || v_c || '>', ok, null, p_id);
+      perform public.comet_reply(p_app, p_channel, 'Renamed', '#' || v_name || ' → ' || public.comet_c(v_c) || '', ok, null, p_id);
       perform public.comet_log(p_server, 'Channel renamed', '#' || v_name || ' → #' || v_txt, ok);
     elsif cmd = 'topic' then
       v_txt := btrim(array_to_string(case when public.comet_channel(p_server, tok[1]) is not null then tok[2:] else tok end, ' '));
@@ -12823,18 +12838,18 @@ begin
       v_iv := coalesce(public.comet_duration(case when public.comet_channel(p_server, tok[1]) is not null then tok[2] else tok[1] end), '0 seconds'::interval);
       v_n := least(21600, extract(epoch from v_iv)::integer);
       update public.channels set settings = jsonb_set(settings, '{slowmode}', to_jsonb(v_n)) where id = v_c;
-      perform public.comet_reply(p_app, p_channel, 'Slowmode', case when v_n = 0 then 'Off in <#' || v_c || '>.' else 'One message every ' || v_n || 's in <#' || v_c || '>.' end, ok, null, p_id);
+      perform public.comet_reply(p_app, p_channel, 'Slowmode', case when v_n = 0 then 'Off in ' || public.comet_c(v_c) || '.' else 'One message every ' || v_n || 's in ' || public.comet_c(v_c) || '.' end, ok, null, p_id);
     else
       v_r := (select id from public.roles where server_id = p_server and is_default);
       if cmd = 'lock' then
         delete from public.channel_overwrites where channel_id = v_c and category is null and target_type = 'role' and target_id = v_r;
         insert into public.channel_overwrites (server_id, channel_id, target_type, target_id, allow, deny) values (p_server, v_c, 'role', v_r, 0, 128);
-        perform public.comet_reply(p_app, p_channel, '🔒 Locked', '<#' || v_c || '> — only roles above @everyone can talk.', warn, null, p_id);
+        perform public.comet_reply(p_app, p_channel, '🔒 Locked', '' || public.comet_c(v_c) || ' — only roles above @everyone can talk.', warn, null, p_id);
       else
         delete from public.channel_overwrites where channel_id = v_c and category is null and target_type = 'role' and target_id = v_r;
-        perform public.comet_reply(p_app, p_channel, '🔓 Unlocked', 'Everyone can talk in <#' || v_c || '> again.', ok, null, p_id);
+        perform public.comet_reply(p_app, p_channel, '🔓 Unlocked', 'Everyone can talk in ' || public.comet_c(v_c) || ' again.', ok, null, p_id);
       end if;
-      perform public.comet_log(p_server, initcap(cmd), '<#' || v_c || '>', warn);
+      perform public.comet_log(p_server, initcap(cmd), '' || public.comet_c(v_c) || '', warn);
     end if;
 
   elsif cmd in ('lockdown', 'unlockdown') then
@@ -12857,7 +12872,7 @@ begin
     if v_u is not null then
       with gone as (delete from public.messages where author_id = v_u and channel_id in (select id from public.channels where server_id = p_server) returning 1) select count(*) into v_n from gone;
       perform public.comet_reply(p_app, p_channel, 'Purged', 'Deleted ' || v_n || ' messages from **' || public.comet_name(v_u) || '** across the server.', '#ff6b81', null, p_id);
-      perform public.comet_log(p_server, 'Purge user', '<@' || v_u || '> · ' || v_n || ' messages', '#ff6b81'); return;
+      perform public.comet_log(p_server, 'Purge user', '' || public.comet_u(v_u) || ' · ' || v_n || ' messages', '#ff6b81'); return;
     end if;
     if sub = 'all' then
       with gone as (delete from public.messages where channel_id = p_channel returning 1) select count(*) into v_n from gone;
@@ -12878,7 +12893,7 @@ begin
       perform public.comet_reply(p_app, p_channel, 'Purge', E'**/purge 10** · **/purge all** · **/purge @user**\n**/purge human 100** · **/purge bots 20** · **/purge reactions 50**\n**/purge links|images|files|embeds|mentions 100** (checked on your device — messages are encrypted)', warn, null, p_id); return;
     end if;
     perform public.comet_reply(p_app, p_channel, 'Purged', 'Deleted ' || v_n || ' message' || case when v_n = 1 then '' else 's' end || '.', '#ff6b81', null, p_id);
-    perform public.comet_log(p_server, 'Purge', v_n || ' messages in <#' || p_channel || '>', '#ff6b81');
+    perform public.comet_log(p_server, 'Purge', v_n || ' messages in ' || public.comet_c(p_channel) || '', '#ff6b81');
 
   elsif cmd = 'cleanup' then
     if not public.channel_has_permission(p_channel, 256) then raise exception 'you need the Manage Messages permission'; end if;
@@ -12901,7 +12916,7 @@ begin
       perform public.comet_reply(p_app, p_channel, case when sub in ('enable', 'on') then 'Levels on ✨' else 'Levels off' end,
         case when sub in ('enable', 'on') then E'Members earn XP for chatting and finishing quests:\n• First message of the day — 20 XP\n• Chat 2 days in a row — 75 XP\n• Chat 7 days in a row — 300 XP\n• Send 100 messages — 250 XP' else 'XP stops counting (it''s kept if you turn it back on).' end, ok, null, p_id);
     else
-      select coalesce(string_agg((rn)::text || '. <@' || user_id || '> — level ' || level || ' · ' || xp || ' XP', E'\n' order by rn), 'Nobody has XP yet.') into v_txt
+      select coalesce(string_agg((rn)::text || '. ' || public.comet_u(user_id) || ' — level ' || level || ' · ' || xp || ' XP', E'\n' order by rn), 'Nobody has XP yet.') into v_txt
         from (select *, row_number() over (order by xp desc) rn from public.comet_levels where server_id = p_server order by xp desc limit 10) q;
       perform public.comet_reply(p_app, p_channel, '🏆 Level leaderboard', v_txt, '#7c5cff', null, p_id);
     end if;
@@ -12937,7 +12952,7 @@ begin
         from (select user_id, sum(count) total, row_number() over (order by sum(count) desc) rn from public.comet_swears group by user_id order by total desc limit 10) q;
       perform public.comet_reply(p_app, p_channel, '🌍 Global swear jar', v_txt, '#ffa502', null, p_id);
     else
-      select coalesce(string_agg(rn || '. <@' || user_id || '> — ' || count, E'\n' order by rn), 'Squeaky clean so far.') into v_txt
+      select coalesce(string_agg(rn || '. ' || public.comet_u(user_id) || ' — ' || count, E'\n' order by rn), 'Squeaky clean so far.') into v_txt
         from (select *, row_number() over (order by count desc) rn from public.comet_swears where server_id = p_server and count > 0 order by count desc limit 10) q;
       perform public.comet_reply(p_app, p_channel, '🫙 Server swear jar', v_txt, '#ffa502', null, p_id);
     end if;
@@ -12954,7 +12969,7 @@ begin
       perform public.comet_birthday_set(null, null);
       perform public.comet_reply(p_app, p_channel, 'Removed', 'Your birthday is no longer shared.', ok, null, p_id);
     else
-      select string_agg('🎉 <@' || b.user_id || '>', E'\n') into v_txt
+      select string_agg('🎉 ' || public.comet_u(b.user_id) || '', E'\n') into v_txt
         from public.comet_birthdays b join public.server_members sm on sm.user_id = b.user_id and sm.server_id = p_server
        where b.month = extract(month from now() at time zone 'utc') and b.day = extract(day from now() at time zone 'utc');
       perform public.comet_reply(p_app, p_channel, '🎂 Birthdays today', coalesce(v_txt, 'No birthdays today. Add yours with **/birthday set MM/DD**.'), '#ff5a7a', null, p_id);
@@ -13065,7 +13080,7 @@ returns table (name text, description text) language sql immutable set search_pa
   where v.p = p_preset;
 $$;
 
-revoke execute on function public.comet_app(), public.comet_cfg(uuid), public.comet_set(uuid, text, jsonb), public.comet_user(uuid, text),
+revoke execute on function public.comet_u(uuid), public.comet_r(uuid), public.comet_c(uuid), public.comet_app(), public.comet_cfg(uuid), public.comet_set(uuid, text, jsonb), public.comet_user(uuid, text),
   public.comet_role(uuid, text), public.comet_channel(uuid, text), public.comet_name(uuid),
   public.comet_reply(uuid, uuid, text, text, text, jsonb, uuid), public.comet_log(uuid, text, text, text),
   public.comet_command(uuid, uuid, uuid, text, text, uuid), public.use_bot_command_base(uuid, uuid, text, text) from public, anon, authenticated;
@@ -13074,6 +13089,349 @@ revoke execute on function public.comet_client_config(uuid), public.comet_word_h
 grant execute on function public.comet_client_config(uuid), public.comet_word_hit(uuid, text[], text), public.comet_swear(uuid, integer),
   public.comet_purge_ids(uuid, uuid[], text), public.comet_my_voice(uuid), public.comet_birthday_set(integer, integer),
   public.use_bot_command(uuid, uuid, text, text) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-- 20261107170000_use_commands.sql
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+-- =============================================================================
+-- "Use Commands" permission (20261107170000)
+--
+-- A new role permission, bit 31 (2147483648): staff can let a role use slash
+-- commands (Comet, other bots, built-ins like /avatar) or not, and allow / deny
+-- it per channel and category like every other permission.
+--
+--   * Permissions were 31 bits (max 2147483647); they're now 32 bits, so "every
+--     permission" (owners, Administrators, DM participants) is 4294967295.
+--   * Existing servers: every @everyone role gets Use Commands once, so nothing
+--     changes until staff turn it off. New servers' @everyone role gets it too.
+--   * Timed-out / read-only members lose it along with Send Messages.
+--
+--   * Fixes @everyone channel/category overrides, which were never applied (so
+--     read-only channels and Comet's /lock and /lockdown didn't actually lock).
+--
+-- Safe to run more than once (the one-time grant only runs before the limit is widened).
+-- =============================================================================
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.roles'::regclass and conname = 'roles_permissions_check'
+                   and pg_get_constraintdef(oid) like '%4294967295%') then
+    alter table public.roles drop constraint if exists roles_permissions_check;
+    alter table public.roles add constraint roles_permissions_check check (permissions >= 0 and permissions <= 4294967295);
+    update public.roles set permissions = permissions | 2147483648::bigint where is_default;
+  end if;
+end $$;
+
+-- a new server's @everyone role can use commands
+create or replace function public.default_role_commands() returns trigger language plpgsql set search_path = '' as $$
+begin
+  if new.is_default then new.permissions := new.permissions | 2147483648::bigint; end if;
+  return new;
+end;
+$$;
+drop trigger if exists roles_default_commands on public.roles;
+create trigger roles_default_commands before insert on public.roles for each row execute function public.default_role_commands();
+
+-- server-wide permissions: 32 bits now
+CREATE OR REPLACE FUNCTION public.server_permissions(p_server uuid, p_user uuid DEFAULT auth.uid())
+ RETURNS bigint
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $fn$
+declare
+  v_owner uuid;
+  v_status text;
+  v_rules text[];
+  v_voogle jsonb;
+  v_perms bigint;
+  v_timeout timestamptz;
+begin
+  select owner_id, status, rules, voogle into v_owner, v_status, v_rules, v_voogle from public.servers where id = p_server;
+  if v_owner is null or v_status <> 'active' then return 0; end if;
+  if v_owner = p_user then return 4294967295; end if;
+  select timeout_until into v_timeout from public.server_members where server_id = p_server and user_id = p_user;
+  if not found then return 0; end if;
+
+  select coalesce(bit_or(r.permissions), 0) into v_perms
+  from public.roles r
+  where r.server_id = p_server
+    and (r.is_default or exists (select 1 from public.member_roles mr
+                                 where mr.role_id = r.id and mr.user_id = p_user
+                                   and mr.server_id = p_server));
+  if (v_perms & 1) = 1 then return 4294967295; end if;
+  if (v_timeout is not null and v_timeout > now())
+     or (cardinality(v_rules) > 0 and not exists (select 1 from public.member_onboarding o where o.server_id = p_server
+                                                 and o.user_id = p_user and o.rules_accepted_at is not null))
+     or (coalesce((v_voogle ->> 'enabled')::boolean, false) and coalesce((v_voogle ->> 'required')::boolean, false)
+         and (v_perms & (2 | 16 | 32 | 2097152)) = 0
+         and not exists (select 1 from public.voogle_verifications v where v.server_id = p_server
+                         and v.user_id = p_user and v.result = 'passed')) then
+    -- read-only: no sending, reacting, threads, polls, files, voice talk
+    v_perms := v_perms & ~(128 | 4096 | 8192 | 32768 | 65536 | 1024 | 2048 | 524288 | 2147483648::bigint);
+  end if;
+  return v_perms;
+end;
+$fn$;
+
+-- channel permissions: 32 bits now
+CREATE OR REPLACE FUNCTION public.channel_perm_for_user(p_channel uuid, p_user uuid DEFAULT auth.uid())
+ RETURNS bigint
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $fn$
+declare
+  c record;
+  v_base bigint;
+  v_out bigint;
+  v_row record;
+begin
+  select id, server_id, type, category into c from public.channels where id = p_channel;
+  if not found then return 0; end if;
+
+  -- DMs are wide open for their participants.
+  if c.type = 'dm' then
+    if exists (select 1 from public.dm_participants where channel_id = p_channel and user_id = p_user)
+      then return 4294967295; end if;
+    return 0;
+  end if;
+
+  if not public.is_server_member(c.server_id, p_user) then return 0; end if;
+  -- a server in review / closed / banned is frozen for everyone, its owner included
+  -- (server_permissions already returns 0 then; the owner shortcut below skipped it)
+  if (select status from public.servers where id = c.server_id) is distinct from 'active' then return 0; end if;
+  if (select owner_id from public.servers where id = c.server_id) = p_user then return 4294967295; end if;
+
+  v_base := public.server_permissions(c.server_id, p_user);
+  if (v_base & 1) = 1 then return 4294967295; end if;
+  v_out := v_base;
+
+  -- Overwrites never grant or strip server-wide powers (Administrator, Manage Server).
+  -- Category-level overwrites.
+  for v_row in
+    select o.target_type, o.target_id, o.allow, o.deny,
+           case when o.target_type = 'member' then 2147483647 else coalesce(r.position, 0) end as pos
+      from public.channel_overwrites o
+      left join public.roles r on r.id = o.target_id and o.target_type = 'role'
+     where o.server_id = c.server_id and o.category = c.category
+     order by pos, o.target_id
+  loop
+    if v_row.target_type = 'role' and not exists (select 1 from public.member_roles mr
+                                                  where mr.role_id = v_row.target_id
+                                                    and mr.user_id = p_user
+                                                    and mr.server_id = c.server_id)
+       and not exists (select 1 from public.roles dr where dr.id = v_row.target_id and dr.is_default) then
+      continue;
+    end if;
+    if v_row.target_type = 'member' and v_row.target_id <> p_user then continue; end if;
+    v_out := (v_out & ~(v_row.deny & ~3)) | (v_row.allow & ~3);
+  end loop;
+
+  -- Channel-level overwrites.
+  for v_row in
+    select o.target_type, o.target_id, o.allow, o.deny,
+           case when o.target_type = 'member' then 2147483647 else coalesce(r.position, 0) end as pos
+      from public.channel_overwrites o
+      left join public.roles r on r.id = o.target_id and o.target_type = 'role'
+     where o.channel_id = c.id
+     order by pos, o.target_id
+  loop
+    if v_row.target_type = 'role' and not exists (select 1 from public.member_roles mr
+                                                  where mr.role_id = v_row.target_id
+                                                    and mr.user_id = p_user
+                                                    and mr.server_id = c.server_id)
+       and not exists (select 1 from public.roles dr where dr.id = v_row.target_id and dr.is_default) then
+      continue;
+    end if;
+    if v_row.target_type = 'member' and v_row.target_id <> p_user then continue; end if;
+    v_out := (v_out & ~(v_row.deny & ~3)) | (v_row.allow & ~3);
+  end loop;
+
+  return v_out;
+end;
+$fn$;
+
+-- every bot command now needs Use Commands in that channel (not just Send Messages)
+create or replace function public.use_bot_command(p_channel uuid, p_app uuid, p_command text, p_args text default '')
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_server uuid;
+  v_id uuid;
+begin
+  if not public.channel_has_permission(p_channel, 2147483648::bigint) then
+    raise exception 'your roles can''t use commands in this channel';
+  end if;
+  if (select preset from public.applications where id = p_app) is distinct from 'comet' then
+    return public.use_bot_command_base(p_channel, p_app, p_command, p_args);
+  end if;
+  select server_id into v_server from public.channels where id = p_channel;
+  if v_server is null or not public.channel_has_permission(p_channel, 128) then raise exception 'you can''t use commands here'; end if;
+  if (select status from public.applications where id = p_app) <> 'active'
+     or not exists (select 1 from public.server_bots where server_id = v_server and app_id = p_app) then
+    raise exception 'Comet isn''t in this server — add it from App Discovery';
+  end if;
+  if (select count(*) from public.bot_interactions where user_id = auth.uid() and created_at > now() - interval '10 seconds') >= 6 then
+    raise exception 'slow down a little';
+  end if;
+  insert into public.bot_interactions (app_id, server_id, channel_id, user_id, command, args)
+  values (p_app, v_server, p_channel, auth.uid(), lower(btrim(p_command)), left(coalesce(p_args, ''), 1000)) returning id into v_id;
+  perform public.comet_command(p_app, p_channel, v_server, lower(btrim(p_command)), coalesce(p_args, ''), v_id);
+  update public.bot_interactions set handled = true where id = v_id;
+  return jsonb_build_object('status', 'handled', 'id', v_id);
+end;
+$$;
+comment on function public.use_bot_command(uuid, uuid, text, text) is 'comet-dispatch';
+
+notify pgrst, 'reload schema';
+
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-- 20261107180000_official_dm_readonly.sql
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+-- =============================================================================
+-- The official Venband chat is read-only (20261107180000)
+--
+--   * Nobody can send messages into their DM with the official Venband account:
+--     it's reserved for official notifications (those arrive as bot messages,
+--     which this doesn't touch).
+--   * The Venband account's profile gets a dark graphite banner (the app shows
+--     the Venband logo as its picture) instead of the default initial on pink.
+--
+-- Safe to run more than once.
+-- =============================================================================
+create or replace function public.block_official_dm() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.author_id <> '3fff0000-0000-4000-8000-0000000000bd'
+     and exists (select 1 from public.dm_participants
+                  where channel_id = new.channel_id and user_id = '3fff0000-0000-4000-8000-0000000000bd') then
+    raise exception 'This chat is reserved for official Venband notifications.';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists messages_official_dm_readonly on public.messages;
+create trigger messages_official_dm_readonly before insert on public.messages
+  for each row execute function public.block_official_dm();
+
+update public.profiles
+   set banner_color = '#26262c',
+       banner_color2 = '#0b0b0f',
+       about = case when coalesce(about, '') = '' then 'The official Venband account. It only sends account notices and security alerts — and never asks for your password.' else about end
+ where id = '3fff0000-0000-4000-8000-0000000000bd';
+
+notify pgrst, 'reload schema';
+
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-- 20261107190000_bot_moderation.sql
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+-- =============================================================================
+-- Moderating bots (20261107190000)
+--
+-- Staff can right-click a bot in the member list and do what they'd do to a
+-- person, with the same permission for each:
+--   kick     (Kick Members)          removes the bot from the server
+--   ban      (Ban Members)           removes it and blocks adding it again; unban lifts it
+--   timeout  (Timeout & Warn)        it can't post or answer commands
+--   mute     (Mute Members)          it can't post
+--   deafen   (Deafen Members)        it ignores commands
+-- Durations: minutes, or null = until lifted (lift with the matching un-action).
+--
+-- Safe to run more than once.
+-- =============================================================================
+alter table public.server_bots add column if not exists timeout_until timestamptz;
+alter table public.server_bots add column if not exists muted_until timestamptz;
+alter table public.server_bots add column if not exists deafened_until timestamptz;
+
+create table if not exists public.server_bot_bans (
+  server_id  uuid not null references public.servers (id) on delete cascade,
+  app_id     uuid not null references public.applications (id) on delete cascade,
+  banned_by  uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now(),
+  primary key (server_id, app_id)
+);
+alter table public.server_bot_bans enable row level security;
+drop policy if exists server_bot_bans_select on public.server_bot_bans;
+create policy server_bot_bans_select on public.server_bot_bans for select to authenticated using (public.is_server_member(server_id));
+
+create or replace function public.moderate_bot(p_server uuid, p_app uuid, p_action text, p_minutes integer default null)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  v_perm bigint := case p_action
+    when 'kick' then 16 when 'ban' then 32 when 'unban' then 32
+    when 'timeout' then 2097152 when 'untimeout' then 2097152
+    when 'mute' then 33554432 when 'unmute' then 33554432
+    when 'deafen' then 67108864 when 'undeafen' then 67108864 end;
+  v_until timestamptz := case when coalesce(p_minutes, 0) <= 0 then now() + interval '100 years' else now() + make_interval(mins => least(p_minutes, 525600)) end;
+  v_name text := (select name from public.applications where id = p_app);
+begin
+  if v_perm is null then raise exception 'unknown action'; end if;
+  if not public.has_permission(p_server, v_perm) then raise exception 'you don''t have permission to do that'; end if;
+  if p_action = 'unban' then
+    delete from public.server_bot_bans where server_id = p_server and app_id = p_app;
+  elsif p_action in ('kick', 'ban') then
+    if p_action = 'ban' then
+      insert into public.server_bot_bans (server_id, app_id, banned_by) values (p_server, p_app, auth.uid()) on conflict do nothing;
+    end if;
+    delete from public.server_bots where server_id = p_server and app_id = p_app;
+  else
+    if not exists (select 1 from public.server_bots where server_id = p_server and app_id = p_app) then raise exception 'that bot isn''t in this server'; end if;
+    update public.server_bots set
+      timeout_until  = case p_action when 'timeout' then v_until when 'untimeout' then null else timeout_until end,
+      muted_until    = case p_action when 'mute' then v_until when 'unmute' then null else muted_until end,
+      deafened_until = case p_action when 'deafen' then v_until when 'undeafen' then null else deafened_until end
+     where server_id = p_server and app_id = p_app;
+  end if;
+  perform public.audit(p_server, 'bot_' || p_action, null, p_app, jsonb_build_object('bot', v_name, 'minutes', p_minutes));
+end;
+$$;
+revoke execute on function public.moderate_bot(uuid, uuid, text, integer) from public, anon;
+grant execute on function public.moderate_bot(uuid, uuid, text, integer) to authenticated;
+
+-- a banned bot can't be added back
+create or replace function public.guard_bot_ban() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if exists (select 1 from public.server_bot_bans where server_id = new.server_id and app_id = new.app_id) then
+    raise exception 'This bot is banned from this server. Unban it first (right-click it in the member list).';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists server_bots_ban_guard on public.server_bots;
+create trigger server_bots_ban_guard before insert on public.server_bots for each row execute function public.guard_bot_ban();
+
+-- muted or timed-out bots can't post (their posts are dropped quietly)
+create or replace function public.guard_bot_post() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if exists (select 1 from public.server_bots
+              where server_id = new.server_id and app_id = new.app_id
+                and ((muted_until is not null and muted_until > now()) or (timeout_until is not null and timeout_until > now()))) then
+    return null;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists bot_messages_mod_guard on public.bot_messages;
+create trigger bot_messages_mod_guard before insert on public.bot_messages for each row execute function public.guard_bot_post();
+
+-- deafened or timed-out bots ignore commands
+create or replace function public.guard_bot_command() returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  b public.server_bots;
+begin
+  select * into b from public.server_bots where server_id = new.server_id and app_id = new.app_id;
+  if found and ((b.deafened_until is not null and b.deafened_until > now()) or (b.timeout_until is not null and b.timeout_until > now())) then
+    raise exception '% isn''t taking commands right now — a moderator has % it.', (select name from public.applications where id = new.app_id),
+      case when b.timeout_until is not null and b.timeout_until > now() then 'timed out' else 'deafened' end;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists bot_interactions_mod_guard on public.bot_interactions;
+create trigger bot_interactions_mod_guard before insert on public.bot_interactions for each row execute function public.guard_bot_command();
 
 notify pgrst, 'reload schema';
 

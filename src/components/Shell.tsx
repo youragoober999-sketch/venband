@@ -1769,21 +1769,104 @@ function MemberList({ data, online, width }: { data: ServerData; online: Set<str
   );
 }
 
+type BotMod = { timeout_until: string | null; muted_until: string | null; deafened_until: string | null };
+const activeUntil = (v: string | null | undefined) => Boolean(v && new Date(v).getTime() > Date.now());
+
 function BotMembers({ serverId }: { serverId: string }) {
-  const bots = useServerBots(serverId);
+  const [version, setVersion] = useState(0);
+  const bots = useServerBots(serverId, version);
   const apps = useApps(bots.map((b) => b.app_id));
+  const [perms, setPerms] = useState(0);
+  const [mod, setMod] = useState<Record<string, BotMod>>({});
+  useEffect(() => {
+    supabase.rpc('server_permissions', { p_server: serverId }).then(({ data }) => setPerms(typeof data === 'number' ? data : 0));
+  }, [serverId]);
+  useEffect(() => {
+    // moderation state (only on databases that have it)
+    supabase
+      .from('server_bots')
+      .select('app_id, timeout_until, muted_until, deafened_until')
+      .eq('server_id', serverId)
+      .then(({ data, error }) => !error && setMod(Object.fromEntries((data ?? []).map((r) => [r.app_id as string, r as unknown as BotMod]))));
+  }, [serverId, bots.length, version]);
   if (!bots.length) return null;
+
+  const act = async (appId: string, action: string, minutes: number | null = null) => {
+    const { error } = await supabase.rpc('moderate_bot', { p_server: serverId, p_app: appId, p_action: action, p_minutes: minutes });
+    if (error) showAlert(errorMessage(error));
+    setVersion((v) => v + 1);
+  };
+  const can = (bit: number) => has(perms, bit) || has(perms, P.ADMINISTRATOR);
+  const durations = (appId: string, action: string, close: () => void) => (
+    <div className="bot-mod-durations">
+      {([['5m', 5], ['1h', 60], ['1d', 1440], ['1w', 10080], ['Until lifted', null]] as [string, number | null][]).map(([label, mins]) => (
+        <button
+          key={label}
+          onClick={() => {
+            close();
+            void act(appId, action, mins);
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  const menu = (e: React.MouseEvent, appId: string, name: string) => {
+    const m = mod[appId];
+    const row = (label: string, icon: string, action: string) => ({
+      type: 'custom' as const,
+      render: (close: () => void) => (
+        <div className="bot-mod-row">
+          <span>
+            <Icon name={icon} size={15} /> {label}
+          </span>
+          {durations(appId, action, close)}
+        </div>
+      ),
+    });
+    openMenu(e, [
+      { type: 'header', label: name },
+      { label: 'Copy bot ID', icon: 'copy', onClick: () => void navigator.clipboard.writeText(appId) },
+      can(P.MODERATE_MEMBERS) && { type: 'sep' },
+      can(P.MODERATE_MEMBERS) && (activeUntil(m?.timeout_until) ? { label: 'Remove timeout', icon: 'clock', onClick: () => void act(appId, 'untimeout') } : row('Time out', 'clock', 'timeout')),
+      can(P.MUTE_MEMBERS) && (activeUntil(m?.muted_until) ? { label: 'Unmute', icon: 'volume', onClick: () => void act(appId, 'unmute') } : row('Mute (can’t post)', 'volume', 'mute')),
+      can(P.DEAFEN_MEMBERS) && (activeUntil(m?.deafened_until) ? { label: 'Undeafen', icon: 'headphones', onClick: () => void act(appId, 'undeafen') } : row('Deafen (ignores commands)', 'headphones', 'deafen')),
+      (can(P.KICK_MEMBERS) || can(P.BAN_MEMBERS)) && { type: 'sep' },
+      can(P.KICK_MEMBERS) && {
+        label: `Kick ${name}`,
+        icon: 'logout',
+        danger: true,
+        onClick: async () => {
+          if (await askConfirm({ title: `Kick ${name}?`, body: 'It’s removed from the server. Someone with Manage Integrations can add it again.', confirm: 'Kick', danger: true })) void act(appId, 'kick');
+        },
+      },
+      can(P.BAN_MEMBERS) && {
+        label: `Ban ${name}`,
+        icon: 'gavel',
+        danger: true,
+        onClick: async () => {
+          if (await askConfirm({ title: `Ban ${name}?`, body: 'It’s removed from the server and can’t be added again until it’s unbanned.', confirm: 'Ban', danger: true })) void act(appId, 'ban');
+        },
+      },
+    ]);
+  };
+
   return (
     <div>
       <div className="members-title">Bots — {bots.length}</div>
       {bots.map((b) => {
         const a = apps[b.app_id];
+        const m = mod[b.app_id];
         return (
-          <div key={b.id} className="member bot-member" title={a?.description || undefined}>
+          <div key={b.id} className="member bot-member" title={a?.description || undefined} onContextMenu={(e) => menu(e, b.app_id, a?.name ?? 'Bot')}>
             {a ? <PresetLogo preset={a.preset} color={a.color} size={32} src={a.icon_url} /> : <Icon name="bot" size={22} />}
             <span className="member-text">
               <span className="member-name">
                 {a?.name ?? 'Bot'} <BotTag />
+                {activeUntil(m?.timeout_until) && <span className="bot-mod-flag" title="Timed out"><Icon name="clock" size={12} /></span>}
+                {activeUntil(m?.muted_until) && <span className="bot-mod-flag" title="Muted"><Icon name="volume" size={12} /></span>}
+                {activeUntil(m?.deafened_until) && <span className="bot-mod-flag" title="Deafened"><Icon name="headphones" size={12} /></span>}
               </span>
             </span>
           </div>

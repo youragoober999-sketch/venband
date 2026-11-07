@@ -60,7 +60,7 @@ select set_config('t.general', (select id::text from public.channels where serve
 select set_config('t.voice', (select id::text from public.channels where server_id = current_setting('t.server')::uuid and type = 'voice'), false);
 
 do $t$ begin
-  assert public.server_permissions(current_setting('t.server')::uuid) = 2147483647, 'owner has all perms';
+  assert public.server_permissions(current_setting('t.server')::uuid) = 4294967295, 'owner has all perms';
   assert (select count(*) from public.roles where server_id = current_setting('t.server')::uuid) = 1;
 end $t$;
 
@@ -382,7 +382,7 @@ end $t$;
 select public.mod_server_action(current_setting('t.server')::uuid, 'approve');
 select public.mod_server_action(current_setting('t.server')::uuid, 'verify');
 do $t$ begin
-  assert public.server_permissions(current_setting('t.server')::uuid) = 2147483647;
+  assert public.server_permissions(current_setting('t.server')::uuid) = 4294967295;
   assert (select verified from public.servers where id = current_setting('t.server')::uuid);
 end $t$;
 

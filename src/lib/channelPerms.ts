@@ -5,7 +5,7 @@ import type { ChannelOverwrite } from './types';
 import { ALL_PERMISSIONS, P } from './permissions';
 
 /** Permissions that can sensibly be overridden per channel/category. */
-export const OVERWRITE_MASK = ALL_PERMISSIONS & ~(P.ADMINISTRATOR | P.MANAGE_SERVER);
+export const OVERWRITE_MASK = (ALL_PERMISSIONS & ~(P.ADMINISTRATOR | P.MANAGE_SERVER)) >>> 0;
 
 function applyOverwrites(
   base: number,
@@ -25,7 +25,7 @@ function applyOverwrites(
     if (o.target_type === 'member') {
       if (o.target_id !== myUserId) continue;
     } else if (!myRoleIds.has(o.target_id)) continue;
-    perms = (perms & ~o.deny) | o.allow;
+    perms = ((perms & ~o.deny) | o.allow) >>> 0;
   }
   return perms;
 }
@@ -49,10 +49,10 @@ export function channelPermissions(opts: {
   let perms = opts.base;
   perms = applyOverwrites(perms, opts.categoryOverwrites, opts.myRoleIds, opts.rolePosition, opts.me);
   perms = applyOverwrites(perms, opts.channelOverwrites, opts.myRoleIds, opts.rolePosition, opts.me);
-  return perms & OVERWRITE_MASK;
+  return (perms & OVERWRITE_MASK) >>> 0;
 }
 
 /** True when a specific permission bit is set in an (already computed) channel permission set. */
 export function can(perms: number, bit: number): boolean {
-  return (perms & bit) === bit;
+  return ((perms & bit) >>> 0) === bit;
 }

@@ -5,7 +5,7 @@ import { sessionStore } from '../lib/session';
 import { createStore } from '../lib/store';
 import { directoryVersion, loadProfiles, subscribeDirectory } from '../lib/directory';
 import { acquireScope, requestKeys, scopeState, subscribeScope, type PresenceMeta } from '../lib/presence';
-import { computePermissions } from '../lib/permissions';
+import { ALL_PERMISSIONS, computePermissions } from '../lib/permissions';
 import { channelPermissions } from '../lib/channelPerms';
 import type { DecryptedMessage } from '../lib/keyring';
 import type { Channel, ChannelOverwrite, DmChannel, Member, MemberRole, MessageRow, Role, Server } from '../lib/types';
@@ -315,8 +315,9 @@ export function useServerData(serverId: string | null): ServerData {
         .sort((a, b) => b.position - a.position);
     const myPermissions =
       me && state.server
-        ? computePermissions(me.id, state.server.owner_id, state.roles, new Set(rolesOf(me.id).map((r) => r.id))) &
-          (state.serverPermissions ?? 0x7fffffff)
+        ? (computePermissions(me.id, state.server.owner_id, state.roles, new Set(rolesOf(me.id).map((r) => r.id))) &
+            (state.serverPermissions ?? ALL_PERMISSIONS)) >>>
+          0
         : 0;
     const rolePosition = (roleId: string) => state.roles.find((r) => r.id === roleId)?.position ?? 0;
     const permsFor = (channelId: string) => {
@@ -329,7 +330,8 @@ export function useServerData(serverId: string | null): ServerData {
         me: me.id,
         ownerId: state.server.owner_id,
         base: myPermissions,
-        myRoleIds: new Set(rolesOf(me.id).map((r) => r.id)),
+        // @everyone counts as one of my roles, so its overrides apply too
+        myRoleIds: new Set([...rolesOf(me.id).map((r) => r.id), ...state.roles.filter((r) => r.is_default).map((r) => r.id)]),
         rolePosition,
         categoryOverwrites,
         channelOverwrites: overwrites,

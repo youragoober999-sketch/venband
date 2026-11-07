@@ -51,6 +51,9 @@ export function Avatar({
   /** show the profile frame (hidden in tight spots like mentions) */
   frame?: boolean;
 }) {
+  // the official Venband account always shows the Venband logo
+  if (profile && (profile as { id?: string }).id === '3fff0000-0000-4000-8000-0000000000bd' && !profile.avatar_url)
+    profile = { ...profile, avatar_url: '/icon-512.png', avatar_color: '#0b0b0f' };
   const name = profile?.display_name ?? '?';
   // online + their chosen status (idle / do not disturb); invisible looks offline
   const status = online === undefined ? null : !online || profile?.presence === 'invisible' ? 'offline' : (profile?.presence ?? 'online');

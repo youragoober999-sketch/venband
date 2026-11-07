@@ -34,14 +34,17 @@ export const P = {
   MANAGE_NICKNAMES: 268435456,
   CHANGE_NICKNAME: 536870912,
   REQUEST_TO_SPEAK: 1073741824,
+  // bit 31. JavaScript's | & ~ work on signed 32-bit numbers, so every place that
+  // combines permission bits ends with >>> 0 to keep this one positive.
+  USE_COMMANDS: 2147483648,
 } as const;
 
-export const ALL_PERMISSIONS = 2147483647;
+export const ALL_PERMISSIONS = 4294967295;
 
 /** What a brand-new @everyone role can do. */
 export const DEFAULT_EVERYONE =
   P.SEND_MESSAGES | P.CREATE_INVITE | P.CONNECT | P.SPEAK | P.VIDEO | P.ADD_REACTIONS | P.CREATE_THREADS | P.CREATE_POLLS |
-  P.ATTACH_FILES | P.EMBED_LINKS | P.USE_SOUNDBOARD | P.CHANGE_NICKNAME | P.REQUEST_TO_SPEAK;
+  (P.ATTACH_FILES | P.EMBED_LINKS | P.USE_SOUNDBOARD | P.CHANGE_NICKNAME | P.REQUEST_TO_SPEAK | P.USE_COMMANDS) >>> 0;
 
 export type PermissionGroup = 'General' | 'Text' | 'Voice' | 'Moderation' | 'Events & Apps' | 'Threads & Forums' | 'Customization';
 
@@ -80,6 +83,7 @@ export const PERMISSION_INFO: { bit: number; name: string; description: string; 
   { bit: P.MODERATE_MEMBERS, group: 'Moderation', name: 'Timeout & Warn Members', description: 'Time out or warn members with lower roles.' },
 
   { bit: P.MANAGE_EVENTS, group: 'Events & Apps', name: 'Manage Events', description: 'Create and edit server events.' },
+  { bit: P.USE_COMMANDS, group: 'Events & Apps', name: 'Use Commands', description: 'Use slash commands — Comet, other bots and built-ins like /avatar. Can be allowed or denied per channel and category.' },
   { bit: P.MANAGE_INTEGRATIONS, group: 'Events & Apps', name: 'Manage Integrations', description: 'Add, configure and remove bots, apps and webhooks.' },
 
   { bit: P.MANAGE_EXPRESSIONS, group: 'Customization', name: 'Manage Emoji, Stickers & Sounds', description: 'Upload and remove server emoji, GIFs, stickers and soundboard sounds.' },
@@ -95,13 +99,15 @@ export function computePermissions(
 ): number {
   if (userId === ownerId) return ALL_PERMISSIONS;
   let perms = 0;
-  for (const r of roles) if (r.is_default || memberRoleIds.has(r.id)) perms |= r.permissions;
+  for (const r of roles) if (r.is_default || memberRoleIds.has(r.id)) perms = (perms | r.permissions) >>> 0;
   return perms & P.ADMINISTRATOR ? ALL_PERMISSIONS : perms;
 }
 
 export function has(perms: number, bit: number): boolean {
-  return (perms & bit) === bit;
+  return ((perms & bit) >>> 0) === bit;
 }
+/** Add or remove a permission bit (unsigned, so bit 31 stays positive). */
+export const withBit = (perms: number, bit: number, on: boolean) => (on ? (perms | bit) >>> 0 : (perms & ~bit) >>> 0);
 
 /** Plain-English reason an action isn't allowed. */
 export function deniedReason(bit: number): string {

@@ -4,7 +4,7 @@ import { AuditLogTab, ServerReportsTab } from './ReportViews';
 import { supabase, errorMessage } from '../lib/supabase';
 import { isTopStaff, sessionStore } from '../lib/session';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
-import { has, P, PERMISSION_GROUPS, PERMISSION_INFO } from '../lib/permissions';
+import { has, P, PERMISSION_GROUPS, PERMISSION_INFO, withBit } from '../lib/permissions';
 import type { Ban, Role } from '../lib/types';
 import { openServer, type ServerData } from '../hooks/data';
 import { Avatar, ColorPicker, Field, Icon, Modal } from './ui';
@@ -438,7 +438,7 @@ function RoleEditor({ role, data, editable }: { role: Role; data: ServerData; ed
                       className="toggle"
                       disabled={!has(mine, pi.bit)}
                       checked={has(perms, pi.bit)}
-                      onChange={(e) => setPerms(e.target.checked ? perms | pi.bit : perms & ~pi.bit)}
+                      onChange={(e) => setPerms(withBit(perms, pi.bit, e.target.checked))}
                     />
                   </label>
                 ))}

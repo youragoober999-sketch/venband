@@ -292,9 +292,7 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "timeout_member",
       "warn_member"
     ],
-    "bodies": {
-      "server_permissions": "08c2ad5a310b7341be976c9a116471ba"
-    }
+    "bodies": {}
   },
   {
     "migration": "20261008000000_profiles_groups.sql",
@@ -654,7 +652,6 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     "tables": [],
     "functions": [],
     "bodies": {
-      "channel_perm_for_user": "0b0b2fd47dd326c3be5502033ced2886",
       "dm_blocked": "677b9f8316e1e260428e426a1e8c0b9d"
     }
   },
@@ -835,6 +832,7 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "comet_after_join",
       "comet_app",
       "comet_birthday_set",
+      "comet_c",
       "comet_cfg",
       "comet_channel",
       "comet_client_config",
@@ -848,17 +846,51 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "comet_on_message",
       "comet_on_report",
       "comet_purge_ids",
+      "comet_r",
       "comet_reply",
       "comet_role",
       "comet_set",
       "comet_swear",
       "comet_tokens",
+      "comet_u",
       "comet_user",
       "comet_word_hit"
     ],
     "bodies": {
-      "preset_commands": "077d50aef9d437cf77253b3e1dd03b85",
-      "use_bot_command": "1a1f518144d64cf0672f1cf4bfb2659d"
+      "preset_commands": "077d50aef9d437cf77253b3e1dd03b85"
     }
+  },
+  {
+    "migration": "20261107170000_use_commands.sql",
+    "tables": [],
+    "functions": [
+      "default_role_commands"
+    ],
+    "bodies": {
+      "channel_perm_for_user": "7df015605135de7fa2ec1d7940e8f426",
+      "server_permissions": "a268b46f8b42653aebcdb73e542dd2c2",
+      "use_bot_command": "dd5787a21e6c4630cf9c135f595fa258"
+    }
+  },
+  {
+    "migration": "20261107180000_official_dm_readonly.sql",
+    "tables": [],
+    "functions": [
+      "block_official_dm"
+    ],
+    "bodies": {}
+  },
+  {
+    "migration": "20261107190000_bot_moderation.sql",
+    "tables": [
+      "server_bot_bans"
+    ],
+    "functions": [
+      "guard_bot_ban",
+      "guard_bot_command",
+      "guard_bot_post",
+      "moderate_bot"
+    ],
+    "bodies": {}
   }
 ];

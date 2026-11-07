@@ -1218,9 +1218,9 @@ function ChannelPermissionsEditor({
 
       for (const permission of PERMISSION_INFO) {
         tri[permission.bit] =
-          (overwrite.allow & permission.bit) > 0
+          (overwrite.allow & permission.bit) !== 0
             ? 1
-            : (overwrite.deny & permission.bit) > 0
+            : (overwrite.deny & permission.bit) !== 0
               ? 2
               : 0;
       }
@@ -1357,9 +1357,9 @@ function ChannelPermissionsEditor({
           const value = target.tri[permission.bit];
 
           if (value === 1) {
-            allow |= permission.bit;
+            allow = (allow | permission.bit) >>> 0;
           } else if (value === 2) {
-            deny |= permission.bit;
+            deny = (deny | permission.bit) >>> 0;
           }
         }
 

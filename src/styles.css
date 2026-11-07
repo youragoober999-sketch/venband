@@ -3290,3 +3290,13 @@ input[type=range].vb-slider:disabled { opacity: .5; cursor: default; }
 .ping-text { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .warning-label { margin-top: 10px; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #ffb340; }
+
+.official-lock { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 16px 16px; padding: 14px 16px; border-radius: 14px; border: 1px dashed var(--line-2, var(--line)); background: repeating-linear-gradient(135deg, var(--bg-2) 0 10px, color-mix(in srgb, var(--bg-2) 70%, var(--bg-1)) 10px 20px); color: var(--text-2); font-weight: 700; font-size: 14px; text-align: center; user-select: none; }
+.official-lock-icon { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-text, var(--text)); flex: none; }
+
+.bot-mod-row { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; }
+.bot-mod-row > span { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--text-2); }
+.bot-mod-durations { display: flex; flex-wrap: wrap; gap: 4px; }
+.bot-mod-durations button { padding: 3px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text); font-size: 12px; font-weight: 700; cursor: pointer; }
+.bot-mod-durations button:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bot-mod-flag { display: inline-flex; margin-left: 4px; color: #ffb340; vertical-align: middle; }

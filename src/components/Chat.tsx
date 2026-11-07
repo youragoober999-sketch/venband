@@ -43,7 +43,7 @@ import { Composer, fillComposer, useTyping, type Mentionables, type PendingFile,
 import { EditHistoryModal, PollView, QuickReactBar, quickReactionSet, Reactions, ThreadSummary } from './MessageParts';
 import { EmojiPicker } from './EmojiPicker';
 import { toggleReaction } from '../lib/chatExtras';
-import { isOfficialApp, isVenbandBot, useApps, useBotMessages, useDmBot, useDmCommands, useServerCommands, type Application, type BotMessage } from '../lib/bots';
+import { VENBAND_SYSTEM_ID, isOfficialApp, isVenbandBot, useApps, useBotMessages, useDmBot, useDmCommands, useServerCommands, type Application, type BotMessage } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
 
 interface JoinEvent {
@@ -198,6 +198,8 @@ export function ChatView({
   const chanPerms = data ? data.permsFor(channel.id) : 0;
   const can = (bit: number) => !data || has(chanPerms, bit);
   const isDm = channel.type === 'dm';
+  // the official Venband account's DM: notifications only, no typing
+  const officialDm = isDm && (dmMembers ?? []).some((p) => p.id === VENBAND_SYSTEM_ID);
   const canPin = isDm || can(P.MANAGE_MESSAGES);
   const { openedAt, markUnread, manual } = useReadMarker(channel.id, messages[messages.length - 1], !isThread);
   const pinnedIds = useMemo(() => new Set(extras.pins.map((p) => p.message_id)), [extras.pins]);
@@ -338,6 +340,9 @@ export function ChatView({
     // this chat has a command with the same name
     let cmd: MessagePayload['cmd'];
     const own = !opts.scheduleAt && text.trim().match(/^\/([a-z0-9_-]{1,32})(?:\s+([\s\S]*))?$/i);
+    // "Use Commands" (role permission, can be set per channel / category)
+    const knownCmd = own && (isBuiltin(own[1].toLowerCase()) || botCommands.some((c) => c.name === own[1].toLowerCase()));
+    if (knownCmd && !can(P.USE_COMMANDS)) throw new Error('Your roles can’t use commands in this channel.');
     if (own && isBuiltin(own[1].toLowerCase()) && !botCommands.some((c) => c.name === own[1].toLowerCase()) && !(isDm && dmCommands.some((c) => c.name === own[1].toLowerCase()))) {
       const name = own[1].toLowerCase();
       const r = await runBuiltin(name, own[2] ?? '', { me: sessionStore.get().me!, replyTo });
@@ -549,13 +554,13 @@ export function ChatView({
       channels: (data?.channels ?? []).filter((c) => c.type === 'text').map((c) => ({ id: c.id, label: c.name })),
       everyone: Boolean(data) && can(P.MENTION_EVERYONE),
       emoji: customEmoji(expressions),
-      commands: [
+      commands: !can(P.USE_COMMANDS) ? [] : [
         ...(isDm ? dmCommands : botCommands).map((c) => (isCometApp(c.app_name) && COMET[c.name] ? { ...c, options: COMET[c.name].options, variants: COMET[c.name].variants, category: COMET[c.name].category } : c)),
         ...BUILTIN_COMMANDS.filter((b) => !(isDm ? dmCommands : botCommands).some((c) => c.name === b.name)).map((b) => ({ ...BUILTIN_APP, name: b.name, description: b.description, usage: b.usage, options: b.options })),
       ],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, dmMembers, me, expressions, botCommands, dmCommands, isDm]);
+  }, [data, dmMembers, me, expressions, botCommands, dmCommands, isDm, channel.id]);
 
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File[]>([]);
@@ -899,6 +904,14 @@ export function ChatView({
             }}
           />
         )}
+        {officialDm ? (
+          <div className="official-lock" role="note">
+            <span className="official-lock-icon">
+              <Icon name="shield" size={18} />
+            </span>
+            <span>This Chat Is Reserved For Official Venband Notifications.</span>
+          </div>
+        ) : (
         <Composer
           channelId={composerKey}
           placeholder={
@@ -930,6 +943,7 @@ export function ChatView({
           canRepeat={isDm || can(P.MANAGE_MESSAGES)}
           slowmode={isDm || can(P.MANAGE_MESSAGES) || can(P.MANAGE_CHANNELS) ? 0 : Math.max(0, Number(channel.settings?.slowmode) || 0)}
         />
+        )}
       </div>
       {openThread && !isThread && (
         <aside className="side-panel thread-panel" aria-label="Thread">
