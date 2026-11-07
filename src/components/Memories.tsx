@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { Avatar, Field, Icon, Modal } from './ui';
 import { askConfirm, askText, showAlert } from './Dialogs';
+import { openMenu } from './ContextMenu';
 import { Select } from './Select';
 import { reportItem } from '../lib/staff';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
@@ -58,9 +59,28 @@ export function MemoriesStrip({ userId, self }: { userId: string; self: boolean 
     }
   };
 
+  const remove = async (m: Memory) => {
+    if (!(await askConfirm({ title: 'Delete this memory?', body: 'It’s removed for everyone right away. This can’t be undone.', confirm: 'Delete', danger: true }))) return;
+    try {
+      await deleteMemory(m);
+    } catch (e) {
+      setErr(errorMessage(e));
+    }
+  };
+  const menu = (e: React.MouseEvent, m: Memory) => {
+    if (!self) return;
+    e.preventDefault();
+    openMenu(e, [
+      { label: isShowing(m) ? 'Archive (hide from profile)' : 'Show on profile again', icon: isShowing(m) ? 'archive' : 'eye', onClick: () => void updateMemory(m, { active: !isShowing(m), expires_at: null }).catch((x) => setErr(errorMessage(x))) },
+      { label: 'Delete memory', icon: 'trash', danger: true, onClick: () => void remove(m) },
+    ]);
+  };
+
   const tile = (m: Memory, i: number, from: Memory[]) => (
-    <button key={m.id} className={`mem-tile${isShowing(m) ? '' : ' archived'}`} onClick={() => setOpen({ list: from, i })} title={m.caption || 'Open memory'}>
-      {m.media_type === 'video' ? <video src={m.url} muted playsInline preload="metadata" /> : <img src={m.url} alt={m.caption || 'Memory'} loading="lazy" />}
+    <div key={m.id} className="mem-tile-wrap" onContextMenu={(e) => menu(e, m)}>
+    <button className={`mem-tile${isShowing(m) ? '' : ' archived'}`} onClick={() => setOpen({ list: from, i })} title={m.caption || 'Open memory'}>
+      {/* #t=0.1 makes the browser draw the first frame instead of a blank tile */}
+      {m.media_type === 'video' ? <video src={m.url ? `${m.url}#t=0.1` : undefined} muted playsInline preload="metadata" /> : <img src={m.url} alt={m.caption || 'Memory'} loading="lazy" />}
       {m.media_type === 'video' && <span className="mem-dur">{Math.round(m.duration_ms / 1000)}s</span>}
       {self && m.audience && m.audience !== 'everyone' && (
         <span className="mem-aud" title={AUDIENCE_LABEL[m.audience]}>
@@ -68,6 +88,12 @@ export function MemoriesStrip({ userId, self }: { userId: string; self: boolean 
         </span>
       )}
     </button>
+    {self && (
+      <button className="mem-del" onClick={() => void remove(m)} aria-label="Delete memory" title="Delete memory">
+        <Icon name="trash" size={12} />
+      </button>
+    )}
+    </div>
   );
 
   return (
@@ -107,7 +133,7 @@ export function MemoriesStrip({ userId, self }: { userId: string; self: boolean 
           if (f) setPending(f);
         }}
       />
-      {err && <p className="small muted">{err}</p>}
+      {err && <div className="form-error mem-err">{err}</div>}
       {pending && <AddMemoryModal file={pending} onCancel={() => (setPending(null), input.current && (input.current.value = ''))} onAdd={(o) => add(pending, o)} />}
       {open && open.list.length > 0 && <MemoryViewer list={open.list} start={open.i} self={self} onClose={() => setOpen(null)} />}
     </section>

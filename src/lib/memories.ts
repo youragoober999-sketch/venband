@@ -96,10 +96,84 @@ function videoInfo(file: File): Promise<{ duration: number; width: number; heigh
     v.preload = 'metadata';
     v.muted = true;
     const url = URL.createObjectURL(file);
-    v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve({ duration: v.duration * 1000, width: v.videoWidth, height: v.videoHeight }); };
-    v.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That video can’t be played in this browser. Try an MP4.')); };
+    let settled = false;
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      if (err) reject(err);
+      else resolve({ duration: v.duration * 1000, width: v.videoWidth, height: v.videoHeight });
+    };
+    v.onloadedmetadata = () => {
+      if (Number.isFinite(v.duration) && v.duration > 0) return finish();
+      // Many recordings (browser/phone WebM, some MP4s) don't state their length
+      // up front, so the browser says "Infinity". Seeking far past the end makes
+      // it work out the real length.
+      v.ondurationchange = () => {
+        if (Number.isFinite(v.duration) && v.duration > 0) finish();
+      };
+      v.currentTime = 1e7;
+    };
+    v.onerror = () => finish(new Error('That video can’t be played in this browser. Try an MP4 (H.264).'));
+    setTimeout(() => finish(new Error('Couldn’t read how long that video is. Try an MP4.')), 15_000);
     v.src = url;
   });
+}
+
+/**
+ * Shrink a video that's over the size limit: play it into a canvas (max 720p)
+ * and record that, with its sound. Takes as long as the video (30 s at most).
+ */
+async function compressVideo(file: File, onProgress: (pct: number) => void): Promise<{ blob: Blob; type: string; ext: string }> {
+  const type = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'].find((t) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t));
+  if (!type) throw new Error('That video is over 25 MB and this browser can’t shrink it. Trim it or record at a lower quality.');
+  const v = document.createElement('video');
+  const url = URL.createObjectURL(file);
+  v.src = url;
+  v.playsInline = true;
+  v.volume = 0; // the sound is recorded from the stream, not played out loud
+  try {
+    await new Promise<void>((res, rej) => {
+      v.onloadedmetadata = () => res();
+      v.onerror = () => rej(new Error('That video can’t be played in this browser. Try an MP4 (H.264).'));
+    });
+    const scale = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(2, Math.round((v.videoWidth * scale) / 2) * 2);
+    canvas.height = Math.max(2, Math.round((v.videoHeight * scale) / 2) * 2);
+    const ctx = canvas.getContext('2d')!;
+    const stream = canvas.captureStream(30);
+    const source = (v as HTMLVideoElement & { captureStream?: () => MediaStream }).captureStream?.();
+    source?.getAudioTracks().forEach((t) => stream.addTrack(t));
+    const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 128_000 });
+    const parts: Blob[] = [];
+    rec.ondataavailable = (e) => {
+      if (e.data.size) parts.push(e.data);
+    };
+    const stopped = new Promise<void>((res) => (rec.onstop = () => res()));
+    let raf = 0;
+    const draw = () => {
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      if (Number.isFinite(v.duration) && v.duration > 0) onProgress(Math.min(99, Math.round((v.currentTime / v.duration) * 100)));
+      raf = requestAnimationFrame(draw);
+    };
+    const ended = new Promise<void>((res) => (v.onended = () => res()));
+    rec.start(1000);
+    await v.play();
+    draw();
+    await ended;
+    cancelAnimationFrame(raf);
+    rec.stop();
+    await stopped;
+    stream.getTracks().forEach((t) => t.stop());
+    const mime = type.split(';')[0];
+    return { blob: new Blob(parts, { type: mime }), type: mime, ext: mime === 'video/mp4' ? 'mp4' : 'webm' };
+  } finally {
+    v.pause();
+    v.removeAttribute('src');
+    v.load();
+    URL.revokeObjectURL(url);
+  }
 }
 
 /** Re-encode images: max 1440 px, WebP, and the canvas drops EXIF/GPS metadata. */
@@ -133,22 +207,29 @@ export async function addMemory(file: File, opts: NewMemory = {}, onStage?: (s: 
   const active = existing.filter(isShowing).length < MAX_SHOWING;
   const isVideo = file.type.startsWith('video/');
   if (!isVideo && !file.type.startsWith('image/')) throw new Error('Memories can be photos or videos.');
-  if (file.size > MAX_BYTES) throw new Error('That file is over 25 MB.');
+  if (!isVideo && file.size > MAX_BYTES) throw new Error('That picture is over 25 MB.');
 
   let blob: Blob = file, width = 0, height = 0, duration = IMAGE_MS, ext = 'webp';
+  let videoType = file.type || 'video/mp4';
   onStage?.('Preparing…');
   if (isVideo) {
     const info = await videoInfo(file);
     if (info.duration > MAX_VIDEO_MS + 250) throw new Error(`Videos can be up to 30 seconds (that one is ${Math.round(info.duration / 1000)} s).`);
     width = info.width; height = info.height; duration = Math.max(1000, Math.round(info.duration));
     ext = file.type === 'video/webm' ? 'webm' : file.type === 'video/quicktime' ? 'mov' : 'mp4';
+    if (file.size > MAX_BYTES) {
+      onStage?.('Shrinking video…');
+      const small = await compressVideo(file, (pct) => onStage?.(`Shrinking ${pct}%`));
+      if (small.blob.size > MAX_BYTES) throw new Error('That video is still over 25 MB after shrinking. Trim it a little.');
+      blob = small.blob; ext = small.ext; videoType = small.type;
+    }
   } else {
     ({ blob, width, height } = await prepareImage(file));
     if (file.type === 'image/gif') ext = 'gif';
   }
   const path = `${uid}/${crypto.randomUUID()}.${ext}`;
   onStage?.('Uploading…');
-  const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: isVideo ? file.type : ext === 'gif' ? 'image/gif' : 'image/webp' });
+  const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: isVideo ? videoType : ext === 'gif' ? 'image/gif' : 'image/webp' });
   if (upErr) throw upErr;
   const row = {
     user_id: uid, path, media_type: isVideo ? 'video' : 'image', duration_ms: duration,

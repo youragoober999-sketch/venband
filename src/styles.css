@@ -2955,6 +2955,12 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 
 /* ---- memories: archive, audience, new-memory dialog */
 .mem-tile.archived { opacity: .55; }
+.mem-tile-wrap { position: relative; flex: none; }
+.mem-del { position: absolute; top: 4px; right: 4px; z-index: 2; width: 22px; height: 22px; border-radius: 50%; border: 0; display: grid; place-items: center; color: #fff; background: #000a; backdrop-filter: blur(4px); cursor: pointer; opacity: 0; transition: opacity .15s, background .15s; }
+.mem-tile-wrap:hover .mem-del, .mem-del:focus-visible { opacity: 1; }
+.mem-del:hover { background: var(--danger, #ff453a); }
+@media (hover: none) { .mem-del { opacity: 1; } }
+.mem-err { margin-top: 8px; }
 .mem-aud { position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; border-radius: 50%; background: #000a; color: #fff; display: flex; align-items: center; justify-content: center; }
 .mem-meta { margin: 4px 0 0; font-size: 12px; color: #fffb; text-align: center; }
 .mem-new { display: flex; flex-direction: column; gap: 10px; }
