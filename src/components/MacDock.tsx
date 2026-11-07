@@ -14,11 +14,19 @@ import { Icon, initials } from './ui';
 function ChatGlyph() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden>
-      <path d="M9.5 5.5h7a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-.5v2.4l-3.1-2.4H9.5a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3z" fill="#ffffff" opacity=".45" transform="translate(1.8 -1.6)" />
-      <path d="M6.5 7.5h8a3 3 0 0 1 3 3v4.2a3 3 0 0 1-3 3H10l-3.6 2.8v-2.8a3 3 0 0 1-2.9-3v-4.2a3 3 0 0 1 3-3z" fill="#ffffff" />
-      <circle cx="7.9" cy="12.6" r="1.05" fill="#5b3fd6" />
-      <circle cx="10.8" cy="12.6" r="1.05" fill="#5b3fd6" />
-      <circle cx="13.7" cy="12.6" r="1.05" fill="#5b3fd6" />
+      <path
+        d="M9.5 5.5h7a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-.5v2.4l-3.1-2.4H9.5a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3z"
+        fill="#252333"
+        opacity=".9"
+        transform="translate(1.8 -1.6)"
+      />
+      <path
+        d="M6.5 7.5h8a3 3 0 0 1 3 3v4.2a3 3 0 0 1-3 3H10l-3.6 2.8v-2.8a3 3 0 0 1-2.9-3v-4.2a3 3 0 0 1 3-3z"
+        fill="#393544"
+      />
+      <circle cx="7.9" cy="12.6" r="1.05" fill="#8875C9" />
+      <circle cx="10.8" cy="12.6" r="1.05" fill="#8875C9" />
+      <circle cx="13.7" cy="12.6" r="1.05" fill="#8875C9" />
     </svg>
   );
 }
