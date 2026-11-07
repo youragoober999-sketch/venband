@@ -59,6 +59,12 @@ export default function App() {
   const hasProfile = sessionStore.use((s) => Boolean(s.me));
   const needsOnboarding = sessionStore.use((s) => s.me?.onboarded === false);
   useEffect(() => {
+    // the Spotify connection was removed: forget any tokens it left on this device
+    try {
+      for (const k of ['spotify_access_token', 'spotify_refresh_token', 'spotify_expires_at', 'spotify_verifier']) localStorage.removeItem(k);
+    } catch {
+      /* storage blocked */
+    }
     if (configured) initSession();
     // Back from a provider's sign-in (Settings → Connections): finish the link,
     // then always leave the "Connecting…" screen — success or not.

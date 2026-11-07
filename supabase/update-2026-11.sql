@@ -29,6 +29,7 @@
 --   * 20261106180000_online_status.sql
 --   * 20261107120000_memory_music.sql
 --   * 20261107130000_connections_on_profile.sql
+--   * 20261107140000_drop_spotify_connection.sql
 --
 -- Afterwards venband.com/status should show "Database setup: Operational".
 -- =============================================================================
@@ -2993,5 +2994,19 @@ grant execute on function public.my_connections(), public.set_connection_visibil
   public.profile_connections(uuid) to authenticated;
 
 notify pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------- 20261107140000_drop_spotify_connection.sql
+-- =============================================================================
+-- Spotify connection removed (20261107140000)
+--
+-- Spotify's Web API now requires a paid Premium plan for apps like ours, so
+-- the Spotify "Connect" in Settings → Connections is gone. Links people already
+-- made aren't used for anything any more, so they're deleted rather than kept.
+-- (Spotify link embeds in chat and the desktop app's "Listening to Spotify"
+-- status don't use the Web API and are unaffected.)
+--
+-- Safe to run more than once.
+-- =============================================================================
+delete from public.connections where provider = 'spotify';
 
 notify pgrst, 'reload schema';

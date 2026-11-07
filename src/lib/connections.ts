@@ -12,7 +12,7 @@
 //     Client ids below are public by design (they're in every sign-in URL).
 import { supabase, errorMessage } from './supabase';
 
-export type ConnectionProvider = 'steam' | 'spotify' | 'twitch' | 'discord' | 'github' | 'youtube' | 'xbox' | 'instagram' | 'tiktok';
+export type ConnectionProvider = 'steam' | 'twitch' | 'discord' | 'github' | 'youtube' | 'xbox' | 'instagram' | 'tiktok';
 
 export interface ConnectionRow {
   provider: ConnectionProvider;
@@ -46,8 +46,6 @@ export function profileUrl(c: { provider: ConnectionProvider; external_id: strin
       return h ? `https://github.com/${h}` : null;
     case 'youtube':
       return h ? `https://www.youtube.com/@${h}` : `https://www.youtube.com/channel/${encodeURIComponent(c.external_id)}`;
-    case 'spotify':
-      return `https://open.spotify.com/user/${encodeURIComponent(c.external_id)}`;
     case 'xbox':
       return `https://www.xbox.com/play/user/${h || encodeURIComponent(c.display_name)}`;
     default:
@@ -78,7 +76,6 @@ export interface ProviderInfo {
 }
 
 export const PROVIDERS: ProviderInfo[] = [
-  { provider: 'spotify', name: 'Spotify', color: '#1db954', kind: 'ready', desc: 'Show what you’re listening to and host Listen Along.' },
   { provider: 'steam', name: 'Steam', color: '#171a21', kind: 'ready', desc: 'Your Steam name and avatar on your profile.' },
   { provider: 'xbox', name: 'Xbox', color: '#107c10', kind: 'ready', desc: 'Show your gamertag.' },
   { provider: 'twitch', name: 'Twitch', color: '#9146ff', kind: 'ready', desc: 'Link your channel for when you go live.' },
@@ -99,7 +96,6 @@ const PROD = SITE === 'https://www.venband.com';
 
 /** Register exactly these in each provider's developer console. */
 export const REDIRECTS: Record<Exclude<ConnectionProvider, 'discord' | 'instagram'>, string> = {
-  spotify: `${SITE}/callback`,
   youtube: `${SITE}/callback`,
   tiktok: `${SITE}/callback`,
   github: `${SITE}/github/auth`,
@@ -109,17 +105,15 @@ export const REDIRECTS: Record<Exclude<ConnectionProvider, 'discord' | 'instagra
 };
 
 const CLIENT = {
-  spotify: '05794dae8b7747a6879621caf10a9716',
   youtube: '319530075746-jvmsth0p5h4c36cdiu2q0spl1ccli8sf.apps.googleusercontent.com',
   tiktok: 'aw3rf61cawh6b01a',
   github: 'Iv23liN3W4bPnHUOj45w',
   xbox: 'fb0e8566-ac50-467e-bef4-9df4bd5f16e5',
   twitch: 'fj02sot13ldczefa3za7hcc3ryw9fe',
 };
-const SPOTIFY_SCOPES = 'user-read-currently-playing user-read-playback-state streaming';
 
 /** Paths that mean "a provider just sent you back here". */
-export const isOAuthReturnPath = (path = location.pathname) => /^\/(callback|auth\/(xbox|twitch|steam|github|youtube|tiktok|spotify)|github\/auth)\/?$/i.test(path);
+export const isOAuthReturnPath = (path = location.pathname) => /^\/(callback|auth\/(xbox|twitch|steam|github|youtube|tiktok)|github\/auth)\/?$/i.test(path);
 
 // ------------------------------------------------------------------ store ----
 
@@ -160,7 +154,6 @@ export async function addConnection(provider: ConnectionProvider, externalId: st
 export async function removeConnection(provider: ConnectionProvider, externalId: string | null = null): Promise<void> {
   const { error } = await supabase.rpc('remove_connection', { p_provider: provider, p_external_id: externalId });
   if (error) throw error;
-  if (provider === 'spotify') for (const k of ['spotify_access_token', 'spotify_refresh_token', 'spotify_expires_at']) localStorage.removeItem(k);
   await reloadConnections();
 }
 
@@ -200,18 +193,6 @@ export async function connect(provider: ConnectionProvider): Promise<void> {
         'openid.realm': SITE,
         'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
         'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select',
-      });
-    }
-    case 'spotify': {
-      const { verifier, challenge } = await pkce();
-      return to('https://accounts.spotify.com/authorize', {
-        client_id: CLIENT.spotify,
-        response_type: 'code',
-        redirect_uri: REDIRECTS.spotify,
-        scope: SPOTIFY_SCOPES,
-        code_challenge_method: 'S256',
-        code_challenge: challenge,
-        state: remember('spotify', verifier),
       });
     }
     case 'youtube': {
@@ -286,24 +267,6 @@ async function serverFinish(body: Record<string, unknown>): Promise<{ external_i
   return data;
 }
 
-async function spotifyFinish(code: string, verifier: string) {
-  const r = await fetch('https://accounts.spotify.com/api/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: CLIENT.spotify, grant_type: 'authorization_code', code, redirect_uri: REDIRECTS.spotify, code_verifier: verifier }),
-  });
-  const tok = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(tok?.error_description || 'Spotify didn’t accept the sign-in.');
-  // the "now playing" token stays on this device
-  localStorage.setItem('spotify_access_token', tok.access_token);
-  if (tok.refresh_token) localStorage.setItem('spotify_refresh_token', tok.refresh_token);
-  localStorage.setItem('spotify_expires_at', String(Date.now() + (tok.expires_in ?? 3600) * 1000));
-  const pr = await fetch('https://api.spotify.com/v1/me', { headers: { authorization: `Bearer ${tok.access_token}` } });
-  if (pr.status === 403) throw new Error('Spotify only lets accounts added to the Venband app’s user list connect while it’s in development mode.');
-  const me = pr.ok ? await pr.json() : null;
-  return { external_id: me?.id || 'spotify', display_name: me?.display_name || me?.id || 'Spotify', avatar_url: me?.images?.[0]?.url || null };
-}
-
 export type OAuthResult = { ok: true; provider: ConnectionProvider; name: string } | { ok: false; provider: ConnectionProvider | null; error: string };
 
 /**
@@ -352,9 +315,6 @@ export async function handleOAuthReturn(): Promise<OAuthResult | null> {
     let got: { external_id: string; display_name: string; avatar_url: string | null; handle?: string };
     const code = q.get('code') || '';
     switch (provider) {
-      case 'spotify':
-        got = await spotifyFinish(code, saved?.verifier || '');
-        break;
       case 'twitch':
         got = await serverFinish({ provider, access_token: h.get('access_token') || '' });
         break;
@@ -370,42 +330,4 @@ export async function handleOAuthReturn(): Promise<OAuthResult | null> {
   } catch (e) {
     return fail(`${name} link failed: ${errorMessage(e)}`);
   }
-}
-
-// --------------------------------------------------------------- spotify ----
-
-/** A fresh Spotify access token for this device, or null. */
-export async function spotifyAccessToken(): Promise<string | null> {
-  const tok = localStorage.getItem('spotify_access_token');
-  const exp = Number(localStorage.getItem('spotify_expires_at') || 0);
-  if (tok && Date.now() < exp - 60_000) return tok;
-  const refresh = localStorage.getItem('spotify_refresh_token');
-  if (!refresh) return null;
-  const r = await fetch('https://accounts.spotify.com/api/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: CLIENT.spotify, grant_type: 'refresh_token', refresh_token: refresh }),
-  });
-  if (!r.ok) return null;
-  const t = await r.json();
-  localStorage.setItem('spotify_access_token', t.access_token);
-  if (t.refresh_token) localStorage.setItem('spotify_refresh_token', t.refresh_token);
-  localStorage.setItem('spotify_expires_at', String(Date.now() + (t.expires_in ?? 3600) * 1000));
-  return t.access_token;
-}
-
-export async function spotifyNowPlaying(): Promise<{ name: string; artist: string; albumArt: string | null; isPlaying: boolean } | null> {
-  const tok = await spotifyAccessToken();
-  if (!tok) return null;
-  const r = await fetch('https://api.spotify.com/v1/me/player/currently-playing', { headers: { authorization: `Bearer ${tok}` } });
-  if (r.status === 204 || !r.ok) return null;
-  const d = await r.json();
-  const item = d?.item;
-  if (!item) return null;
-  return {
-    name: item.name,
-    artist: (item.artists || []).map((a: { name: string }) => a.name).join(', '),
-    albumArt: item.album?.images?.[0]?.url || null,
-    isPlaying: !!d.is_playing,
-  };
 }

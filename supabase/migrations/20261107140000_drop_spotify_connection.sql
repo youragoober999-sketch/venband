@@ -1,0 +1,12 @@
+-- =============================================================================
+-- Spotify connection removed (20261107140000)
+--
+-- Spotify's Web API now requires a paid Premium plan for apps like ours, so
+-- the Spotify "Connect" in Settings → Connections is gone. Links people already
+-- made aren't used for anything any more, so they're deleted rather than kept.
+-- (Spotify link embeds in chat and the desktop app's "Listening to Spotify"
+-- status don't use the Web API and are unaffected.)
+--
+-- Safe to run more than once.
+-- =============================================================================
+delete from public.connections where provider = 'spotify';

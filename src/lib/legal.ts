@@ -175,7 +175,7 @@ const TERMS: LegalDoc = {
       id: 'connections',
       title: 'Connected accounts',
       body: [
-        'You can link accounts from other services (for example Steam, Spotify, Twitch, YouTube, TikTok, GitHub and Xbox). Linking is optional and you can unlink at any time. Those services are run by other companies with their own terms. What we receive and what we do with it is explained in [Connections & Privacy](/privacy/connections).',
+        'You can link accounts from other services (for example Steam, Twitch, YouTube, TikTok, GitHub and Xbox). Linking is optional and you can unlink at any time. Those services are run by other companies with their own terms. What we receive and what we do with it is explained in [Connections & Privacy](/privacy/connections).',
       ],
     },
     {
@@ -505,7 +505,7 @@ const CONNECTIONS: LegalDoc = {
   effective: EFFECTIVE,
   updated: UPDATED,
   intro: [
-    'Connections let you link accounts you have on other services — like Steam, Spotify, Twitch, YouTube, TikTok, GitHub or Xbox — to your Venband account. This page explains exactly what happens when you connect one, what we receive, what we keep, who can see it and how to remove it.',
+    'Connections let you link accounts you have on other services — like Steam, Twitch, YouTube, TikTok, GitHub or Xbox — to your Venband account. This page explains exactly what happens when you connect one, what we receive, what we keep, who can see it and how to remove it.',
     'Connecting is always optional. Nothing about your Venband account depends on it.',
   ],
   sections: [
@@ -524,7 +524,6 @@ const CONNECTIONS: LegalDoc = {
         'Only what you approved on the service’s consent screen. For each service we ask for the smallest permission we can:',
         ['ul', [
           'Steam — your public Steam ID, profile name and avatar (Steam OpenID; no extra permissions).',
-          'Spotify — your profile name and picture, and what you are currently playing (used for your activity and Listen Along).',
           'YouTube — your channel name, channel ID and picture (read-only).',
           'TikTok — your display name, avatar and an account ID that is specific to Venband.',
           'Twitch — your Twitch username, user ID and profile picture.',
@@ -538,7 +537,7 @@ const CONNECTIONS: LegalDoc = {
       title: 'What we keep',
       body: [
         'For each linked account we store: the service, the account ID, the display name and picture, the permission level you approved and when you linked it.',
-        'Access tokens that let Venband keep reading something for you (for example Spotify’s “now playing”) are kept on your own device, in your browser’s storage, not in our database. Tokens used once to look up your profile are thrown away right after.',
+        'Tokens a service gives us are used once to look up your profile and then thrown away — we don’t keep them.',
         'Secret keys that identify Venband to these services are kept only on our servers, in protected environment settings. They are never put in the app, the website or our public source code.',
       ],
     },
@@ -558,7 +557,6 @@ const CONNECTIONS: LegalDoc = {
         ['ul', [
           'To show the linked account in your Settings, and on your profile unless you hide it.',
           'To show activity you chose to share, such as what you are playing, streaming or listening to.',
-          'To power features that need it, such as Listen Along.',
         ]],
         'We don’t sell connection data, use it for ads, post to other services on your behalf, or read your private messages on them.',
       ],
@@ -574,7 +572,7 @@ const CONNECTIONS: LegalDoc = {
       id: 'remove',
       title: 'Removing a connection',
       body: [
-        'Go to Settings → Connections and choose Remove. We delete the stored link right away. To also cut off Venband’s access on the other service’s side, revoke it in that service’s security or connected-apps settings (for example Spotify’s “Manage apps”, Google’s “Third-party connections”, GitHub’s “Authorized GitHub Apps”, Microsoft’s “App permissions”, Twitch’s “Connections”).',
+        'Go to Settings → Connections and choose Remove. We delete the stored link right away. To also cut off Venband’s access on the other service’s side, revoke it in that service’s security or connected-apps settings (for example Google’s “Third-party connections”, GitHub’s “Authorized GitHub Apps”, Microsoft’s “App permissions”, Twitch’s “Connections”).',
         'Deleting your Venband account removes all of your connections.',
       ],
     },

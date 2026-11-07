@@ -105,8 +105,6 @@ function csp(env: Record<string, string>): Plugin {
         if (supa) connect.push(supa.origin, `${supa.protocol === 'http:' ? 'ws' : 'wss'}://${supa.host}`);
         // GIF search (Klipy). GIF images/videos load from Klipy's CDN.
         connect.push('https://api.klipy.com');
-        // Spotify: sign-in token swap + "now playing" run in the browser (the token stays on the device)
-        connect.push('https://accounts.spotify.com', 'https://api.spotify.com');
         const gifs = 'https://*.klipy.com';
         // memory music: audio and artist/cover art from the music services (/api/music)
         const music = 'https://cdn.soundstripe.com https://*.imgix.net https://*.freetouse.com';
@@ -117,7 +115,6 @@ function csp(env: Record<string, string>): Plugin {
           'https://*.xboxlive.com', // Xbox
           'https://avatars.githubusercontent.com', // GitHub
           'https://*.ggpht.com https://*.googleusercontent.com', // YouTube
-          'https://i.scdn.co https://*.spotifycdn.com', // Spotify
           'https://*.tiktokcdn.com https://*.tiktokcdn-us.com', // TikTok
         ].join(' ');
         // click-to-load embeds

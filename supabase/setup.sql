@@ -6,7 +6,7 @@
 --
 -- How to use: Supabase dashboard → SQL Editor → New query → paste this whole
 -- file → Run. It creates every table, function, policy and storage bucket the
--- app needs, in order (65 migrations).
+-- app needs, in order (66 migrations).
 --
 -- Run it ONCE, on a project that doesn't have Venband set up yet. If Venband is
 -- already installed it stops right away (nothing is changed) — then run only the
@@ -12038,6 +12038,23 @@ grant execute on function public.my_connections(), public.set_connection_visibil
   public.profile_connections(uuid) to authenticated;
 
 notify pgrst, 'reload schema';
+
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-- 20261107140000_drop_spotify_connection.sql
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+-- =============================================================================
+-- Spotify connection removed (20261107140000)
+--
+-- Spotify's Web API now requires a paid Premium plan for apps like ours, so
+-- the Spotify "Connect" in Settings → Connections is gone. Links people already
+-- made aren't used for anything any more, so they're deleted rather than kept.
+-- (Spotify link embeds in chat and the desktop app's "Listening to Spotify"
+-- status don't use the Web API and are unaffected.)
+--
+-- Safe to run more than once.
+-- =============================================================================
+delete from public.connections where provider = 'spotify';
 
 -- make the API see everything immediately
 notify pgrst, 'reload schema';
