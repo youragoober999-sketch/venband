@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { LooksPanel } from './LooksSettings';
 import { supabase, errorMessage, isOldSchema } from '../lib/supabase';
 import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
@@ -6,6 +6,7 @@ import { fingerprint, passwordStrength } from '../lib/crypto';
 import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
 import { closeSettings, uiStore, type SettingsTab } from '../lib/ui';
 import { inventoryStore, loadInventory, ownedOptions } from '../lib/inventory';
+import { createMicChain, isolationSupported, type MicChain } from '../lib/micChain';
 import { SpecialTab } from './Special';
 import { openFriends } from '../hooks/data';
 import { DEFAULT_SETTINGS, updateChat, updateSettings, updateVoice, useSettings } from '../lib/settings';
@@ -18,7 +19,7 @@ import { LANGUAGES, deviceTranslationSupported } from '../lib/translate';
 import { CODE_THEMES } from '../lib/codeLanguages';
 import { PHRASEBOOK_LANGS, PHRASEBOOK_SIZE } from '../lib/phrasebook';
 import type { AvatarFrame, NameEffect, NameFont, PresenceStatus, Profile, Server } from '../lib/types';
-import { Avatar, ColorPicker, Field, Icon, nameplateVars, StyledName } from './ui';
+import { Avatar, ColorPicker, Field, Icon, nameplateVars, StyledName, Slider } from './ui';
 import { ImageCropper } from './ImageCropper';
 import { askText, showAlert } from './Dialogs';
 import { Select } from './Select';
@@ -1473,41 +1474,56 @@ function VoiceTab() {
   }, []);
   const named = devices.some((d) => d.label);
 
-  // mic test meter
+  // mic test: the same chain calls use (isolation + input volume), optionally played back to you
+  const [hearSelf, setHearSelf] = useState(false);
+  const chainRef = useRef<MicChain | null>(null);
   useEffect(() => {
     if (!testing) return;
     let stop = false;
-    let stream: MediaStream | null = null;
-    let ctx: AudioContext | null = null;
+    let chain: MicChain | null = null;
+    let el: (HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }) | null = null;
     (async () => {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: v.inputId ? { ideal: v.inputId } : undefined, noiseSuppression: v.noiseSuppression, echoCancellation: v.echoCancellation, autoGainControl: v.autoGain },
+      const raw = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: v.inputId ? { ideal: v.inputId } : undefined,
+          noiseSuppression: v.voiceIsolation ? false : v.noiseSuppression,
+          echoCancellation: v.echoCancellation,
+          autoGainControl: v.autoGain,
+          channelCount: 1,
+        },
       });
       list();
-      ctx = new AudioContext();
-      const an = ctx.createAnalyser();
-      an.fftSize = 512;
-      const g = ctx.createGain();
-      g.gain.value = v.inputVolume / 100;
-      ctx.createMediaStreamSource(stream).connect(g).connect(an);
-      const buf = new Uint8Array(an.fftSize);
+      chain = await createMicChain(raw, { volume: v.inputVolume, isolation: v.voiceIsolation, strength: v.isolationStrength });
+      if (stop) return chain.close();
+      chainRef.current = chain;
+      if (hearSelf) {
+        el = new Audio();
+        el.srcObject = chain.stream;
+        el.volume = Math.min(1, (v.outputVolume ?? 100) / 100);
+        if (v.outputId && el.setSinkId) await el.setSinkId(v.outputId).catch(() => {});
+        await el.play().catch(() => {});
+      }
       const loop = () => {
-        if (stop) return;
-        an.getByteTimeDomainData(buf);
-        let peak = 0;
-        for (const x of buf) peak = Math.max(peak, Math.abs(x - 128));
-        setLevel(Math.min(1, peak / 100));
+        if (stop || !chain) return;
+        setLevel(chain.level());
         requestAnimationFrame(loop);
       };
       loop();
     })().catch(() => setTesting(false));
     return () => {
       stop = true;
-      stream?.getTracks().forEach((t) => t.stop());
-      ctx?.close();
+      chainRef.current = null;
+      el?.pause();
+      chain?.close();
       setLevel(0);
     };
-  }, [testing, v.inputId, v.inputVolume, v.noiseSuppression, v.echoCancellation, v.autoGain]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testing, hearSelf, v.inputId, v.echoCancellation, v.autoGain]);
+  // live: volume and isolation change without restarting the test
+  useEffect(() => chainRef.current?.setVolume(v.inputVolume), [v.inputVolume]);
+  useEffect(() => {
+    void chainRef.current?.setIsolation(v.voiceIsolation, v.isolationStrength);
+  }, [v.voiceIsolation, v.isolationStrength]);
 
   const select = (kind: MediaDeviceKind, value: string, onChange: (id: string) => void) => (
     <Select
@@ -1543,10 +1559,10 @@ function VoiceTab() {
         </div>
         <Field label="Camera">{select('videoinput', v.cameraId, (id) => updateVoice({ cameraId: id }))}</Field>
         <Field label={`Input volume — ${v.inputVolume}%`}>
-          <input type="range" min={0} max={200} step={5} value={v.inputVolume} onChange={(e) => updateVoice({ inputVolume: Number(e.target.value) })} />
+          <Slider min={0} max={200} step={5} value={v.inputVolume} onChange={(e) => updateVoice({ inputVolume: Number(e.target.value) })} />
         </Field>
         <Field label={`Output volume (booster) - ${v.outputVolume ?? 100}%`}>
-          <input type="range" min={0} max={200} step={5} value={v.outputVolume ?? 100} onChange={(e) => updateVoice({ outputVolume: Number(e.target.value) })} />
+          <Slider min={0} max={200} step={5} value={v.outputVolume ?? 100} onChange={(e) => updateVoice({ outputVolume: Number(e.target.value) })} />
         </Field>
         <div className="mic-test">
           <button className="btn secondary small" onClick={() => setTesting((t) => !t)}>
@@ -1555,11 +1571,28 @@ function VoiceTab() {
           <div className="mic-meter">
             <span style={{ width: `${Math.round(level * 100)}%` }} />
           </div>
+          <label className="mic-hear">
+            <input type="checkbox" checked={hearSelf} onChange={(e) => setHearSelf(e.target.checked)} /> Hear yourself
+          </label>
         </div>
-        <p className="small muted">Changes apply the next time you join a call.</p>
+        <p className="small muted">The meter shows what others hear. Volume and voice isolation change instantly, even mid-call; a new device applies the next time you join.</p>
+      </Section>
+      <Section title="Voice isolation" desc="Only your voice gets through: a speech-trained neural network (RNNoise) removes fans, keyboards, music, traffic, pets and room noise, and a gate closes between your words so quieter voices and sounds around you stay out.">
+        <Toggle label="Voice isolation" desc={isolationSupported() ? 'Recommended. Uses a little CPU while you talk.' : 'Your browser can’t run it (no AudioWorklet).'} checked={v.voiceIsolation && isolationSupported()} onChange={(x) => updateVoice({ voiceIsolation: x })} />
+        {v.voiceIsolation && (
+          <Field label="Strength">
+            <div className="seg">
+              {(['standard', 'strong'] as const).map((k) => (
+                <button key={k} className={v.isolationStrength === k ? 'active' : ''} onClick={() => updateVoice({ isolationStrength: k })}>
+                  {k === 'standard' ? 'Standard' : 'Strong — drops quieter voices too'}
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
       </Section>
       <Section title="Voice processing">
-        <Toggle label="Noise suppression" desc="Filters out background noise like fans and keyboards." checked={v.noiseSuppression} onChange={(x) => updateVoice({ noiseSuppression: x })} />
+        {!v.voiceIsolation && <Toggle label="Noise suppression" desc="Your browser’s basic noise filter (voice isolation replaces it)." checked={v.noiseSuppression} onChange={(x) => updateVoice({ noiseSuppression: x })} />}
         <Toggle label="Echo cancellation" desc="Stops others hearing themselves through your speakers." checked={v.echoCancellation} onChange={(x) => updateVoice({ echoCancellation: x })} />
         <Toggle label="Automatic gain control" desc="Keeps your volume steady." checked={v.autoGain} onChange={(x) => updateVoice({ autoGain: x })} />
       </Section>

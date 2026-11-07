@@ -300,6 +300,16 @@ const ICONS: Record<string, string> = {
   compass: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM16.2 7.8l-2.1 6.4-6.4 2.1 2.1-6.4z',
 };
 
+/**
+ * A range slider that fills with the theme's accent exactly up to the thumb
+ * (the browser's own slider never lines up and ignores the theme).
+ */
+export function Slider({ className, style, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  const min = Number(props.min ?? 0), max = Number(props.max ?? 100), v = Number(props.value ?? props.defaultValue ?? min);
+  const p = max > min ? Math.max(0, Math.min(1, (v - min) / (max - min))) : 0;
+  return <input type="range" {...props} className={`vb-slider${className ? ` ${className}` : ''}`} style={{ ...style, ['--p' as string]: p }} />;
+}
+
 export function Icon({ name, size = 20, filled }: { name: keyof typeof ICONS | string; size?: number; filled?: boolean }) {
   return (
     <svg

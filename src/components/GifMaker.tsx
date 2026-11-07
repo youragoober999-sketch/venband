@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { errorMessage } from '../lib/supabase';
 import { Cancelled, canReadGifFrames, defaultOptions, encodeInWorker, extractFrames, frameCount, inspect, MAX_FRAMES, outputSize, type GifOptions, type Source } from '../lib/gifmaker';
-import { Icon } from './ui';
+import { Icon, Slider } from './ui';
 import { Select } from './Select';
 
 const fmt = (s: number) => `${s.toFixed(1)}s`;
@@ -90,12 +90,12 @@ export function GifMaker({ onDone }: { onDone: (f: File) => void }) {
             <>
               <label className="gif-range">
                 <span>Start {fmt(o.start)}</span>
-                <input type="range" min={0} max={Math.max(0, src.duration - 0.2)} step={0.1} value={o.start} aria-valuetext={fmt(o.start)}
+                <Slider min={0} max={Math.max(0, src.duration - 0.2)} step={0.1} value={o.start} aria-valuetext={fmt(o.start)}
                   onChange={(e) => { const v = Number(e.target.value); set({ start: v, end: Math.max(o.end, Math.min(src.duration, v + 0.2)) }); }} />
               </label>
               <label className="gif-range">
                 <span>End {fmt(o.end)} ({fmt(o.end - o.start)} long)</span>
-                <input type="range" min={0.2} max={src.duration} step={0.1} value={o.end} aria-valuetext={fmt(o.end)}
+                <Slider min={0.2} max={src.duration} step={0.1} value={o.end} aria-valuetext={fmt(o.end)}
                   onChange={(e) => { const v = Number(e.target.value); set({ end: v, start: Math.min(o.start, Math.max(0, v - 0.2)) }); }} />
               </label>
               <div className="gif-row">
@@ -109,11 +109,11 @@ export function GifMaker({ onDone }: { onDone: (f: File) => void }) {
             <>
               <label className="gif-range">
                 <span>First frame {o.start + 1}</span>
-                <input type="range" min={0} max={src.frames - 1} step={1} value={o.start} onChange={(e) => { const v = Number(e.target.value); set({ start: v, end: Math.max(o.end, v) }); }} />
+                <Slider min={0} max={src.frames - 1} step={1} value={o.start} onChange={(e) => { const v = Number(e.target.value); set({ start: v, end: Math.max(o.end, v) }); }} />
               </label>
               <label className="gif-range">
                 <span>Last frame {o.end + 1}</span>
-                <input type="range" min={0} max={src.frames - 1} step={1} value={o.end} onChange={(e) => { const v = Number(e.target.value); set({ end: v, start: Math.min(o.start, v) }); }} />
+                <Slider min={0} max={src.frames - 1} step={1} value={o.end} onChange={(e) => { const v = Number(e.target.value); set({ end: v, start: Math.min(o.start, v) }); }} />
               </label>
             </>
           )}
@@ -127,7 +127,7 @@ export function GifMaker({ onDone }: { onDone: (f: File) => void }) {
           {src.kind === 'images' && src.files.length > 1 && (
             <label className="gif-range">
               <span>{(o.delayMs / 1000).toFixed(1)}s per picture</span>
-              <input type="range" min={100} max={3000} step={100} value={o.delayMs} aria-valuetext={`${(o.delayMs / 1000).toFixed(1)} seconds per picture`} onChange={(e) => set({ delayMs: Number(e.target.value) })} />
+              <Slider min={100} max={3000} step={100} value={o.delayMs} aria-valuetext={`${(o.delayMs / 1000).toFixed(1)} seconds per picture`} onChange={(e) => set({ delayMs: Number(e.target.value) })} />
             </label>
           )}
 

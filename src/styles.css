@@ -3163,3 +3163,30 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .slowmode-chip { display: inline-flex; align-items: center; gap: 5px; margin: 0 4px 6px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; color: var(--text-muted); background: var(--bg-elev, rgba(127,127,127,.12)); width: fit-content; }
 .slowmode-chip.cooling { color: var(--warning, #f5a524); background: color-mix(in srgb, var(--warning, #f5a524) 14%, transparent); }
 .reminder-pill { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent, #7c5cff) 16%, transparent); color: var(--accent, #7c5cff); }
+
+/* =============================================================== sliders
+   <Slider> (ui.tsx): the accent fill ends exactly under the thumb (--p is
+   0..1), the track and thumb follow the theme, and it spans the full width. */
+input[type=range].vb-slider {
+  --thumb: 16px;
+  -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 80px; height: 22px; margin: 4px 0; padding: 0;
+  background: transparent; cursor: pointer; accent-color: var(--accent); touch-action: none;
+}
+input[type=range].vb-slider:focus { outline: none; }
+input[type=range].vb-slider::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px; border: 0;
+  background: linear-gradient(90deg, var(--accent) 0, var(--accent) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--p, 0)),
+    color-mix(in srgb, var(--text) 16%, transparent) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--p, 0)));
+}
+input[type=range].vb-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: var(--thumb); height: var(--thumb); margin-top: calc((6px - var(--thumb)) / 2);
+  border-radius: 50%; border: 0; background: #fff;
+  box-shadow: 0 1px 4px #0009, 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); transition: box-shadow .15s, transform .15s;
+}
+input[type=range].vb-slider:hover::-webkit-slider-thumb, input[type=range].vb-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 1px 4px #0009, 0 0 0 5px color-mix(in srgb, var(--accent) 30%, transparent); }
+input[type=range].vb-slider:active::-webkit-slider-thumb { transform: scale(1.12); }
+input[type=range].vb-slider::-moz-range-track { height: 6px; border-radius: 999px; border: 0; background: color-mix(in srgb, var(--text) 16%, transparent); }
+input[type=range].vb-slider::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--accent); }
+input[type=range].vb-slider::-moz-range-thumb { width: var(--thumb); height: var(--thumb); border-radius: 50%; border: 0; background: #fff; box-shadow: 0 1px 4px #0009; }
+input[type=range].vb-slider:disabled { opacity: .5; cursor: default; }
+.mic-hear { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); white-space: nowrap; cursor: pointer; }

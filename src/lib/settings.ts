@@ -48,6 +48,9 @@ export interface Settings {
     pushToTalkKey: string;
     inputVolume: number; // percent
     outputVolume: number; // percent, up to 200
+    /** RNNoise + noise gate: only your voice gets through */
+    voiceIsolation: boolean;
+    isolationStrength: 'standard' | 'strong';
     streamRes: 720 | 1080 | 1440;
     streamFps: 15 | 30 | 60;
   };
@@ -121,6 +124,8 @@ export const DEFAULT_SETTINGS: Settings = {
     pushToTalkKey: ' ',
     inputVolume: 100,
     outputVolume: 100,
+    voiceIsolation: true,
+    isolationStrength: 'standard',
     streamRes: 1080,
     streamFps: 30,
   },

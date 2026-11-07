@@ -8,9 +8,10 @@ import { attenuationOf, callUi, mixer, streamKey, voiceKey, volumeOf, type SinkI
 import { getSettings, updateLayout, updateSettings, useSettings } from '../lib/settings';
 import type { ServerData } from '../hooks/data';
 import { useActiveCall } from './Shell';
-import { Avatar, Icon } from './ui';
+import { Avatar, Icon, Slider } from './ui';
 import { openMenu, type MenuItem } from './ContextMenu';
 import { Resizer } from './Resizer';
+import { openAudioMenu } from './audioMenu';
 
 /** Plays every remote audio stream while in a call (kept mounted app-wide). */
 export function CallAudio() {
@@ -159,10 +160,10 @@ export function VoiceView({ data, compact, headerExtra }: { data?: ServerData; c
         </div>
       </div>
       <div className="call-controls">
-        <button className={`round-btn${call.muted ? ' off' : ''}`} onClick={() => call.toggleMute()} title={call.muted ? 'Unmute' : 'Mute'}>
+        <button className={`round-btn${call.muted ? ' off' : ''}`} onClick={() => call.toggleMute()} onContextMenu={(e) => openAudioMenu(e, 'input')} title={`${call.muted ? 'Unmute' : 'Mute'} · right-click for input volume`}>
           <Icon name={call.muted ? 'micOff' : 'mic'} />
         </button>
-        <button className={`round-btn${call.deafened ? ' off' : ''}`} onClick={() => call.toggleDeafen()} title="Deafen">
+        <button className={`round-btn${call.deafened ? ' off' : ''}`} onClick={() => call.toggleDeafen()} onContextMenu={(e) => openAudioMenu(e, 'output')} title="Deafen · right-click for output volume">
           <Icon name={call.deafened ? 'headphonesOff' : 'headphones'} />
         </button>
         <button className={`round-btn${call.cam ? ' on' : ''}`} disabled={!canVideo} onClick={() => call.toggleCamera()} title="Camera">
@@ -390,7 +391,7 @@ function SoundboardButton({ call, canUse }: { call: Call; canUse: boolean }) {
           ))}
           <label className="soundboard-vol small">
             Soundboard volume
-            <input type="range" min={0} max={100} step={5} value={volume} onChange={(e) => updateSettings((st) => ({ soundboard: { ...st.soundboard, volume: Number(e.target.value) } }))} />
+            <Slider min={0} max={100} step={5} value={volume} onChange={(e) => updateSettings((st) => ({ soundboard: { ...st.soundboard, volume: Number(e.target.value) } }))} />
             {volume}%
           </label>
         </div>

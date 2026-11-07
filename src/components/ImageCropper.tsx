@@ -1,7 +1,7 @@
 // Crop and zoom a picture before it's used as an icon, avatar or banner.
 // Re-drawing it on a canvas also strips hidden metadata (camera, GPS…).
 import { useEffect, useRef, useState } from 'react';
-import { Modal } from './ui';
+import { Modal, Slider } from './ui';
 
 export interface CropOptions {
   /** width / height of the result */
@@ -99,7 +99,7 @@ export function ImageCropper({ file, opts, onDone, onCancel }: { file: File; opt
           </div>
           <div className="cropper-controls">
             <span className="small muted">Zoom</span>
-            <input type="range" min={1} max={5} step={0.01} value={zoom} onChange={(e) => (setZoom(Number(e.target.value)), setOff((o) => clamp(o)))} aria-label="Zoom" />
+            <Slider min={1} max={5} step={0.01} value={zoom} onChange={(e) => (setZoom(Number(e.target.value)), setOff((o) => clamp(o)))} aria-label="Zoom" />
             <button className="btn small secondary" onClick={() => setRotate((r) => (r + 90) % 360)}>
               Rotate
             </button>

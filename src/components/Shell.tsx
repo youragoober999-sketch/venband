@@ -65,6 +65,7 @@ import { ForumView, StageView, TimeoutBar, VoogleGate, WarningsNotice, WelcomeSc
 import { SavedView, SearchPanel } from './Search';
 import { useReminderRunner } from './Reminders';
 import { mentionsMe } from './Markdown';
+import { openAudioMenu, openAudioMenuAt } from './audioMenu';
 
 export function useActiveCall() {
   useSyncExternalStore(subscribeActiveCall, activeCallVersion);
@@ -1822,10 +1823,20 @@ function TopBar({ servers, dms }: { servers: Server[]; dms: DmChannel[] }) {
         <kbd>Ctrl K</kbd>
       </button>
       <div className="user-panel">
-        <button className={`icon-btn${call?.muted ? ' danger-text' : ''}`} onClick={() => call?.toggleMute()} disabled={!call} title={call?.muted ? 'Unmute' : 'Mute'}>
+        <button
+          className={`icon-btn${call?.muted ? ' danger-text' : ''}`}
+          onClick={(e) => (call ? call.toggleMute() : openAudioMenuAt(e.currentTarget, 'input'))}
+          onContextMenu={(e) => openAudioMenu(e, 'input')}
+          title={call ? `${call.muted ? 'Unmute' : 'Mute'} · right-click for input volume` : 'Microphone — input volume & voice isolation'}
+        >
           <Icon name={call?.muted ? 'micOff' : 'mic'} size={18} />
         </button>
-        <button className={`icon-btn${call?.deafened ? ' danger-text' : ''}`} onClick={() => call?.toggleDeafen()} disabled={!call} title={call?.deafened ? 'Undeafen' : 'Deafen'}>
+        <button
+          className={`icon-btn${call?.deafened ? ' danger-text' : ''}`}
+          onClick={(e) => (call ? call.toggleDeafen() : openAudioMenuAt(e.currentTarget, 'output'))}
+          onContextMenu={(e) => openAudioMenu(e, 'output')}
+          title={call ? `${call.deafened ? 'Undeafen' : 'Deafen'} · right-click for output volume` : 'Sound — output volume'}
+        >
           <Icon name={call?.deafened ? 'headphonesOff' : 'headphones'} size={18} />
         </button>
         <NotificationBell />

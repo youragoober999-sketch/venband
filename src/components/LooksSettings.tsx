@@ -7,7 +7,7 @@ import { applyBackground, clearBackground, hasBackground, setBackgroundFile } fr
 import { CSS_LIMIT, CSS_TEMPLATES, sanitizeCss } from '../lib/customCss';
 import { askText } from './Dialogs';
 import { Toggle } from './Settings';
-import { Icon } from './ui';
+import { Icon, Slider } from './ui';
 
 export function LooksPanel() {
   return (
@@ -65,12 +65,12 @@ function BackgroundSection() {
           <Toggle label="Show the background picture" checked={bg.enabled} onChange={(v) => set({ enabled: v })} />
           <label className="slider-row">
             <span>Darken</span>
-            <input type="range" min={0} max={85} value={bg.dim} onChange={(e) => set({ dim: Number(e.target.value) })} />
+            <Slider min={0} max={85} value={bg.dim} onChange={(e) => set({ dim: Number(e.target.value) })} />
             <span className="small muted">{bg.dim}%</span>
           </label>
           <label className="slider-row">
             <span>Panel blur</span>
-            <input type="range" min={0} max={40} value={bg.blur} onChange={(e) => set({ blur: Number(e.target.value) })} />
+            <Slider min={0} max={40} value={bg.blur} onChange={(e) => set({ blur: Number(e.target.value) })} />
             <span className="small muted">{bg.blur}px</span>
           </label>
         </>

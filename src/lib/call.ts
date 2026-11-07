@@ -13,7 +13,8 @@ import { acquireScope, sendRing, setVoiceState } from './presence';
 import { DEFAULT_SOUNDS, isOurAsset, playSound, type SoundRef } from './soundboard';
 import { stopRing } from './notify';
 import { sfx } from './sfx';
-import { getSettings } from './settings';
+import { getSettings, settingsStore } from './settings';
+import { createMicChain, type MicChain } from './micChain';
 
 interface CallMeta {
   user_id: string;
@@ -214,30 +215,46 @@ export class Call {
     this.changed();
   }
 
-  /** raw microphone (before the input-volume gain) and its audio graph */
+  /** raw microphone and the processing chain (isolation + input volume) */
   private rawMic: MediaStream | null = null;
   private micCtx: AudioContext | null = null;
+  private chain: MicChain | null = null;
+  private unwatchVoice: (() => void) | null = null;
 
   private async openMic(): Promise<MediaStream> {
     const v = getSettings().voice;
     const audio: MediaTrackConstraints = {
       echoCancellation: v.echoCancellation,
-      noiseSuppression: v.noiseSuppression,
+      // RNNoise does a far better job than the browser's filter; don't stack them
+      noiseSuppression: v.voiceIsolation ? false : v.noiseSuppression,
       autoGainControl: v.autoGain,
       channelCount: 1,
       sampleRate: 48000,
       ...(v.inputId ? { deviceId: { ideal: v.inputId } } : {}),
     };
     const raw = await navigator.mediaDevices.getUserMedia({ audio });
-    if (v.inputVolume === 100 || typeof AudioContext === 'undefined') return raw;
-    // input volume: mic -> gain -> the track that is sent
+    if (typeof AudioContext === 'undefined') return raw;
     this.rawMic = raw;
-    this.micCtx = new AudioContext();
-    const gain = this.micCtx.createGain();
-    gain.gain.value = Math.max(0, Math.min(2, v.inputVolume / 100));
-    const dest = this.micCtx.createMediaStreamDestination();
-    this.micCtx.createMediaStreamSource(raw).connect(gain).connect(dest);
-    return dest.stream;
+    try {
+      this.chain = await createMicChain(raw, { volume: v.inputVolume, isolation: v.voiceIsolation, strength: v.isolationStrength });
+    } catch (e) {
+      console.warn('mic processing unavailable', e);
+      return raw;
+    }
+    // input volume and isolation change live, mid-call
+    let last = { vol: v.inputVolume, iso: v.voiceIsolation, str: v.isolationStrength };
+    this.unwatchVoice = settingsStore.subscribe(() => {
+      const n = getSettings().voice;
+      if (!this.chain) return;
+      if (n.inputVolume !== last.vol) this.chain.setVolume(n.inputVolume);
+      if (n.voiceIsolation !== last.iso || n.isolationStrength !== last.str) void this.chain.setIsolation(n.voiceIsolation, n.isolationStrength);
+      last = { vol: n.inputVolume, iso: n.voiceIsolation, str: n.isolationStrength };
+    });
+    return this.chain.stream;
+  }
+  /** mic level 0..1 after processing (what others hear) */
+  micLevel() {
+    return this.chain?.level() ?? 0;
   }
 
   async join() {
@@ -323,6 +340,9 @@ export class Call {
     this.peers.clear();
     for (const s of [this.mic, this.rawMic, this.cam, this.screen]) s?.getTracks().forEach((t) => t.stop());
     this.micCtx?.close().catch(() => {});
+    this.unwatchVoice?.();
+    this.chain?.close();
+    this.chain = null;
     // leaving the channel removes our presence; no extra untrack() write needed
     if (this.rt) rtRemove(this.rt);
     setVoiceState({ scope: null, voice_channel_id: null, muted: false, deafened: false, video: false, screen: false });

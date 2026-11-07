@@ -2,7 +2,7 @@
 // text fields get a small Cut / Copy / Paste menu instead.
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createStore } from '../lib/store';
-import { Icon } from './ui';
+import { Icon, Slider } from './ui';
 
 export type MenuItem =
   | { type?: 'item'; label: string; icon?: string; danger?: boolean; disabled?: boolean; hint?: string; onClick: () => void }
@@ -224,8 +224,7 @@ function SliderItem({ item }: { item: Extract<MenuItem, { type: 'slider' }> }) {
         <span>{item.label}</span>
         <span className="ctx-hint">{item.format ? item.format(v) : v}</span>
       </div>
-      <input
-        type="range"
+      <Slider
         min={item.min}
         max={item.max}
         step={item.step ?? 1}

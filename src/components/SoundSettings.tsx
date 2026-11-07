@@ -1,7 +1,7 @@
 // Settings → Voice & Video → Sounds: volume, preview and switch off each sound.
 import { useState } from 'react';
 import { SFX_LABEL, setSfxEnabled, sfx, sfxOff, sfxVolume, type SfxName } from '../lib/sfx';
-import { Icon } from './ui';
+import { Icon, Slider } from './ui';
 
 export function SoundSettings() {
   const [off, setOff] = useState(() => sfxOff());
@@ -12,8 +12,7 @@ export function SoundSettings() {
       <p className="muted small">Every Venband sound is made on your device — preview them, or switch off the ones you don’t want.</p>
       <label className="sound-volume">
         <span>Volume — {volume}%</span>
-        <input
-          type="range"
+        <Slider
           min={0}
           max={100}
           step={5}
