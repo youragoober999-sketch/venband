@@ -582,11 +582,12 @@ export function WarningsNotice() {
     setList((l) => l.slice(1));
   };
   return (
-    <Modal title="You received a warning" onClose={ack}>
+    <Modal title="You have been warned" onClose={ack}>
       <div className="warning-card">
         <Icon name="warning" size={28} />
         <div>
           <div className="small muted">From the moderators of {w.server_name ?? 'a server'} · {new Date(w.created_at).toLocaleString()}</div>
+          <div className="warning-label">You have been warned, reason:</div>
           <p className="warning-reason">{w.reason}</p>
           <p className="small muted">Please follow the server’s rules. More warnings can lead to a timeout, kick or ban.</p>
         </div>

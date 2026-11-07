@@ -13,6 +13,8 @@ export const VENBAND_SYSTEM_ID = '3fff0000-0000-4000-8000-0000000000bd';
  * name or the 'venband' preset — anyone can add the Venband moderation toolkit.
  */
 export const isOfficialApp = (a?: Pick<Application, 'owner_id'> | null) => Boolean(a && a.owner_id === VENBAND_SYSTEM_ID);
+/** The official Venband account bot itself (not Comet, which Venband also makes). */
+export const isVenbandBot = (a?: Pick<Application, 'owner_id' | 'preset'> | null) => Boolean(a && a.owner_id === VENBAND_SYSTEM_ID && a.preset === 'venband');
 
 export interface Application {
   id: string;

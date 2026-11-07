@@ -344,7 +344,6 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "venband_target"
     ],
     "bodies": {
-      "preset_commands": "5d0becaf022e6f20f7c363102b8fcc6f",
       "preset_settings": "aa931f58b55bd470da504628c681cf2d"
     }
   },
@@ -439,8 +438,7 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     ],
     "bodies": {
       "bot_directory": "79a04286cdf7e93da1cb4c611872af90",
-      "create_application": "71443ff7a77b9955ce94bcc017f3c8c3",
-      "use_bot_command": "8be618940f08bc26cfd27b4c8e257f7d"
+      "create_application": "71443ff7a77b9955ce94bcc017f3c8c3"
     }
   },
   {
@@ -825,5 +823,42 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "qr_login_status"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261107160000_comet_bot.sql",
+    "tables": [
+      "comet_birthdays",
+      "comet_levels",
+      "comet_swears"
+    ],
+    "functions": [
+      "comet_after_join",
+      "comet_app",
+      "comet_birthday_set",
+      "comet_cfg",
+      "comet_channel",
+      "comet_client_config",
+      "comet_command",
+      "comet_duration",
+      "comet_level_for",
+      "comet_log",
+      "comet_my_voice",
+      "comet_name",
+      "comet_on_join",
+      "comet_on_message",
+      "comet_on_report",
+      "comet_purge_ids",
+      "comet_reply",
+      "comet_role",
+      "comet_set",
+      "comet_swear",
+      "comet_tokens",
+      "comet_user",
+      "comet_word_hit"
+    ],
+    "bodies": {
+      "preset_commands": "077d50aef9d437cf77253b3e1dd03b85",
+      "use_bot_command": "1a1f518144d64cf0672f1cf4bfb2659d"
+    }
   }
 ];

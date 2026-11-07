@@ -17,3 +17,49 @@
 .mention-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mention-sub { margin-left: auto; padding-left: 14px; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mention-option kbd { margin-left: 10px; }
+
+/* multi-option commands */
+.cmd-hint { flex-wrap: wrap; }
+.cmd-opt { max-width: 30%; }
+.cmd-opt.optional b::after { content: '?'; opacity: .6; }
+.cmd-opt.on { border-style: solid; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); color: var(--text); }
+.role-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+
+/* the / command menu */
+.mention-pop.cmd-pop { max-height: 420px; padding: 0 0 6px; border-radius: 14px; }
+.cmd-pop-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: color-mix(in srgb, var(--bg-1) 94%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.cmd-pop-title { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.cmd-apps { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.cmd-apps button { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text-2); font-size: 12px; font-weight: 700; cursor: pointer; }
+.cmd-apps button.on { background: var(--text); border-color: var(--text); color: var(--bg-1); }
+.cmd-app-dot { width: 18px; height: 18px; border-radius: 6px; display: inline-grid; place-items: center; font-size: 11px; background: color-mix(in srgb, var(--accent) 30%, var(--bg-3)); color: #fff; }
+.cmd-group { margin: 8px 12px 2px; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.cmd-pop .mention-option { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'main kbd' 'desc kbd'; align-items: center; gap: 1px 10px; margin: 0 6px; width: calc(100% - 12px); padding: 7px 10px 7px 14px; border-radius: 10px; }
+.cmd-pop .mention-option .mention-label { grid-area: main; min-width: 0; }
+.cmd-pop .mention-option .cmd-row-desc { grid-area: desc; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmd-pop .mention-option kbd, .cmd-pop .mention-option .mention-sub { grid-area: kbd; }
+.cmd-pop .mention-option.active { background: color-mix(in srgb, var(--accent) 14%, var(--bg-hover)); }
+.cmd-pop .mention-option.active::before { content: ''; position: absolute; left: 4px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: linear-gradient(var(--accent), #ff5a7a); }
+.cmd-row-main { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.cmd-row-name { font-weight: 800; font-size: 14px; }
+.cmd-row-chip { padding: 1px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; color: var(--text-2); background: var(--bg-3); border: 1px solid var(--line); }
+
+/* Comet panels */
+.comet-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; color: var(--text-2); font-size: 13.5px; }
+.comet-head p { margin: 0; }
+.comet-badge { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 20px; background: linear-gradient(135deg, #7c5cff, #ff5a7a); }
+.comet-step { display: flex; align-items: center; gap: 8px; margin: 12px 0 6px; font-weight: 800; font-size: 13px; }
+.comet-step-n { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; background: var(--accent); color: #fff; }
+.comet-search { display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 38px; border-radius: 10px; background: var(--bg-1); border: 1px solid var(--line); color: var(--muted); }
+.comet-search input { flex: 1; border: 0; outline: 0; background: none; color: var(--text); }
+.comet-chans { display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow-y: auto; margin-top: 6px; }
+.comet-chans button { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: var(--text-2); font-weight: 600; text-align: left; cursor: pointer; }
+.comet-chans button:hover { background: var(--bg-hover); color: var(--text); }
+.comet-chans button.on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); }
+.comet-chans button svg { margin-left: auto; color: var(--accent); }
+.comet-hash { color: var(--muted); font-weight: 800; }
+.comet-words { width: 100%; resize: vertical; }
+.comet-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.comet-chips span { padding: 3px 9px; border-radius: 99px; font-size: 12px; font-weight: 700; background: color-mix(in srgb, #ff9f0a 18%, transparent); color: #ffb340; }
+
+.verified-bot { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 5px; font-size: 10px; font-weight: 800; letter-spacing: .03em; color: #fff; background: linear-gradient(135deg, #7c5cff, #ff5a7a); }

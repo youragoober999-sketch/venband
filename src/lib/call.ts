@@ -6,6 +6,7 @@
 // prevent that every SDP offer/answer is signed with the sender's Venband
 // identity key and verified before use, so media is end-to-end encrypted
 // between participants. TURN relays (if configured) only ever see ciphertext.
+import { supabase } from './supabase';
 import { rtChannel, rtRemove, type RtChannel } from './realtime';
 import { sdpSignaturePayload, sign, verify, type Identity } from './crypto';
 import { getCurrentKey, observeKey } from './directory';
@@ -105,6 +106,8 @@ export class Call {
   screen: MediaStream | null = null;
   muted = false;
   deafened = false;
+  /** a server moderator (Comet /mute, /deafen) has you muted or deafened here */
+  forced = { muted: false, deafened: false };
   error: string | null = null;
   status: 'connecting' | 'connected' | 'closed' = 'connecting';
   /** someone has been in the call with us at some point */
@@ -596,8 +599,23 @@ export class Call {
     this.changed();
   }
 
+  /** Apply a moderator's voice mute / deafen (lifting it leaves you muted until you unmute). */
+  applyForced(f: { muted: boolean; deafened: boolean }) {
+    const was = this.forced;
+    this.forced = f;
+    if (f.deafened && !this.deafened) this.toggleDeafen(true);
+    if ((f.muted || f.deafened) && !this.muted && this.mic?.getAudioTracks().length) {
+      this.muted = true;
+      this.mic.getAudioTracks().forEach((t) => (t.enabled = false));
+      sfx('mute');
+      this.publishState();
+    }
+    if (was.muted !== f.muted || was.deafened !== f.deafened) this.changed();
+  }
+
   toggleMute() {
     if (!this.mic?.getAudioTracks().length) return;
+    if (this.muted && (this.forced.muted || this.forced.deafened)) return; // a moderator muted you here
     if (this.muted && this.muteLock) return; // e.g. you're in the stage audience
     this.muted = !this.muted;
     this.mic.getAudioTracks().forEach((t) => (t.enabled = !this.muted));
@@ -605,7 +623,8 @@ export class Call {
     this.publishState();
   }
 
-  toggleDeafen() {
+  toggleDeafen(force = false) {
+    if (this.deafened && this.forced.deafened && !force) return; // a moderator deafened you here
     this.deafened = !this.deafened;
     sfx(this.deafened ? 'deafen' : 'undeafen');
     // deafening also mutes, like most voice apps
@@ -727,7 +746,19 @@ export async function joinCall(identity: Identity, channelId: string, scopeId: s
   bump();
   await call.join();
   if (opts.ring) sendRing(scopeId, channelId);
+  watchForcedVoice(call);
   return call;
+}
+
+/** Server voice: keep checking whether a moderator has muted or deafened you here. */
+function watchForcedVoice(call: Call) {
+  const check = async () => {
+    if (active !== call) return;
+    const { data } = await supabase.rpc('comet_my_voice', { p_server: call.scopeId });
+    if (data && active === call) call.applyForced({ muted: Boolean(data.muted), deafened: Boolean(data.deafened) });
+  };
+  void check();
+  const t = setInterval(() => (active === call ? void check() : clearInterval(t)), 15_000);
 }
 
 /** channel id -> when we hung up there (so the other person staying doesn't "ring" us) */

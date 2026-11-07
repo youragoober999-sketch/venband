@@ -12,8 +12,10 @@ export const BUILTIN_APP = { app_id: 'venband', app_name: 'Venband' };
 /** A command option: 'user' opens the member picker, 'text' is free text. */
 export interface CommandOption {
   name: string;
-  type: 'user' | 'text';
+  type: 'user' | 'role' | 'channel' | 'duration' | 'choice' | 'number' | 'text';
   description: string;
+  choices?: string[];
+  optional?: boolean;
 }
 export const BUILTIN_COMMANDS: { name: string; description: string; usage?: string; options?: CommandOption[] }[] = [
   { name: 'avatar', description: 'Post someone’s profile picture', usage: '/avatar @someone', options: [{ name: 'user', type: 'user', description: 'Whose avatar to post — leave empty for yours' }] },

@@ -36,12 +36,14 @@ import { askConfirm, askText, showAlert } from './Dialogs';
 import { loadMyReports, myReports, reportMessage } from '../lib/reports';
 import { Embed, findEmbeds, isBareGif, Markdown, mentionsMe, type MentionContext } from './Markdown';
 import { FavoriteStar, isGifFavorite, toggleGifFavorite } from './GifPicker';
+import { COMET, cometBeforeSend, contentPurgeOf, forgetCometConfig, isCometApp, pickForPurge } from '../lib/comet';
+import { WordLoggerPanel } from './CometPanels';
 import { openProfile, ServerTag, userMenu } from './People';
 import { Composer, fillComposer, useTyping, type Mentionables, type PendingFile, type SendOptions } from './Composer';
 import { EditHistoryModal, PollView, QuickReactBar, quickReactionSet, Reactions, ThreadSummary } from './MessageParts';
 import { EmojiPicker } from './EmojiPicker';
 import { toggleReaction } from '../lib/chatExtras';
-import { isOfficialApp, useApps, useBotMessages, useDmBot, useDmCommands, useServerCommands, type Application, type BotMessage } from '../lib/bots';
+import { isOfficialApp, isVenbandBot, useApps, useBotMessages, useDmBot, useDmCommands, useServerCommands, type Application, type BotMessage } from '../lib/bots';
 import { BotTag, PresetLogo } from './Apps';
 
 interface JoinEvent {
@@ -176,6 +178,7 @@ export function ChatView({
   const botMessages = useBotMessages(!isThread ? channel.id : null);
   const botApps = useApps(botMessages.map((b) => b.app_id));
   const botCommands = useServerCommands(!isThread ? (data?.server?.id ?? null) : null);
+  const [wordLogger, setWordLogger] = useState(false);
   const dmCommands = useDmCommands(!isThread && channel.type === 'dm' ? channel.id : null);
   const dmBot = useDmBot(!isThread && channel.type === 'dm' ? channel.id : null);
   const [replyTo, setReplyTo] = useState<DecryptedMessage | null>(null);
@@ -344,6 +347,27 @@ export function ChatView({
     }
     const slash = !cmd && !files.length && !opts.scheduleAt && text.trim().match(/^\/([a-z0-9_-]{1,32})(?:\s+([\s\S]*))?$/i);
     const command = slash && botCommands.find((c) => c.name === slash[1].toLowerCase());
+    if (slash && command && isCometApp(command.app_name)) {
+      const args = slash[2] ?? '';
+      // /wordlogger on its own opens the set-up panel
+      if (command.name === 'wordlogger' && !args.trim()) {
+        setWordLogger(true);
+        return;
+      }
+      // purging by what messages say: only this device can read them, so it picks the ids
+      const cp = command.name === 'purge' ? contentPurgeOf(args) : null;
+      if (cp) {
+        const ids = pickForPurge(cp.kind, messages, cp.limit);
+        if (!ids.length) throw new Error(`No loaded messages here have ${cp.kind}. Scroll up to load older ones first.`);
+        const { error } = await supabase.rpc('comet_purge_ids', { p_channel: channel.id, p_ids: ids, p_label: cp.kind });
+        if (error) throw error;
+        return;
+      }
+      const { error } = await supabase.rpc('use_bot_command', { p_channel: channel.id, p_app: command.app_id, p_command: command.name, p_args: args });
+      if (data?.server?.id) forgetCometConfig(data.server.id);
+      if (error) throw error;
+      return;
+    }
     if (slash && command) {
       // commands go to the bot in plain text (bots can't read encrypted messages)
       const { error } = await supabase.rpc('use_bot_command', { p_channel: channel.id, p_app: command.app_id, p_command: command.name, p_args: slash[2] ?? '' });
@@ -360,6 +384,8 @@ export function ChatView({
       if (dmBot) throw new Error(`This bot doesn't know /${slash[1].toLowerCase()}. Try /help to see what it can do.`);
     }
     if (automod && containsSlur(text)) throw new Error('AutoMod blocked this message: it contains a slur this server doesn’t allow.');
+    // Comet's word logger and swear jar look at the text here, on your device, before it's encrypted
+    if (data?.server?.id && !opts.scheduleAt) void cometBeforeSend(data.server.id, channel.id, text);
     if (files.length && !can(P.ATTACH_FILES)) throw new Error('You can’t upload files here: your roles don’t have the “Attach Files” permission.');
     if (opts.poll && !can(P.CREATE_POLLS)) throw new Error('You can’t post polls here: your roles don’t have the “Create Polls” permission.');
     if (/(^|[^\w`])@(everyone|here)\b/.test(text) && data && !can(P.MENTION_EVERYONE)) throw new Error('You can’t mention @everyone or @here in this server.');
@@ -524,7 +550,7 @@ export function ChatView({
       everyone: Boolean(data) && can(P.MENTION_EVERYONE),
       emoji: customEmoji(expressions),
       commands: [
-        ...(isDm ? dmCommands : botCommands),
+        ...(isDm ? dmCommands : botCommands).map((c) => (isCometApp(c.app_name) && COMET[c.name] ? { ...c, options: COMET[c.name].options, variants: COMET[c.name].variants, category: COMET[c.name].category } : c)),
         ...BUILTIN_COMMANDS.filter((b) => !(isDm ? dmCommands : botCommands).some((c) => c.name === b.name)).map((b) => ({ ...BUILTIN_APP, name: b.name, description: b.description, usage: b.usage, options: b.options })),
       ],
     };
@@ -853,6 +879,26 @@ export function ChatView({
             </>
           )}
         </div>
+        {wordLogger && data?.server && (
+          <WordLoggerPanel
+            channels={data.channels.filter((c) => c.type === 'text').map((c) => ({ id: c.id, label: c.name }))}
+            onClose={() => setWordLogger(false)}
+            onSave={async (chan, words) => {
+              const app = botCommands.find((c) => isCometApp(c.app_name))?.app_id;
+              if (!app) throw new Error('Comet isn’t in this server.');
+              const { error } = await supabase.rpc('use_bot_command', { p_channel: channel.id, p_app: app, p_command: 'wordlogger', p_args: `set <#${chan}> ${words.join(', ')}` });
+              forgetCometConfig(data.server!.id);
+              if (error) throw error;
+            }}
+            onOff={async () => {
+              const app = botCommands.find((c) => isCometApp(c.app_name))?.app_id;
+              if (!app) throw new Error('Comet isn’t in this server.');
+              const { error } = await supabase.rpc('use_bot_command', { p_channel: channel.id, p_app: app, p_command: 'wordlogger', p_args: 'off' });
+              forgetCometConfig(data.server!.id);
+              if (error) throw error;
+            }}
+          />
+        )}
         <Composer
           channelId={composerKey}
           placeholder={
@@ -1692,8 +1738,10 @@ function ForwardModal({ m, onClose }: { m: DecryptedMessage; onClose: () => void
 
 /** A bot's post: plain text (not end-to-end encrypted) with an optional embed. */
 function BotMessageItem({ b, app, ctx, canManage }: { b: BotMessage; app?: Application; ctx: MentionContext; canManage: boolean }) {
-  // official = sent by the system account's app (server data), never a name
-  const official = isOfficialApp(app);
+  // official = the Venband account's own bot (server data), never a name; Comet is
+  // made by Venband too, so it gets a "Verified" bot tag instead
+  const official = isVenbandBot(app);
+  const madeByVenband = isOfficialApp(app);
   return (
     <div
       className={`message bot-message${official ? ' official-message' : ''}`}
@@ -1720,7 +1768,14 @@ function BotMessageItem({ b, app, ctx, canManage }: { b: BotMessage; app?: Appli
               <Icon name="check" size={10} /> OFFICIAL
             </span>
           ) : (
-            <BotTag />
+            <>
+              <BotTag />
+              {madeByVenband && (
+                <span className="verified-bot" title="A bot made by Venband">
+                  <Icon name="check" size={10} /> Verified
+                </span>
+              )}
+            </>
           )}
           <time dateTime={b.created_at}>{friendlyTime(new Date(b.created_at))}</time>
           <span className="bot-plain" title="Bots can’t use end-to-end encryption, so this message is stored as plain text.">

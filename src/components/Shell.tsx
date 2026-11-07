@@ -1780,7 +1780,7 @@ function BotMembers({ serverId }: { serverId: string }) {
         const a = apps[b.app_id];
         return (
           <div key={b.id} className="member bot-member" title={a?.description || undefined}>
-            {a ? <PresetLogo preset={a.preset} color={a.color} size={32} /> : <Icon name="bot" size={22} />}
+            {a ? <PresetLogo preset={a.preset} color={a.color} size={32} src={a.icon_url} /> : <Icon name="bot" size={22} />}
             <span className="member-text">
               <span className="member-name">
                 {a?.name ?? 'Bot'} <BotTag />

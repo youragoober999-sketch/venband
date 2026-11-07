@@ -219,7 +219,7 @@ export function setShareGames(on: boolean) {
   } catch {
     /* storage blocked */
   }
-  if (!on) void supabase.rpc('clear_my_activity');
+  if (!on) supabase.rpc('clear_my_activity').then(() => {}); // query builders only send when awaited or .then'd
 }
 
 let myUserId = '';

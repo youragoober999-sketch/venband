@@ -38,7 +38,7 @@ export interface Mentionables {
   everyone: boolean;
   emoji?: CustomEmoji[];
   /** slash commands from the server's bots */
-  commands?: { app_id: string; app_name: string; name: string; description: string; usage?: string; options?: CommandOption[] }[];
+  commands?: { app_id: string; app_name: string; name: string; description: string; usage?: string; options?: CommandOption[]; variants?: { insert: string; description: string }[]; category?: string }[];
 }
 
 export interface PendingFile {
@@ -65,7 +65,10 @@ export interface SendOptions {
   repeat?: { every: 'day' | 'week'; times: number };
 }
 
-type Suggestion = { key: string; insert: string; token: string | null; label: ReactNode; sub?: string; emoji?: string };
+type Suggestion = { key: string; insert: string; token: string | null; label: ReactNode; sub?: string; emoji?: string; group?: string; desc?: string; noSpace?: boolean };
+const DURATIONS = ['30s', '5m', '10m', '1h', '6h', '1d', '1w', '1mo', '1y'];
+/** how many typed words an option takes (multi-word choices like "jar enable", the last text option takes the rest) */
+const optWidth = (o: CommandOption, last: boolean) => (o.type === 'choice' && o.choices?.length ? o.choices[0].split(' ').length : o.type === 'text' && last ? 1000 : 1);
 
 const draftKey = (channelId: string) => `venband:draft:${sessionStore.get().identity?.userId ?? 'anon'}:${channelId}`;
 
@@ -144,6 +147,7 @@ export function Composer({
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [caret, setCaret] = useState(0);
   const [sel, setSel] = useState(0);
+  const [cmdApp, setCmdApp] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [mistakes, setMistakes] = useState<{ start: number; end: number; word: string }[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -289,20 +293,49 @@ export function Composer({
     return () => window.removeEventListener('keydown', onKey);
   }, [disabled]);
 
-  // a command with options being typed: "/avatar @Bob" -> the hint bar + member picker
+  // a command with options being typed: "/timeout @Bob 1h" -> the hint bar shows every option, and
+  // the one under the caret gets its own picker (members, roles, channels, durations, choices)
   const activeCmd = useMemo(() => {
     const m = /^\/([a-z0-9_-]{1,32}) ([\s\S]*)$/i.exec(text);
     if (!m) return null;
     const cmd = mentionables.commands?.find((c) => c.name === m[1].toLowerCase() && c.options?.length);
     if (!cmd) return null;
-    return { cmd, opt: cmd.options![0] as CommandOption, arg: m[2], argStart: m[1].length + 2 };
-  }, [text, mentionables.commands]);
+    const opts = cmd.options as CommandOption[];
+    const argStart = m[1].length + 2;
+    const all = [...m[2].matchAll(/"[^"]*"?|\S+/g)].map((x) => ({ i: argStart + (x.index ?? 0), v: x[0] }));
+    const upto = Math.max(argStart, caret);
+    const typed = all.filter((t) => t.i < upto);
+    const trailing = /\s$/.test(text.slice(argStart, upto)) || upto === argStart;
+    const completed = trailing ? typed.length : typed.length - 1;
+    const values: string[] = [];
+    let used = 0;
+    let idx = 0;
+    for (; idx < opts.length; idx++) {
+      const w = optWidth(opts[idx], idx === opts.length - 1);
+      values[idx] = all.slice(used, used + w).map((t) => t.v).join(' ');
+      if (used + w > completed) break;
+      used += w;
+    }
+    for (let k = idx + 1; k < opts.length; k++) {
+      const w = optWidth(opts[k], k === opts.length - 1);
+      const from = used + optWidth(opts[idx] ?? opts[0], idx === opts.length - 1) + (k - idx - 1);
+      values[k] = all.slice(from, from + w).map((t) => t.v).join(' ');
+    }
+    idx = Math.min(idx, opts.length - 1);
+    const start = typed[used]?.i ?? upto;
+    return { cmd, opts, idx, opt: opts[idx], values, start, optText: text.slice(start, upto), argStart };
+  }, [text, caret, mentionables.commands]);
 
   const query = useMemo(() => {
     const before = text.slice(0, caret);
-    if (activeCmd?.opt.type === 'user' && caret >= activeCmd.argStart) {
-      const um = /^@?([^\s@]{0,32})$/.exec(text.slice(activeCmd.argStart, caret));
-      if (um) return { trigger: 'user', q: um[1].toLowerCase(), start: activeCmd.argStart };
+    if (activeCmd && caret >= activeCmd.argStart) {
+      const t = activeCmd.opt.type;
+      const q = activeCmd.optText.replace(/^[@#]/, '').toLowerCase();
+      if (t === 'user' && /^@?[^\s@]{0,32}$/.test(activeCmd.optText)) return { trigger: 'user', q, start: activeCmd.start };
+      if (t === 'role' && /^@?[^\s@]{0,32}$/.test(activeCmd.optText)) return { trigger: 'role', q, start: activeCmd.start };
+      if (t === 'channel' && /^#?[^\s#]{0,32}$/.test(activeCmd.optText)) return { trigger: 'chan', q, start: activeCmd.start };
+      if (t === 'duration' && /^\S{0,6}$/.test(activeCmd.optText)) return { trigger: 'dur', q, start: activeCmd.start };
+      if (t === 'choice') return { trigger: 'choice', q, start: activeCmd.start };
     }
     const slash = before.match(/^\/([a-z0-9_-]{0,32})$/i);
     if (slash && mentionables.commands?.length) return { trigger: '/', q: slash[1].toLowerCase(), start: 0 };
@@ -329,11 +362,52 @@ export function Composer({
             },
       );
     }
-    if (query.trigger === '/')
-      return (mentionables.commands ?? [])
-        .filter((c) => c.name.startsWith(query.q))
-        .slice(0, 8)
-        .map((c) => ({ key: `${c.app_id}:${c.name}`, insert: `/${c.name}`, token: null, label: <><span className="sugg-slash">/</span>{c.name}</>, sub: `${c.description ? `${c.description} · ` : ''}${c.app_name}` }));
+    if (query.trigger === '/') {
+      const rows: Suggestion[] = [];
+      for (const c of mentionables.commands ?? []) {
+        if (cmdApp && c.app_id !== cmdApp) continue;
+        const chips = (c.options ?? []).map((o) => (o.optional ? `[${o.name}]` : o.name));
+        if (c.name.startsWith(query.q) || c.description.toLowerCase().includes(query.q))
+          rows.push({
+            key: `${c.app_id}:${c.name}`,
+            insert: `/${c.name}`,
+            token: null,
+            group: c.app_name,
+            desc: c.description.split(' · ')[0],
+            label: (
+              <span className="cmd-row-main">
+                <span className="cmd-row-name">
+                  <span className="sugg-slash">/</span>
+                  {c.name}
+                </span>
+                {chips.map((ch) => (
+                  <span key={ch} className="cmd-row-chip">
+                    {ch}
+                  </span>
+                ))}
+              </span>
+            ),
+          });
+        for (const v of c.variants ?? [])
+          if (v.insert.slice(1).startsWith(query.q) && query.q.length > 0)
+            rows.push({ key: `${c.app_id}:${v.insert}`, insert: v.insert.trimEnd(), noSpace: !v.insert.endsWith(' '), token: null, group: c.app_name, desc: v.description, label: <span className="cmd-row-main"><span className="cmd-row-name">{v.insert.trim()}</span></span> });
+      }
+      return rows.slice(0, 40);
+    }
+    if (query.trigger === 'role')
+      return mentionables.roles
+        .filter((r) => r.label.toLowerCase().includes(query.q))
+        .slice(0, 12)
+        .map((r) => ({ key: r.id, insert: `@${r.label}`, token: `<@&${r.id}>`, label: <><span className="role-dot" style={{ background: r.color }} /> <b style={{ color: r.color }}>@{r.label}</b></>, sub: 'role' }));
+    if (query.trigger === 'chan')
+      return mentionables.channels
+        .filter((ch) => ch.label.toLowerCase().includes(query.q))
+        .slice(0, 12)
+        .map((ch) => ({ key: ch.id, insert: `#${ch.label}`, token: `<#${ch.id}>`, label: <><span className="sugg-slash">#</span> {ch.label}</> }));
+    if (query.trigger === 'dur')
+      return DURATIONS.filter((d) => d.startsWith(query.q)).map((d) => ({ key: d, insert: d, token: null, label: <b>{d}</b>, sub: ({ s: 'seconds', m: 'minutes', h: 'hours', d: 'days', w: 'weeks', o: 'months', y: 'years' } as Record<string, string>)[d.slice(-1)] }));
+    if (query.trigger === 'choice')
+      return (activeCmd?.opt.choices ?? []).filter((v) => v.startsWith(query.q)).map((v) => ({ key: v, insert: v, token: null, label: <b>{v}</b> }));
     if (query.trigger === '#')
       return mentionables.channels
         .filter((c) => c.label.toLowerCase().includes(query.q))
@@ -415,10 +489,10 @@ export function Composer({
     if (!query) return;
     const before = text.slice(0, query.start);
     const after = text.slice(caret);
-    const next = `${before}${s.insert}${after.startsWith(' ') ? '' : ' '}${after}`;
+    const next = `${before}${s.insert}${after.startsWith(' ') || s.noSpace ? '' : ' '}${after}`;
     if (s.token) tokens.current.set(s.insert, s.token);
     if (s.emoji) noteEmojiUse(s.emoji);
-    pendingCaret.current = before.length + s.insert.length + 1;
+    pendingCaret.current = before.length + s.insert.length + (s.noSpace ? 0 : 1);
     setText(next);
   }
 
@@ -619,10 +693,12 @@ export function Composer({
       {activeCmd && (
         <div className="cmd-hint" role="status">
           <span className="cmd-chip">/{activeCmd.cmd.name}</span>
-          <span className={`cmd-opt${activeCmd.arg.trim() ? ' filled' : ''}`}>
-            <b>{activeCmd.opt.name}</b>
-            {activeCmd.arg.trim() && <span className="cmd-opt-val">{activeCmd.arg.trim()}</span>}
-          </span>
+          {activeCmd.opts.map((o, i) => (
+            <span key={o.name + i} className={`cmd-opt${activeCmd.values[i] ? ' filled' : ''}${i === activeCmd.idx ? ' on' : ''}${o.optional ? ' optional' : ''}`}>
+              <b>{o.name}</b>
+              {activeCmd.values[i] && <span className="cmd-opt-val">{activeCmd.values[i]}</span>}
+            </span>
+          ))}
           <span className={`cmd-desc${activeCmd.cmd.name === 'caption' && !replyHasImage ? ' warn' : ''}`}>
             {activeCmd.cmd.name === 'caption' && !replyHasImage ? 'Reply to a picture or GIF first (right-click it → Caption)' : activeCmd.opt.description}
           </span>
@@ -641,9 +717,27 @@ export function Composer({
         </div>
       )}
       {suggestions.length > 0 && (
-        <div className="mention-pop" role="listbox">
-          <div className="mention-pop-title">{query?.trigger === ':' ? `Emoji matching :${query.q}` : query?.trigger === '#' ? 'Channels' : query?.trigger === '/' ? 'Commands' : query?.trigger === 'user' ? 'Members' : mentionables.roles.length || mentionables.everyone ? 'Members & roles' : 'Members'}</div>
+        <div className={`mention-pop${query?.trigger === '/' ? ' cmd-pop' : ''}`} role="listbox">
+          {query?.trigger === '/' ? (
+            <div className="cmd-pop-head">
+              <span className="cmd-pop-title">Commands</span>
+              <div className="cmd-apps" role="tablist">
+                <button role="tab" aria-selected={!cmdApp} className={!cmdApp ? 'on' : ''} onMouseDown={(e) => (e.preventDefault(), setCmdApp(null))}>
+                  All
+                </button>
+                {[...new Map((mentionables.commands ?? []).map((c) => [c.app_id, c.app_name])).entries()].map(([id, name]) => (
+                  <button key={id} role="tab" aria-selected={cmdApp === id} className={cmdApp === id ? 'on' : ''} onMouseDown={(e) => (e.preventDefault(), setCmdApp(id))}>
+                    <span className="cmd-app-dot" data-app={name}>{name === 'Comet' ? '☄️' : name[0]}</span> {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="mention-pop-title">{query?.trigger === ':' ? `Emoji matching :${query.q}` : query?.trigger === '#' || query?.trigger === 'chan' ? 'Channels' : query?.trigger === 'role' ? 'Roles' : query?.trigger === 'dur' ? 'How long' : query?.trigger === 'choice' ? activeCmd?.opt.description ?? 'Choose' : query?.trigger === 'user' ? 'Members' : mentionables.roles.length || mentionables.everyone ? 'Members & roles' : 'Members'}</div>
+          )}
           {suggestions.map((s, i) => (
+            <Fragment key={s.key}>
+            {s.group && s.group !== suggestions[i - 1]?.group && <div className="cmd-group">{s.group === 'Comet' ? '☄️ ' : ''}{s.group}</div>}
             <button
               key={s.key}
               role="option"
@@ -653,9 +747,12 @@ export function Composer({
               onMouseEnter={() => setSel(i)}
             >
               <span className="mention-label">{s.label}</span>
+              {s.desc && <span className="cmd-row-desc">{s.desc}</span>}
               {s.sub && <span className="small muted mention-sub">{s.sub}</span>}
-              {i === 0 && query?.trigger !== 'user' && query?.trigger !== '@' && <kbd className="small">Enter</kbd>}
+              {i === sel && query?.trigger === '/' && <kbd className="small">Tab</kbd>}
+              {i === 0 && query?.trigger !== 'user' && query?.trigger !== '@' && query?.trigger !== '/' && <kbd className="small">Enter</kbd>}
             </button>
+            </Fragment>
           ))}
         </div>
       )}
