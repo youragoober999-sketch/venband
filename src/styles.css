@@ -2952,9 +2952,10 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
   animation: dock-in .5s var(--spring) both;
 }
 .vb-dock.dock-bottom { bottom: 10px; left: 50%; transform: translateX(-50%); }
-/* the shelf keeps its size; magnified icons rise out of it, like on a Mac */
-.vb-dock.dock-bottom, .vb-dock.dock-top { height: calc(var(--dock-size) + 16px); }
-.vb-dock.dock-left, .vb-dock.dock-right { width: calc(var(--dock-size) + 16px); }
+/* the shelf grows with the icons: magnified icons stay inside the glass */
+.vb-dock.dock-bottom, .vb-dock.dock-top { min-height: calc(var(--dock-size) + 14px); height: auto; }
+.vb-dock.dock-left, .vb-dock.dock-right { min-width: calc(var(--dock-size) + 14px); width: auto; }
+.vb-dock { transition: border-radius .14s cubic-bezier(.2, .8, .3, 1); }
 .vb-dock.dock-top .dock-item { align-self: flex-start; }
 .vb-dock.dock-bottom .dock-item { align-self: flex-end; }
 .vb-dock.dock-top { top: 10px; left: 50%; transform: translateX(-50%); align-items: flex-start; animation-name: dock-in-top; }
@@ -2976,7 +2977,7 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .vb-dock.still .dock-item { transition: none; }
 .dock-icon {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden;
-  border-radius: 27%; color: #fff; background: linear-gradient(160deg, #3a3d4a, #20222b);
+  border-radius: 27%; color: var(--text); background: linear-gradient(160deg, var(--bg-4), var(--bg-3));
   box-shadow: 0 6px 14px -4px #000b, inset 0 1px 0 #ffffff26, inset 0 -1px 0 #0005;
   transition: filter .2s, transform .18s var(--spring);
 }
@@ -2987,10 +2988,14 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .dock-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .dock-icon svg { width: 52%; height: 52%; }
 .dock-initials { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: calc(var(--dock-size) * var(--m) * .34); letter-spacing: -.02em; text-shadow: 0 1px 2px #0006; }
-.dock-home .dock-icon { background: linear-gradient(150deg, #a78bfa, #7c5cff 50%, #4c2fc9); }
-.dock-home .dock-icon svg { filter: drop-shadow(0 1px 1.5px #0004); }
-.dock-home .dock-icon svg { width: 60%; height: 60%; }
-.dock-discover .dock-icon { background: linear-gradient(150deg, #34d399, #0ea5e9 60%, #2563eb); }
+/* Home = the theme's accent; Discover = a theme surface with an accent glyph; Add = glass.
+   Every colour comes from the theme, so the dock matches all of them (light ones too). */
+.dock-home .dock-icon { background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 78%, white), var(--accent) 52%, color-mix(in srgb, var(--accent) 72%, black)); }
+.dock-home .dock-icon svg { width: 60%; height: 60%; filter: drop-shadow(0 1px 1.5px #0003); }
+.dock-chat .front { fill: var(--on-accent); }
+.dock-chat .back { fill: var(--on-accent); opacity: .42; }
+.dock-chat .dot { fill: var(--accent); }
+.dock-discover .dock-icon { background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 16%, var(--bg-4)), var(--bg-3)); color: var(--accent); box-shadow: 0 6px 14px -4px #0008, inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent), inset 0 1px 0 #ffffff1f; }
 .dock-add .dock-icon { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 22%, transparent); }
 .dock-add .dock-icon::after { display: none; }
 .dock-item:hover .dock-icon { filter: brightness(1.08); }
@@ -3039,8 +3044,10 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 .dock-left .dock-item:hover .dock-tip, .dock-right .dock-item:hover .dock-tip,
 .dock-left .dock-item:focus-visible .dock-tip, .dock-right .dock-item:focus-visible .dock-tip { transform: translateY(-50%) translateX(0); }
 
-.dock-sep { flex: none; align-self: stretch; width: 1px; margin: 6px 3px; background: color-mix(in srgb, var(--text) 16%, transparent); }
-.dock-left .dock-sep, .dock-right .dock-sep { width: auto; height: 1px; margin: 3px 6px; }
+.dock-sep { flex: none; align-self: flex-end; width: 1px; height: calc(var(--dock-size) - 12px); margin: 0 3px 6px; background: color-mix(in srgb, var(--text) 16%, transparent); }
+.dock-top .dock-sep { align-self: flex-start; margin: 6px 3px 0; }
+.dock-left .dock-sep, .dock-right .dock-sep { align-self: flex-start; width: calc(var(--dock-size) - 12px); height: 1px; margin: 3px 6px; }
+.dock-right .dock-sep { align-self: flex-end; }
 
 /* dragging to reorder */
 .dock-item.dragging { opacity: .35; }

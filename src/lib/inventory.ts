@@ -84,7 +84,8 @@ export function shopTheme(id: string): Theme | null {
       'accent-hover': mix(accent, light ? '#000000' : '#ffffff', 0.15),
       'accent-soft': `${accent}22`,
       'accent-text': light ? mix(accent, '#000000', 0.25) : mix(accent, '#ffffff', 0.25),
-      'on-accent': hex(accent).reduce((s, v) => s + v, 0) > 382 ? '#000000' : '#ffffff',
+      // perceived brightness, so mid-tone accents (indigo, hot pink) get white text
+      'on-accent': hex(accent).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0) > 150 ? '#000000' : '#ffffff',
       link: light ? '#1d5bd8' : mix(accent, '#ffffff', 0.4),
       success: '#34c759',
       danger: '#ff453a',

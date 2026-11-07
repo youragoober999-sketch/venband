@@ -36,6 +36,8 @@ export function errorMessage(e: unknown): string {
   else msg = String(e);
   if (/bucket not found/i.test(msg))
     return 'File storage isn’t set up on this server yet. If you run this site, run supabase/setup.sql (new project) or the newest supabase/migrations/ files in the Supabase SQL editor.';
+  if (/profiles_(avatar_frame|nameplate|profile_effect)_check/.test(msg) || /function public\.claim_cosmetics|cosmetic_inventory/.test(msg))
+    return 'The Marketplace needs a database update that hasn’t been installed yet. If you run this site, run supabase/update-2026-11.sql in the Supabase SQL editor, then try again.';
   if (isOldSchema(e))
     return 'This feature needs a database update that hasn’t been installed yet. If you run this site, run the newest files in supabase/migrations/ in the Supabase SQL editor (venband.com/status lists what’s missing).';
   return msg;
