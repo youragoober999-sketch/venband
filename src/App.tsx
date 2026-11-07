@@ -60,21 +60,28 @@ export default function App() {
   const needsOnboarding = sessionStore.use((s) => s.me?.onboarded === false);
   useEffect(() => {
     if (configured) initSession();
-    // Back from a Steam / Spotify / YouTube / TikTok "Connect" (?steam=1 or an OAuth
-    // ?code=...): verify + link. The handlers only load when such a return happens.
+    // Back from a provider's sign-in (Settings → Connections): finish the link,
+    // then always leave the "Connecting…" screen — success or not.
     const sp = new URLSearchParams(window.location.search);
-    if (!sp.has('steam') && !sp.has('code')) return;
-    void import('./lib/connections').then(({ handleSteamRedirect, handleSpotifyRedirect, handleYouTubeRedirect, handleTikTokRedirect }) => {
-      const report = (service: string) => (msg: string | null) => {
-        if (!msg) return;
-        if (msg.startsWith(`${service} link failed`)) showAlert(msg);
-        else openSettings('connections');
-      };
-      void handleSteamRedirect().then(report('Steam'));
-      void handleSpotifyRedirect().then(report('Spotify'));
-      void handleYouTubeRedirect().then(report('YouTube'));
-      void handleTikTokRedirect().then(report('TikTok'));
-    });
+    const legacySteam = sp.has('steam') && sp.has('openid.mode');
+    if (!legacySteam && parseRoute().kind !== 'callback') return;
+    const leave = () => {
+      if (parseRoute().kind === 'callback') go('channels/@me', { replace: true });
+    };
+    const guard = window.setTimeout(leave, 30_000);
+    void import('./lib/connections')
+      .then(({ handleOAuthReturn }) => handleOAuthReturn())
+      .then((r) => {
+        window.clearTimeout(guard);
+        leave();
+        openSettings('connections');
+        if (r && !r.ok) showAlert(r.error);
+      })
+      .catch((e) => {
+        window.clearTimeout(guard);
+        leave();
+        showAlert(`Connecting failed: ${String((e as Error)?.message || e)}`);
+      });
   }, []);
   useEffect(() => {
     if (status === 'ready' && hasProfile) startIdleDetection();
@@ -151,7 +158,7 @@ export default function App() {
         <InvitePage code={route.code} />
       </Load>
     );
-  // /callback handles Spotify (and future) OAuth returns.
+  // /callback, /auth/<provider> and /github/auth finish a Connections sign-in.
   if (route.kind === 'callback') return <Splash label="Connecting…" />;
   // venband.com shows the landing page even when you're signed in; open the
   // app from the "Open Venband" button instead of landing straight in your DMs.

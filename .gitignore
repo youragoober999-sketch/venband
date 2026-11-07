@@ -10,3 +10,10 @@ supabase/.branches
 *.tsbuildinfo
 .vercel
 .env*
+
+# private keys and certificates never go in the repo (e.g. the GitHub App .pem)
+*.pem
+*.key
+*.p12
+*.pfx
+*.private-key*

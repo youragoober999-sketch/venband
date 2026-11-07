@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { LooksPanel } from './LooksSettings';
 import { supabase, errorMessage, isOldSchema } from '../lib/supabase';
 import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
@@ -46,14 +46,12 @@ import {
   PROVIDERS,
   reloadConnections,
   removeConnection,
-  spotifyLogin,
-  steamLogin,
-  tiktokLogin,
-  youtubeLogin,
+  connect,
   subscribeConnections,
   type ConnectionProvider,
   type ConnectionRow,
 } from '../lib/connections';
+import { BRAND_ICONS } from '../lib/brandIcons';
 
 const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; perm?: StaffPerm; designer?: boolean; owner?: boolean }[] = [
   { id: 'account', label: 'My Account', icon: 'user', group: 'User Settings' },
@@ -347,71 +345,57 @@ function ConnectionsTab() {
       <div className="connections-grid">
         {PROVIDERS.map((info) => {
           const linked = byProvider(info.provider);
+          const ready = info.kind === 'ready';
           return (
-            <div key={info.provider} className="connection-card">
-              <span className="connection-logo" style={{ background: info.color }}>
-                <span className="connection-logo-inner">{info.slug[0].toUpperCase()}</span>
+            <div key={info.provider} className={`connection-card${linked.length ? ' linked' : ''}${ready ? '' : ' soon'}`} style={{ '--brand': info.color } as CSSProperties}>
+              <span className="connection-logo" aria-hidden>
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                  <path d={BRAND_ICONS[info.provider]} />
+                </svg>
               </span>
-              <span className="grow">
+              <span className="grow connection-text">
                 <b>{info.name}</b>
                 <div className="small muted">{info.desc}</div>
                 {linked.map((c) => (
                   <div key={c.external_id} className="connection-account" title={`Linked ${new Date(c.created_at).toLocaleDateString()}`}>
-                    {c.avatar_url && <img className="connection-avatar" src={c.avatar_url} alt="" referrerPolicy="no-referrer" />}
-                    <span>
+                    {c.avatar_url ? <img className="connection-avatar" src={c.avatar_url} alt="" referrerPolicy="no-referrer" /> : <span className="connection-avatar blank" />}
+                    <span className="grow">
                       <b>{c.display_name || `${info.name} account`}</b>
-                      <span className="small muted"> • linked</span>
+                      <span className="small muted"> · linked</span>
                     </span>
-                    <button
-                      className="btn link small danger-text"
-                      disabled={busy === `${info.provider}-${c.external_id}`}
-                      onClick={() => disconnect(info.provider, c.external_id)}
-                    >
+                    <button className="btn link small danger-text" disabled={busy === `${info.provider}-${c.external_id}`} onClick={() => disconnect(info.provider, c.external_id)}>
                       Remove
                     </button>
                   </div>
                 ))}
               </span>
-              {info.kind === 'openid' && linked.length === 0 && (
-                <button className="btn secondary small" onClick={() => (window.location.href = steamLogin())}>
-                  <Icon name="link" size={14} /> Connect
-                </button>
-              )}
-              {info.kind === 'openid' && linked.length > 0 && <span className="tag-soft success">Connected</span>}
-              {info.kind === 'oauth' && (info.provider === 'spotify' || info.provider === 'youtube' || info.provider === 'tiktok') && (
+              {ready ? (
                 <button
-                  className="btn secondary small"
+                  className="btn secondary small connection-btn"
                   disabled={busy === info.provider}
                   onClick={async () => {
                     setBusy(info.provider);
                     setError(null);
                     try {
-                      if (info.provider === 'spotify') await spotifyLogin();
-                      else if (info.provider === 'youtube') await youtubeLogin();
-                      else if (info.provider === 'tiktok') await tiktokLogin();
+                      await connect(info.provider);
                     } catch (e) {
                       setError(errorMessage(e));
                       setBusy(null);
                     }
                   }}
                 >
-                  <Icon name="link" size={14} /> Connect
+                  {busy === info.provider ? <span className="spinner small" /> : <Icon name={linked.length ? 'plus' : 'link'} size={14} />} {linked.length ? 'Add another' : 'Connect'}
                 </button>
-              )}
-              {info.kind === 'oauth' && !(info.provider === 'spotify' || info.provider === 'youtube' || info.provider === 'tiktok') && (
-                <button className="btn secondary small" disabled title="Needs a Venband-run OAuth server for the client secret — on the roadmap.">
-                  <Icon name="link" size={14} /> Connect
-                </button>
-              )}
-              {info.kind === 'planned' && (
-                <button className="btn secondary small" disabled title="Coming soon.">
-                  <Icon name="lock" size={14} /> Soon
-                </button>
+              ) : (
+                <span className="tag-soft">Soon</span>
               )}
             </div>
           );
         })}
       </div>
+      <p className="small muted connections-note">
+        You sign in on the service’s own page — Venband never sees your password there. Linked accounts are only visible to you. <a href="/privacy/connections" target="_blank" rel="noreferrer">How connections work</a>
+      </p>
     </Section>
   );
 }

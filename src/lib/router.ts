@@ -91,7 +91,8 @@ export function parseRoute(path = currentPath()): Route {
   if (parts[0] === 'sign-in' || parts[0] === 'login') return { kind: 'sign-in' };
   if (parts[0] === 'register' || parts[0] === 'signup') return { kind: 'register' };
   if (parts[0] === 'discover') return { kind: 'discover' };
-  if (parts[0] === 'callback') return { kind: 'callback' };
+  // OAuth return addresses for Settings → Connections (see lib/connections.ts)
+  if (parts[0] === 'callback' || (parts[0] === 'auth' && parts[1]) || (parts[0] === 'github' && parts[1] === 'auth')) return { kind: 'callback' };
   if (parts[0] === 'storage') return { kind: 'storage' };
   if (parts[0] === 'invite' && parts[1]) return { kind: 'invite', code: parts[1] };
   if (parts[0] === 'template' && parts[1]) return { kind: 'template', code: parts[1] };
