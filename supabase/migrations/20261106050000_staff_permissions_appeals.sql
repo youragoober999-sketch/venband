@@ -285,7 +285,8 @@ $$;
 -- --------------------------------------------- reports for themes and bots --
 alter table public.reports add column if not exists target_ref uuid;
 alter table public.reports drop constraint if exists reports_kind_check;
-alter table public.reports add constraint reports_kind_check check (kind in ('message', 'user', 'theme', 'app'));
+-- 'memory' arrives in 20261106060000; listed here too so re-running this file never rejects existing rows
+alter table public.reports add constraint reports_kind_check check (kind in ('message', 'user', 'theme', 'app', 'memory'));
 
 -- message / user reports are inserted directly (they carry evidence decrypted on
 -- the reporter's device); theme / bot reports only through report_item()

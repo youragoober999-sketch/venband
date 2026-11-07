@@ -1409,20 +1409,30 @@ notify pgrst, 'reload schema';
 -- =============================================================================
 
 alter table public.profiles drop constraint if exists profiles_nameplate_check;
+-- values this list doesn't know (and that aren't Shop ids) go back to 'none'
+update public.profiles set nameplate = 'none' where nameplate is null or (nameplate not in ('none', 'aurora', 'ember', 'ocean', 'sakura', 'circuit', 'noir', 'gold', 'custom',
+                       'starfield', 'koi', 'fireflies', 'snowfall', 'synthwave', 'storm') and nameplate !~ '^plate\.');
 alter table public.profiles add constraint profiles_nameplate_check
   check (nameplate in ('none', 'aurora', 'ember', 'ocean', 'sakura', 'circuit', 'noir', 'gold', 'custom',
-                       'starfield', 'koi', 'fireflies', 'snowfall', 'synthwave', 'storm'));
+                       'starfield', 'koi', 'fireflies', 'snowfall', 'synthwave', 'storm')
+         or nameplate ~ '^plate\.[a-z0-9_]{1,40}\.[a-z0-9_]{1,24}$'); -- Shop ids (20261106150000), so re-running is safe
 
 alter table public.profiles drop constraint if exists profiles_avatar_frame_check;
+update public.profiles set avatar_frame = 'none' where avatar_frame is null or (avatar_frame not in ('none', 'neon', 'flame', 'frost', 'rainbow', 'gold', 'sakura', 'pixel', 'orbit', 'hearts', 'glitch',
+                          'galaxy', 'lightning', 'crystal') and avatar_frame !~ '^deco\.');
 alter table public.profiles add constraint profiles_avatar_frame_check
   check (avatar_frame in ('none', 'neon', 'flame', 'frost', 'rainbow', 'gold', 'sakura', 'pixel', 'orbit', 'hearts', 'glitch',
-                          'galaxy', 'lightning', 'crystal'));
+                          'galaxy', 'lightning', 'crystal')
+         or avatar_frame ~ '^deco\.[a-z0-9_]{1,40}\.[a-z0-9_]{1,24}$');
 
 alter table public.profiles add column if not exists profile_effect text not null default 'none';
 alter table public.profiles drop constraint if exists profiles_profile_effect_check;
+update public.profiles set profile_effect = 'none' where profile_effect is null or (profile_effect not in ('none', 'sparkles', 'hearts', 'sakura', 'snow', 'embers', 'leaves', 'bubbles', 'confetti',
+                            'shooting_stars', 'fireflies', 'aurora') and profile_effect !~ '^effect\.');
 alter table public.profiles add constraint profiles_profile_effect_check
   check (profile_effect in ('none', 'sparkles', 'hearts', 'sakura', 'snow', 'embers', 'leaves', 'bubbles', 'confetti',
-                            'shooting_stars', 'fireflies', 'aurora'));
+                            'shooting_stars', 'fireflies', 'aurora')
+         or profile_effect ~ '^effect\.[a-z0-9_]{1,40}\.[a-z0-9_]{1,24}$');
 grant update (profile_effect) on public.profiles to authenticated;
 
 -- ------------------------------------------------------------------ badges --
@@ -1758,7 +1768,8 @@ $$;
 -- --------------------------------------------- reports for themes and bots --
 alter table public.reports add column if not exists target_ref uuid;
 alter table public.reports drop constraint if exists reports_kind_check;
-alter table public.reports add constraint reports_kind_check check (kind in ('message', 'user', 'theme', 'app'));
+-- 'memory' arrives in 20261106060000; listed here too so re-running this file never rejects existing rows
+alter table public.reports add constraint reports_kind_check check (kind in ('message', 'user', 'theme', 'app', 'memory'));
 
 -- message / user reports are inserted directly (they carry evidence decrypted on
 -- the reporter's device); theme / bot reports only through report_item()
@@ -2697,6 +2708,16 @@ grant execute on function public.cosmetic_free(text) to authenticated;
 alter table public.profiles drop constraint if exists profiles_avatar_frame_check;
 alter table public.profiles drop constraint if exists profiles_nameplate_check;
 alter table public.profiles drop constraint if exists profiles_profile_effect_check;
+-- anything that isn't an original name or a well-formed Shop id goes back to 'none' first
+update public.profiles set avatar_frame = 'none'
+ where avatar_frame is null or (avatar_frame not in ('none', 'neon', 'flame', 'frost', 'rainbow', 'gold', 'sakura', 'pixel', 'orbit', 'hearts', 'glitch', 'galaxy', 'lightning', 'crystal')
+                                and avatar_frame !~ '^deco\.[a-z0-9_]{1,40}\.[a-z0-9_]{1,24}$');
+update public.profiles set nameplate = 'none'
+ where nameplate is null or (nameplate not in ('none', 'aurora', 'ember', 'ocean', 'sakura', 'circuit', 'noir', 'gold', 'custom', 'starfield', 'koi', 'fireflies', 'snowfall', 'synthwave', 'storm')
+                             and nameplate !~ '^plate\.[a-z0-9_]{1,40}\.[a-z0-9_]{1,24}$');
+update public.profiles set profile_effect = 'none'
+ where profile_effect is null or (profile_effect not in ('none', 'sparkles', 'hearts', 'sakura', 'snow', 'embers', 'leaves', 'bubbles', 'confetti', 'shooting_stars', 'fireflies', 'aurora')
+                                  and profile_effect !~ '^effect\.[a-z0-9_]{1,40}\.[a-z0-9_]{1,24}$');
 alter table public.profiles add constraint profiles_avatar_frame_check
   check (avatar_frame in ('none', 'neon', 'flame', 'frost', 'rainbow', 'gold', 'sakura', 'pixel', 'orbit', 'hearts', 'glitch',
                           'galaxy', 'lightning', 'crystal')

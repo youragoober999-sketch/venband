@@ -68,6 +68,16 @@ grant execute on function public.cosmetic_free(text) to authenticated;
 alter table public.profiles drop constraint if exists profiles_avatar_frame_check;
 alter table public.profiles drop constraint if exists profiles_nameplate_check;
 alter table public.profiles drop constraint if exists profiles_profile_effect_check;
+-- anything that isn't an original name or a well-formed Shop id goes back to 'none' first
+update public.profiles set avatar_frame = 'none'
+ where avatar_frame is null or (avatar_frame not in ('none', 'neon', 'flame', 'frost', 'rainbow', 'gold', 'sakura', 'pixel', 'orbit', 'hearts', 'glitch', 'galaxy', 'lightning', 'crystal')
+                                and avatar_frame !~ '^deco\.[a-z0-9_]{1,40}\.[a-z0-9_]{1,24}$');
+update public.profiles set nameplate = 'none'
+ where nameplate is null or (nameplate not in ('none', 'aurora', 'ember', 'ocean', 'sakura', 'circuit', 'noir', 'gold', 'custom', 'starfield', 'koi', 'fireflies', 'snowfall', 'synthwave', 'storm')
+                             and nameplate !~ '^plate\.[a-z0-9_]{1,40}\.[a-z0-9_]{1,24}$');
+update public.profiles set profile_effect = 'none'
+ where profile_effect is null or (profile_effect not in ('none', 'sparkles', 'hearts', 'sakura', 'snow', 'embers', 'leaves', 'bubbles', 'confetti', 'shooting_stars', 'fireflies', 'aurora')
+                                  and profile_effect !~ '^effect\.[a-z0-9_]{1,40}\.[a-z0-9_]{1,24}$');
 alter table public.profiles add constraint profiles_avatar_frame_check
   check (avatar_frame in ('none', 'neon', 'flame', 'frost', 'rainbow', 'gold', 'sakura', 'pixel', 'orbit', 'hearts', 'glitch',
                           'galaxy', 'lightning', 'crystal')
