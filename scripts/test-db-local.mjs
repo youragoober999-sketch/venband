@@ -24,9 +24,7 @@ for (const run of [1, 2]) {
   const r = spawnSync('docker', ['exec', '-i', 'supabase_db_venband', 'psql', '-q', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres'], { input: sql, encoding: 'utf8' });
   const ok = r.status === 0;
   if (!ok) failed++;
-  console.log(`${ok ? 'OK  ' : 'FAIL'} supabase/update-2026-11.sql re-run #${run} over test data${ok ? '' : `
-     ${(r.stderr || '').split('
-').filter((l) => /ERROR/.test(l)).slice(0, 2).join('
-     ')}`}`);
+  const why = (r.stderr || '').split(/\r?\n/).filter((l) => /ERROR/.test(l)).slice(0, 2).join('\n     ');
+  console.log(`${ok ? 'OK  ' : 'FAIL'} supabase/update-2026-11.sql re-run #${run} over test data${ok ? '' : `\n     ${why}`}`);
 }
 process.exit(failed ? 1 : 0);
