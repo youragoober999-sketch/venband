@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { watchProfiles } from '../lib/directory';
-import { MarketplaceView } from './Marketplace';
+import { ShopView } from './Shop';
 import { applyCustomCss, safeMode, setSafeMode } from '../lib/customCss';
 import { startBackground } from '../lib/background';
 import { useApps, useServerBots } from '../lib/bots';
@@ -1022,7 +1022,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
         ) : homeTab === 'donate' ? (
           <DonateView />
         ) : homeTab === 'market' ? (
-          <MarketplaceView />
+          <ShopView />
         ) : homeTab === 'saved' ? (
           <SavedView
             header={

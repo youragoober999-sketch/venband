@@ -79,7 +79,8 @@ export async function startNotifications() {
   }
   if (!notificationStore.get().available || startedFor !== uid) return;
   channel = supabase
-    .channel(`notifications:${uid}`)
+    // a fresh topic each start: the previous channel may still be closing
+    .channel(`notifications:${uid}:${Math.random().toString(36).slice(2, 8)}`)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${uid}` }, (payload) => {
       const n = payload.new as AppNotification;
       const items = [n, ...notificationStore.get().items.filter((x) => x.id !== n.id)].slice(0, 200);

@@ -1,0 +1,181 @@
+/* =============================================================================
+   Shop nameplates (ShopNameplates.tsx). Palette: --a main, --b second,
+   --c accent, --d dark. Only transform / opacity / background-position animate.
+   ============================================================================= */
+.np-art.sp > b, .np-art.sp > i, .np-art.sp > svg, .np-art.sp > span { position: absolute; display: block; }
+.sp > .sp-sky { inset: 0; background: linear-gradient(90deg, var(--d), color-mix(in srgb, var(--b) 70%, var(--d)) 60%, var(--b)); }
+.np-art.sp .sp-svg { inset: 0; width: 100%; height: 100%; }
+.np-art.sp > i { left: calc(var(--x) * 1%); top: calc(var(--y) * 1%); width: calc(var(--s) * 1px); height: calc(var(--s) * 1px);
+  animation-duration: var(--t); animation-delay: var(--d); animation-iteration-count: infinite; animation-timing-function: linear; }
+.np-art.sp > i svg { width: 100%; height: 100%; display: block; }
+
+/* shared particles */
+.sp-star { border-radius: 50%; background: #fff; box-shadow: 0 0 4px #fff; animation-name: sp-twinkle !important; animation-timing-function: ease-in-out !important; }
+@keyframes sp-twinkle { 0%, 100% { opacity: .15; transform: scale(.6); } 50% { opacity: 1; transform: scale(1); } }
+.sp-glint { background: #fff; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); animation-name: sp-twinkle !important; animation-timing-function: ease-in-out !important; }
+@keyframes sp-drift-left { from { transform: translateX(40px) rotate(0); } to { transform: translateX(-260px) rotate(var(--r)); } }
+@keyframes sp-fall { 0% { transform: translateY(-30px); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(50px); opacity: 0; } }
+@keyframes sp-rise { 0% { transform: translateY(20px) scale(.6); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(-40px) scale(1); opacity: 0; } }
+
+.sp-flow { background: linear-gradient(100deg, var(--d), var(--b), var(--a), var(--c), var(--b), var(--d)) !important; background-size: 400% 100% !important; animation: sp-flow 10s ease-in-out infinite alternate; }
+@keyframes sp-flow { from { background-position: 0 0; } to { background-position: 100% 0; } }
+
+.sp-night_sky .sp-sky, .sp-moon_voyage .sp-sky { background: radial-gradient(ellipse 80% 140% at 90% 30%, color-mix(in srgb, var(--b) 80%, #fff 5%), var(--d) 70%); }
+.sp-moon { right: 12%; top: 14%; width: 20px; height: 20px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff, var(--a) 60%, var(--b)); box-shadow: 0 0 14px var(--a); animation: sp-bob 6s ease-in-out infinite; }
+.sp-moon.blood { background: radial-gradient(circle at 35% 35%, #ffd0d0, var(--a) 55%, var(--b)); box-shadow: 0 0 18px var(--a); }
+@keyframes sp-bob { 50% { transform: translateY(3px); } }
+
+.sp-eclipse .sp-sky { background: linear-gradient(90deg, var(--d), #000 70%); }
+.sp-corona { right: 6%; top: 50%; width: 46px; height: 46px; margin-top: -23px; border-radius: 50%; background: conic-gradient(from 0deg, var(--a), var(--c), var(--b), var(--a), var(--c), var(--a)); filter: blur(5px); animation: sp-spin 12s linear infinite; }
+.sp-disc { right: calc(6% + 7px); top: 50%; width: 32px; height: 32px; margin-top: -16px; border-radius: 50%; background: #000; box-shadow: 0 0 0 2px var(--c); }
+@keyframes sp-spin { to { transform: rotate(360deg); } }
+
+.sp-petal { border-radius: 80% 0 80% 0; background: linear-gradient(135deg, var(--c), var(--a) 60%, var(--b)); animation-name: sp-drift-left !important; }
+.sp-rain_glass .sp-sky { background: linear-gradient(90deg, #04070d, color-mix(in srgb, var(--d) 70%, #000)); }
+.sp-bokeh { border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--a) 70%, transparent), transparent 70%); opacity: .55; animation-name: sp-twinkle !important; animation-duration: 6s !important; }
+.sp-drop { width: 1.5px !important; border-radius: 2px; background: linear-gradient(transparent, var(--c)); animation-name: sp-fall !important; }
+
+.sp-fire_wall .sp-sky { background: linear-gradient(90deg, #0a0200, color-mix(in srgb, var(--d) 80%, #000)); }
+.sp-flame { border-radius: 50% 50% 40% 40% / 70% 70% 30% 30%; background: radial-gradient(ellipse at 50% 85%, var(--c), var(--a) 40%, var(--b) 70%, transparent 72%); transform-origin: 50% 100%; animation-name: sp-flicker !important; animation-timing-function: ease-in-out !important; mix-blend-mode: screen; }
+@keyframes sp-flicker { 0%, 100% { transform: scaleY(1) scaleX(1); opacity: .9; } 40% { transform: scaleY(1.25) scaleX(.85); opacity: 1; } 70% { transform: scaleY(.85) scaleX(1.1); } }
+.sp-ember { border-radius: 50%; background: var(--a); box-shadow: 0 0 5px var(--a); animation-name: sp-rise !important; }
+
+.sp-ocean .sp-sky { background: linear-gradient(180deg, color-mix(in srgb, var(--b) 60%, #000), var(--d)); }
+.sp-wave { fill: var(--b); opacity: .9; animation: sp-wave 6s linear infinite; }
+.sp-wave.w2 { fill: color-mix(in srgb, var(--a) 60%, var(--b)); opacity: .7; animation-duration: 4s; animation-direction: reverse; }
+@keyframes sp-wave { to { transform: translateX(-60px); } }
+
+.sp-snow .sp-sky { background: linear-gradient(180deg, color-mix(in srgb, var(--b) 50%, #0b1220), #0b1220); }
+.sp-hill { fill: var(--a); opacity: .85; }
+.sp-flake { border-radius: 50%; background: #fff; animation-name: sp-fall !important; }
+
+.sp-lightning .sp-sky { background: linear-gradient(180deg, #070912, color-mix(in srgb, var(--d) 60%, #000)); }
+.sp-bolt { fill: var(--c); stroke: var(--a); stroke-width: 1.4; filter: drop-shadow(0 0 4px var(--a)); animation: sp-zap 3.4s infinite; opacity: 0; }
+.sp-flash { inset: 0; background: var(--a); opacity: 0; animation: sp-flash 3.4s infinite; mix-blend-mode: screen; }
+@keyframes sp-zap { 0%, 100% { opacity: 0; } 2%, 7% { opacity: 1; } 4% { opacity: .2; } 12% { opacity: 0; } }
+@keyframes sp-flash { 0%, 100% { opacity: 0; } 2% { opacity: .35; } 6% { opacity: .1; } 10% { opacity: 0; } }
+
+.sp-neon_city .sp-sky { background: linear-gradient(180deg, #05010f, color-mix(in srgb, var(--b) 35%, #05010f)); }
+.sp-bldg { fill: #0b0618; stroke: color-mix(in srgb, var(--a) 40%, transparent); stroke-width: .6; }
+.sp-win { fill: var(--a); opacity: .9; animation: sp-win 5s steps(1) infinite; }
+.sp-win.off { fill: var(--b); animation-delay: -2.5s; }
+@keyframes sp-win { 50% { opacity: .25; } }
+.sp-neon { font: 900 9px/1 'Segoe UI', sans-serif; fill: var(--b); filter: drop-shadow(0 0 3px var(--b)); animation: sp-buzz 4s infinite; }
+@keyframes sp-buzz { 0%, 30%, 34%, 100% { opacity: 1; } 32% { opacity: .2; } }
+
+.sp-grid .sp-sky { background: linear-gradient(180deg, #12001f, color-mix(in srgb, var(--b) 30%, #12001f)); }
+.sp-sun { right: 14%; bottom: 40%; width: 34px; height: 34px; border-radius: 50%; background: repeating-linear-gradient(180deg, var(--a) 0 4px, transparent 4px 6px), linear-gradient(var(--b), var(--a)); -webkit-mask: linear-gradient(#000 45%, transparent 46%, #000 50%, transparent 56%, #000 60%, transparent 68%); mask: linear-gradient(#000 45%, transparent 46%, #000 50%, transparent 56%, #000 60%, transparent 68%); background: linear-gradient(var(--b), var(--a)); filter: drop-shadow(0 0 8px var(--b)); }
+.sp-gridlines { left: 0; right: 0; bottom: 0; height: 55%; background: repeating-linear-gradient(90deg, transparent 0 18px, var(--a) 18px 19px), repeating-linear-gradient(180deg, transparent 0 6px, var(--a) 6px 7px); transform: perspective(40px) rotateX(40deg); transform-origin: 50% 100%; opacity: .55; animation: sp-gridmove 1.2s linear infinite; }
+@keyframes sp-gridmove { to { background-position: 0 0, 0 7px; } }
+
+.sp-cipher .sp-sky { background: linear-gradient(90deg, #000, color-mix(in srgb, var(--d) 70%, #000)); }
+.sp-col { width: auto !important; height: auto !important; font: 700 calc(var(--s) * 1px)/1 ui-monospace, Consolas, monospace; color: var(--a); writing-mode: vertical-lr; text-shadow: 0 0 4px var(--a); animation-name: sp-fall !important; }
+
+.sp-blocks .sp-sky { background: linear-gradient(90deg, #07070c, #15122a); }
+.sp-block { border-radius: 2px; background: var(--a); box-shadow: calc(var(--s) * 1px) 0 0 var(--b), 0 calc(var(--s) * 1px) 0 var(--b); animation-name: sp-fall !important; }
+
+.sp-equalizer .sp-sky { background: linear-gradient(90deg, #05050a, color-mix(in srgb, var(--d) 70%, #000)); }
+.sp-eq { right: 4%; bottom: 0; top: 18%; width: 62%; display: flex !important; gap: 3px; align-items: flex-end; }
+.sp-eq i { position: relative !important; left: auto !important; top: auto !important; width: auto !important; flex: 1; height: 100% !important; border-radius: 2px 2px 0 0; background: linear-gradient(0deg, var(--b), var(--a)); transform-origin: 50% 100%; animation: sp-eq .8s ease-in-out infinite alternate; }
+@keyframes sp-eq { from { transform: scaleY(.15); } to { transform: scaleY(1); } }
+
+.sp-bfly { animation-name: sp-drift-left !important; }
+.sp-bfly em { position: absolute; top: 0; width: 50%; height: 80%; left: 0; border-radius: 80% 20% 70% 30%; background: linear-gradient(135deg, var(--c), var(--a) 50%, var(--b)); transform-origin: 100% 50%; animation: sp-flap .4s ease-in-out infinite; }
+.sp-bfly em.r { left: 50%; border-radius: 20% 80% 30% 70%; transform-origin: 0 50%; }
+@keyframes sp-flap { 50% { transform: scaleX(.25); } }
+
+.sp-forest_fog .sp-sky { background: linear-gradient(180deg, color-mix(in srgb, var(--a) 30%, #9aa7b5), var(--d)); }
+.sp-pine { fill: color-mix(in srgb, var(--b) 60%, #000); }
+.sp-fog { left: -20%; right: -20%; top: 30%; height: 50%; background: radial-gradient(ellipse at 50% 50%, #ffffff55, transparent 70%); animation: sp-fog 12s ease-in-out infinite alternate; }
+.sp-fog.f2 { top: 55%; opacity: .7; animation-duration: 16s; animation-direction: alternate-reverse; }
+@keyframes sp-fog { to { transform: translateX(-20%); } }
+
+.sp-hearts .sp-sky { background: linear-gradient(90deg, var(--d), var(--b)); }
+.sp-heart { color: var(--a); filter: drop-shadow(0 0 3px var(--c)); animation-name: sp-rise !important; }
+
+.sp-clouds .sp-sky { background: linear-gradient(180deg, var(--b), var(--a)); }
+.sp-cloud { width: calc(var(--s) * 2px) !important; border-radius: 50px; background: #fff; box-shadow: calc(var(--s) * .5px) calc(var(--s) * -.4px) 0 calc(var(--s) * .1px) #fff, calc(var(--s) * -.5px) calc(var(--s) * -.2px) 0 0 #fff; opacity: .92; animation-name: sp-drift-left !important; }
+
+.sp-spots { background-color: var(--a) !important; background-image: radial-gradient(circle at 30% 40%, var(--d) 0 2px, transparent 2.5px), radial-gradient(circle at 70% 60%, var(--d) 0 2px, transparent 2.5px), radial-gradient(circle at 30% 40%, transparent 3px, var(--b) 3.5px 4.5px, transparent 5px), radial-gradient(circle at 70% 60%, transparent 3px, var(--b) 3.5px 4.5px, transparent 5px) !important; background-size: 22px 18px, 26px 20px, 22px 18px, 26px 20px !important; }
+.sp-sheen { inset: 0; background: linear-gradient(100deg, transparent 30%, #ffffff66 45%, transparent 60%); background-size: 300% 100%; animation: sp-sheen 4s ease-in-out infinite; }
+@keyframes sp-sheen { from { background-position: 120% 0; } to { background-position: -40% 0; } }
+
+.sp-roses .sp-sky { background: linear-gradient(90deg, #070205, color-mix(in srgb, var(--d) 70%, #120208)); }
+.sp-vine { stroke: #1f3a24; stroke-width: 2; fill: none; }
+.sp-rose { fill: var(--a); stroke: var(--b); stroke-width: 1; animation: sp-rose 4s ease-in-out infinite; }
+.sp-rose-line { fill: none; stroke: var(--b); stroke-width: 1; }
+@keyframes sp-rose { 50% { transform: scale(1.1); } }
+
+.sp-crows .sp-sky { background: linear-gradient(180deg, #9aa1ab, #4b5059); }
+.sp-crow { color: #0c0c0f; height: calc(var(--s) * .45px) !important; animation-name: sp-drift-left !important; }
+
+.sp-eyes .sp-sky { background: linear-gradient(90deg, #000, #0b0204); }
+.sp-eye { width: calc(var(--s) * 3.2px) !important; display: flex !important; justify-content: space-between; animation-name: sp-blink !important; animation-timing-function: steps(1) !important; }
+.sp-eye em { width: calc(var(--s) * 1.2px); height: calc(var(--s) * 0.7px); border-radius: 50%; background: radial-gradient(circle, #000 0 25%, var(--a) 30%); box-shadow: 0 0 6px var(--a); }
+@keyframes sp-blink { 0%, 100% { opacity: 1; transform: scaleY(1); } 46% { opacity: 1; } 48% { transform: scaleY(.1); } 50% { opacity: 0; } 70% { opacity: 0; } 72% { opacity: 1; } }
+
+.sp-ghosts .sp-sky { background: linear-gradient(90deg, #07060d, color-mix(in srgb, var(--d) 70%, #0d0b18)); }
+.sp-ghost { height: calc(var(--s) * 1.2px) !important; border-radius: 50% 50% 20% 20%; background: radial-gradient(circle at 35% 40%, #000 0 8%, transparent 9%), radial-gradient(circle at 65% 40%, #000 0 8%, transparent 9%), linear-gradient(var(--c), var(--a)); opacity: .85; animation-name: sp-drift-left !important; }
+
+.sp-goldflow { background: linear-gradient(100deg, #3b2a00, var(--b), var(--a), #fff4c7, var(--a), var(--b), #3b2a00) !important; background-size: 300% 100% !important; animation: sp-flow 8s ease-in-out infinite alternate; }
+.sp-leaf { background: linear-gradient(135deg, #fff4c7, var(--a)); clip-path: polygon(10% 30%, 50% 0, 90% 25%, 100% 70%, 55% 100%, 0 75%); animation-name: sp-fall !important; }
+
+.sp-starry_night .sp-sky { background: linear-gradient(180deg, color-mix(in srgb, var(--b) 85%, #fff 5%), var(--d)); }
+.sp-swirl { fill: none; stroke: #9fc2ff; stroke-width: 2.4; stroke-linecap: round; opacity: .85; animation: sp-spin 8s linear infinite; }
+.sp-vstar circle { fill: var(--a); }
+.sp-vstar .halo { fill: var(--a); opacity: .3; }
+.sp-vstar { animation: sp-pulse 3s ease-in-out infinite; }
+@keyframes sp-pulse { 50% { transform: scale(1.25); } }
+.sp-moonc { fill: var(--a); filter: drop-shadow(0 0 4px var(--a)); }
+.sp-cypress { fill: #0b1a12; }
+
+.sp-great_wave .sp-sky { background: linear-gradient(180deg, #efe4c8, #d9c7a1); }
+.sp-wavepat { animation: sp-wavepat 8s linear infinite; }
+@keyframes sp-wavepat { to { transform: translateX(-48px); } }
+.sp-wv { fill: var(--b); stroke: var(--d); stroke-width: 1; }
+.sp-foam { fill: none; stroke: var(--a); stroke-width: 1.4; }
+.sp-fuji { right: 6%; bottom: 0; width: 26px; height: 14px; background: linear-gradient(#fff 0 35%, var(--b) 36%); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+
+.sp-mosaic { background-color: var(--b) !important; background-image: linear-gradient(45deg, var(--a) 25%, transparent 25%, transparent 75%, var(--a) 75%), linear-gradient(45deg, var(--a) 25%, transparent 25%, transparent 75%, var(--a) 75%), radial-gradient(circle, var(--d) 0 1.5px, transparent 2px) !important; background-size: 10px 10px, 10px 10px, 7px 7px !important; background-position: 0 0, 5px 5px, 0 0 !important; }
+.sp-spiral { border-radius: 50%; border: 2px solid var(--c); border-right-color: transparent; animation-name: sp-spin !important; }
+
+.sp-scream .sp-sky { background: linear-gradient(180deg, var(--a), var(--b) 50%, var(--d)); }
+.sp-bands { animation: sp-wave 5s linear infinite; }
+.sp-band { fill: none; stroke-width: 4; opacity: .55; }
+.sp-band.b0, .sp-band.b2 { stroke: var(--c); }
+.sp-band.b1 { stroke: var(--b); }
+.sp-band.b3 { stroke: var(--d); }
+.sp-bridge { fill: #6b4a2a; }
+
+.sp-mface circle { fill: var(--a); stroke: var(--d); stroke-width: 1.2; }
+.sp-mface .ln { fill: none; stroke: var(--d); stroke-width: 1.2; stroke-linecap: round; }
+.sp-capsule { fill: #c9ccd3; stroke: var(--d); stroke-width: 1; animation: sp-capsule 5s ease-in infinite; }
+@keyframes sp-capsule { 0% { transform: translate(-80px, 14px); opacity: 0; } 15% { opacity: 1; } 85% { transform: translate(80px, -14px); opacity: 1; } 100% { transform: translate(84px, -15px); opacity: 0; } }
+
+.sp-grain { background: linear-gradient(90deg, #120d06, color-mix(in srgb, var(--b) 60%, #120d06)) !important; animation: sp-grain .25s steps(2) infinite; }
+@keyframes sp-grain { 50% { filter: brightness(1.18); } }
+.sp-sprockets { left: 0; right: 0; top: 2px; height: 5px; background: repeating-linear-gradient(90deg, transparent 0 6px, var(--a) 6px 11px); opacity: .55; animation: sp-reel .6s linear infinite; }
+.sp-sprockets.bottom { top: auto; bottom: 2px; }
+@keyframes sp-reel { to { background-position: -11px 0; } }
+.sp-scratch { top: 0; bottom: 0; right: 30%; width: 1px; background: var(--c); opacity: 0; animation: sp-scratch 1.7s steps(1) infinite; }
+@keyframes sp-scratch { 10% { opacity: .5; right: 22%; } 20% { opacity: 0; } 55% { opacity: .4; right: 40%; } 62% { opacity: 0; } }
+
+.sp-brick_road .sp-sky { background: linear-gradient(180deg, #9be7b5, color-mix(in srgb, var(--b) 70%, #062)); }
+.sp-road { fill: none; stroke: #e0a526; stroke-width: 9; stroke-linecap: round; }
+.sp-bricks { fill: none; stroke: #8a5a10; stroke-width: 9; stroke-dasharray: 1 5; opacity: .45; animation: sp-bricks 2s linear infinite; }
+@keyframes sp-bricks { to { stroke-dashoffset: -12; } }
+.sp-tower { fill: var(--a); stroke: var(--d); stroke-width: .6; filter: drop-shadow(0 0 3px var(--a)); }
+
+.sp-spiralbg { background: repeating-conic-gradient(from 0deg at 85% 50%, var(--d) 0 15deg, color-mix(in srgb, var(--b) 60%, var(--d)) 15deg 30deg) !important; animation: sp-spin 30s linear infinite; transform-origin: 85% 50%; inset: -60% !important; }
+.sp-card { width: calc(var(--s) * 1.4px) !important; height: calc(var(--s) * 2px) !important; border-radius: 2px; background: #fff; color: #d1203a; font-size: calc(var(--s) * 1.2px); display: flex !important; align-items: center; justify-content: center; animation-name: sp-cardfall !important; }
+@keyframes sp-cardfall { 0% { transform: translateY(-30px) rotate(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(50px) rotate(220deg); opacity: 0; } }
+.sp-clock { border-radius: 50%; background: radial-gradient(circle, #fffaf0 55%, #d4a64a 58%); animation-name: sp-cardfall !important; }
+
+.sp-castle .sp-sky { background: linear-gradient(180deg, color-mix(in srgb, var(--b) 80%, #000), #050002); }
+.sp-castle { fill: #050002; }
+.sp-bat { color: #050002; height: calc(var(--s) * .5px) !important; animation-name: sp-drift-left !important; }
+
+.sp-deep_sea .sp-sky { background: linear-gradient(180deg, color-mix(in srgb, var(--a) 50%, var(--b)), var(--d)); }
+.sp-rays { inset: 0; background: repeating-linear-gradient(100deg, transparent 0 18px, #ffffff1c 18px 26px); animation: sp-rays 8s ease-in-out infinite alternate; }
+@keyframes sp-rays { to { transform: translateX(-20px); } }
+.sp-bubble { border-radius: 50%; border: 1px solid #ffffffaa; animation-name: sp-rise !important; }

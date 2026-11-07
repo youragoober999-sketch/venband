@@ -764,5 +764,17 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "check_slowmode"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261106150000_shop_inventory.sql",
+    "tables": [
+      "cosmetic_inventory"
+    ],
+    "functions": [
+      "check_cosmetic_equip",
+      "claim_cosmetics",
+      "cosmetic_free"
+    ],
+    "bodies": {}
   }
 ];

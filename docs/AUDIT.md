@@ -474,6 +474,19 @@ and with `npm run test:db:local` (14 database suites) plus `npm test`.
 * **Slowmode and reminders** (`20261106140000`): per-channel slowmode enforced
   by the database; "Remind me" on any message, shown in Saved Messages.
 * **No browser pop-ups**: every alert / confirm / prompt is an in-app dialog.
+* **The Shop** (`20261106150000`, `src/lib/shop.ts`): the Marketplace in your
+  home sidebar now holds 400+ free items in 185 designs, sorted into tabs:
+  * avatar decorations: animated SVG (`Decorations.tsx`);
+  * profile effects: particle canvas (`shopEffects.ts`);
+  * nameplates: CSS/SVG scenes (`ShopNameplates.tsx`);
+  * themes and bundles;
+  * Classics;
+  * the community marketplace.
+
+  "Get" adds an item to your collection (`cosmetic_inventory`, private). Your
+  profile can only equip collected items; the originals and a starter set are
+  free for everyone. Classics come only from public-domain sources (each item
+  names its source), with no licensed characters.
 
 Originality ("court free"): every name, picture, sound and game here is our
 own. Nothing copies another product's trademarks, artwork, sounds or levels;

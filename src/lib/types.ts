@@ -37,7 +37,7 @@ export interface Profile {
   profile_effect?: string;
 }
 
-export type AvatarFrame = 'none' | 'neon' | 'flame' | 'frost' | 'rainbow' | 'gold' | 'sakura' | 'pixel' | 'orbit' | 'hearts' | 'glitch' | 'galaxy' | 'lightning' | 'crystal';
+export type AvatarFrame = 'none' | 'neon' | 'flame' | 'frost' | 'rainbow' | 'gold' | 'sakura' | 'pixel' | 'orbit' | 'hearts' | 'glitch' | 'galaxy' | 'lightning' | 'crystal' | (string & {});
 export type NameFont = 'default' | 'serif' | 'mono' | 'rounded' | 'handwritten' | 'display' | 'pixel';
 export type NameEffect = 'none' | 'shimmer' | 'glow' | 'rainbow' | 'pulse' | 'wave' | 'aurora' | 'fire' | 'ice' | 'holographic' | 'sparkle';
 export interface NameStyle {

@@ -5,6 +5,8 @@ import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePat
 import { fingerprint, passwordStrength } from '../lib/crypto';
 import { displayName, getProfile, loadProfiles, putProfile } from '../lib/directory';
 import { closeSettings, uiStore, type SettingsTab } from '../lib/ui';
+import { inventoryStore, loadInventory, ownedOptions } from '../lib/inventory';
+import { openFriends } from '../hooks/data';
 import { DEFAULT_SETTINGS, updateChat, updateSettings, updateVoice, useSettings } from '../lib/settings';
 import { BUILT_IN_THEMES } from '../lib/themes';
 import { ThemeCreator, ThemeSwatch, MyThemes, InstalledThemeUpdates, type EditingTheme } from './ThemeStudio';
@@ -703,6 +705,15 @@ const PRESENCE: { id: PresenceStatus; label: string }[] = [
 
 function ProfileTab() {
   const me = sessionStore.use((s) => s.me)!;
+  const owned = inventoryStore.use((s) => s.owned);
+  useEffect(() => {
+    loadInventory().catch(() => {});
+  }, []);
+  const toShop = (
+    <button type="button" className="btn link small" onClick={() => (closeSettings(), uiStore.set({ homeTab: 'market' } as never), openFriends())}>
+      Get more in the Marketplace →
+    </button>
+  );
   const [draft, setDraft] = useState<ProfilePatch>({});
   const [usernameDraft, setUsernameDraft] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -863,9 +874,9 @@ function ProfileTab() {
               {preview.banner_color2 && <ColorPicker value={preview.banner_color2} onChange={(c) => set({ banner_color2: c })} />}
             </div>
           </Field>
-          <Field label="Profile frame" group hint="An animated ring around your picture.">
+          <Field label="Avatar decoration" group hint="Art around your picture. Collect more for free in the Marketplace." aside={toShop}>
             <div className="frame-grid">
-              {FRAME_LIST.map((f) => (
+              {[...FRAME_LIST, ...ownedOptions('decoration', owned)].map((f) => (
                 <button key={f.id} type="button" className={`frame-option${(preview.avatar_frame ?? 'none') === f.id ? ' selected' : ''}`} onClick={() => set({ avatar_frame: f.id as AvatarFrame })} aria-label={f.label} title={f.label}>
                   <Avatar profile={{ ...preview, avatar_frame: f.id as AvatarFrame }} size={44} />
                   <span>{f.label}</span>
@@ -873,9 +884,9 @@ function ProfileTab() {
               ))}
             </div>
           </Field>
-          <Field label="Profile effect" group hint="Animated particles over your whole profile card.">
+          <Field label="Profile effect" group hint="Animated particles over your whole profile card." aside={toShop}>
             <div className="effect-grid">
-              {EFFECT_LIST.map((f) => (
+              {[...EFFECT_LIST, ...ownedOptions('effect', owned)].map((f) => (
                 <button key={f.id} type="button" className={`effect-option${(preview.profile_effect ?? 'none') === f.id ? ' selected' : ''}`} onClick={() => set({ profile_effect: f.id })} aria-label={f.label} title={f.label}>
                   <ProfileEffect id={f.id} />
                   <span>{f.label}</span>
@@ -922,7 +933,7 @@ function ProfileTab() {
           </Field>
           <Field label="Nameplate" group hint="An animated backdrop behind your name in member lists.">
             <div className="nameplate-grid">
-              {[...NAMEPLATES, { id: 'custom', label: 'Custom' }].map((n) => (
+              {[...NAMEPLATES, ...ownedOptions('nameplate', owned), { id: 'custom', label: 'Custom' }].map((n) => (
                 <button
                   key={n.id}
                   type="button"

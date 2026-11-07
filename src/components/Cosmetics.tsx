@@ -7,6 +7,9 @@
 // "reduce motion", and effects pause when off screen.
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import './cosmetics.css';
+import { Decoration } from './Decorations';
+import { ShopNameplate } from './ShopNameplates';
+import { shopEffect } from './shopEffects';
 
 // ------------------------------------------------------------------ helpers --
 function rng(seed: string) {
@@ -195,6 +198,7 @@ const sceneCache = new Map<string, ReactNode>();
 
 /** The animated scene behind a nameplate row (null for none / custom). */
 export function NameplateArt({ id }: { id?: string | null }) {
+  if (id && id.startsWith('plate.')) return <ShopNameplate id={id} />;
   if (!id || !SCENES[id]) return null;
   let node = sceneCache.get(id);
   if (!node) sceneCache.set(id, (node = SCENES[id]()));
@@ -331,6 +335,7 @@ const frameCache = new Map<string, ReactNode>();
 
 /** Animated frame drawn around (and a little outside) an avatar. */
 export function FrameArt({ id }: { id: string }) {
+  if (id.startsWith('deco.')) return <Decoration id={id} />;
   if (!FRAMES[id]) return null;
   let node = frameCache.get(id);
   if (!node) frameCache.set(id, (node = FRAMES[id]()));
@@ -664,7 +669,7 @@ const EFFECTS: Record<string, EffectDef> = {
 /** Full-card particle effect over a profile. Purely decorative, never blocks clicks. */
 export function ProfileEffect({ id, className = '' }: { id?: string | null; className?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const def = id ? EFFECTS[id] : undefined;
+  const def = id ? (EFFECTS[id] ?? (id.startsWith('effect.') ? (shopEffect(id) as EffectDef | undefined) : undefined)) : undefined;
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas || !def) return;

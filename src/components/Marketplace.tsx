@@ -49,7 +49,7 @@ function cleanPlate(d: Record<string, unknown>): NameplateStyle {
   };
 }
 
-export function MarketplaceView() {
+export function MarketplaceView({ embedded }: { embedded?: boolean } = {}) {
   const me = sessionStore.use((s) => s.me)!;
   const [kind, setKind] = useState<Kind>('theme');
   const [sort, setSort] = useState<'popular' | 'new'>('popular');
@@ -99,12 +99,14 @@ export function MarketplaceView() {
 
   const shown = (rows ?? []).filter((r) => !q.trim() || `${r.name} ${r.description} ${displayName(r.author_id)}`.toLowerCase().includes(q.trim().toLowerCase()));
   return (
-    <div className="market-view">
-      <header className="chat-header">
-        <Icon name="sparkles" />
-        <h3>Marketplace</h3>
-        <span className="topic small muted">Themes, nameplates, name styles and CSS made by the community</span>
-      </header>
+    <div className={embedded ? 'market-view embedded' : 'market-view'}>
+      {!embedded && (
+        <header className="chat-header">
+          <Icon name="sparkles" />
+          <h3>Marketplace</h3>
+          <span className="topic small muted">Themes, nameplates, name styles and CSS made by the community</span>
+        </header>
+      )}
       <div className="market-body">
         <div className="market-toolbar">
           <div className="tabs">
