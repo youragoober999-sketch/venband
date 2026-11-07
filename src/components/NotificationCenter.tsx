@@ -5,7 +5,12 @@ import {
   CATEGORY_LABEL, markNotificationsRead, notificationStore, NOTIFICATION_ACTIONS, startNotifications, stopNotifications, timeAgo,
   type AppNotification, type NotificationCategory,
 } from '../lib/notifications';
-import { Icon } from './ui';
+import { Avatar, Icon } from './ui';
+import { markPingsRead, readAll, usePings, type Ping, type PingKind } from '../lib/mentions';
+import { getProfile } from '../lib/directory';
+import { openChannel } from '../hooks/data';
+import { uiStore } from '../lib/ui';
+import { unreadStore } from '../lib/notify';
 
 const SEVERITY_ICON: Record<AppNotification['severity'], string> = { info: 'bell', warning: 'warning', critical: 'shield' };
 const CATEGORY_ICON: Record<NotificationCategory, string> = { security: 'shield', moderation: 'gavel', platform: 'palette', community: 'flag' };
@@ -66,6 +71,44 @@ function NotificationItem({ n, onAction }: { n: AppNotification; onAction?: () =
 }
 
 type Filter = 'all' | 'unread' | NotificationCategory;
+type PingFilter = 'all' | PingKind | 'everyone-here';
+
+const PING_LABEL: Record<PingKind, string> = { you: '@you', role: '@role', everyone: '@everyone', here: '@here', dm: 'DM' };
+const PING_FILTERS: [PingFilter, string][] = [
+  ['all', 'All'],
+  ['you', '@you'],
+  ['role', '@role'],
+  ['everyone-here', '@everyone / @here'],
+  ['dm', 'DMs'],
+];
+
+function PingItem({ p, onOpen }: { p: Ping; onOpen: () => void }) {
+  const prof = getProfile(p.authorId);
+  const name = prof?.display_name || prof?.username || 'Someone';
+  return (
+    <li className={`ping-item${p.read ? '' : ' unread'}`}>
+      <button
+        onClick={() => {
+          openChannel(p.serverId ?? '@me', p.channelId);
+          uiStore.set({ jump: p.id });
+          markPingsRead(p.channelId);
+          onOpen();
+        }}
+      >
+        {prof ? <Avatar profile={prof} size={34} /> : <span className="ping-av" />}
+        <span className="ping-body">
+          <span className="ping-top">
+            <b>{name}</b>
+            <span className={`ping-kind k-${p.kind}`}>{p.kind === 'role' && p.roleName ? `@${p.roleName}` : PING_LABEL[p.kind]}</span>
+            <span className="ping-time">{timeAgo(p.at)}</span>
+          </span>
+          <span className="ping-where">{p.where}</span>
+          <span className="ping-text">{p.text || 'New encrypted message'}</span>
+        </span>
+      </button>
+    </li>
+  );
+}
 
 function NotificationPanel({ onClose }: { onClose: () => void }) {
   const items = notificationStore.use((s) => s.items);
@@ -74,6 +117,13 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
   const unread = notificationStore.use((s) => s.unread);
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
+  const pings = usePings();
+  const [view, setView] = useState<'mentions' | 'notices'>('mentions');
+  const [pf, setPf] = useState<PingFilter>('all');
+  const dots = unreadStore.use((s) => Object.keys(s.counts).length + Object.keys(s.mentions).length);
+  const term = q.trim().toLowerCase();
+  const pingShown = pings.filter((p) => (pf === 'all' || (pf === 'everyone-here' ? p.kind === 'everyone' || p.kind === 'here' : p.kind === pf)) && (!term || `${p.text} ${p.where}`.toLowerCase().includes(term)));
+  const unreadPings = pings.filter((p) => !p.read).length;
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -112,13 +162,48 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
     <div className="notif-panel" ref={ref} role="dialog" aria-label="Notifications">
       <header className="notif-panel-head">
         <h3>Notifications</h3>
-        <button className="btn link small" disabled={!unread} onClick={() => markNotificationsRead()}>
-          Mark all read
+        <button
+          className="btn secondary small notif-readall"
+          disabled={!dots && !unread && !unreadPings}
+          onClick={() => {
+            void readAll();
+            void markNotificationsRead();
+          }}
+          title="Clear every unread dot and ping"
+        >
+          <Icon name="check" size={14} /> Read all
         </button>
         <button className="icon-btn" onClick={onClose} aria-label="Close">
           <Icon name="x" size={16} />
         </button>
       </header>
+      <div className="notif-views" role="tablist">
+        <button role="tab" aria-selected={view === 'mentions'} className={view === 'mentions' ? 'on' : ''} onClick={() => setView('mentions')}>
+          Mentions{unreadPings ? <span className="notif-pill">{unreadPings > 9 ? '9+' : unreadPings}</span> : null}
+        </button>
+        <button role="tab" aria-selected={view === 'notices'} className={view === 'notices' ? 'on' : ''} onClick={() => setView('notices')}>
+          Notices{unread ? <span className="notif-pill">{unread > 9 ? '9+' : unread}</span> : null}
+        </button>
+      </div>
+      {view === 'mentions' ? (
+        <>
+          <div className="notif-filters" role="tablist">
+            {PING_FILTERS.map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={pf === id} className={`chip${pf === id ? ' on' : ''}`} onClick={() => setPf(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <input className="search-input notif-search" placeholder="Search mentions" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search mentions" />
+          <ul className="notif-list">
+            {!pingShown.length && <li className="notif-empty muted small">{pings.length ? 'Nothing matches.' : 'No pings yet. When someone mentions you, your role, @everyone, or DMs you, it shows up here.'}</li>}
+            {pingShown.map((p) => (
+              <PingItem key={p.id} p={p} onOpen={onClose} />
+            ))}
+          </ul>
+        </>
+      ) : (
+        <>
       <div className="notif-filters" role="tablist">
         {filters.map((f) => (
           <button key={f.id} role="tab" aria-selected={filter === f.id} className={`chip${filter === f.id ? ' on' : ''}`} onClick={() => setFilter(f.id)}>
@@ -137,6 +222,8 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
           <NotificationItem key={n.id} n={n} onAction={onClose} />
         ))}
       </ul>
+        </>
+      )}
       <footer className="notif-foot small muted">
         <Icon name="lock" size={12} /> Venband never asks for your password, codes or payment details in a message.
       </footer>
@@ -145,7 +232,8 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
 }
 
 export function NotificationBell() {
-  const unread = notificationStore.use((s) => s.unread);
+  const notices = notificationStore.use((s) => s.unread);
+  const unread = notices + usePings().filter((p) => !p.read).length;
   const [open, setOpen] = useState(false);
   useEffect(() => {
     void startNotifications();
@@ -161,7 +249,7 @@ export function NotificationBell() {
         aria-expanded={open}
       >
         <Icon name="bell" size={18} />
-        {unread > 0 && <span className="notif-count">{unread > 99 ? '99+' : unread}</span>}
+        {unread > 0 && <span className="notif-count">{unread > 9 ? '9+' : unread}</span>}
       </button>
       {open && <NotificationPanel onClose={() => setOpen(false)} />}
     </>

@@ -259,6 +259,36 @@ export function Composer({
     return () => window.removeEventListener(COMPOSER_FILL, onFill);
   }, [channelId]);
 
+  // starting a reply puts you straight in the message box
+  useEffect(() => {
+    if (replyTo) requestAnimationFrame(() => textarea.current?.focus());
+  }, [replyTo]);
+
+  // Just start typing: when nothing else has focus, a printable key (or paste)
+  // goes into the message box instead of being lost.
+  useEffect(() => {
+    const busy = () => {
+      const a = document.activeElement as HTMLElement | null;
+      if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return true;
+      // a dialog, menu or picker is open: keys belong to it
+      return Boolean(document.querySelector('.modal, [role="dialog"], [role="menu"], .context-menu, .mem-viewer'));
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (disabled || e.defaultPrevented || e.isComposing || busy()) return;
+      const el = textarea.current;
+      if (!el || !el.isConnected || el.offsetParent === null) return;
+      const paste = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v';
+      const printable = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (!printable && !paste) return;
+      el.focus();
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+      // the key itself then lands in the box, because focus moved before the browser handles it
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [disabled]);
+
   // a command with options being typed: "/avatar @Bob" -> the hint bar + member picker
   const activeCmd = useMemo(() => {
     const m = /^\/([a-z0-9_-]{1,32}) ([\s\S]*)$/i.exec(text);

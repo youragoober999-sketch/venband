@@ -105,3 +105,6 @@ import { sfx } from './sfx';
 export function playMessageSound() {
   sfx('message');
 }
+
+/** Ping counts on badges stop at 9+ (the exact number is in the notification list). */
+export const pingCount = (n: number) => (n > 9 ? '9+' : String(n));

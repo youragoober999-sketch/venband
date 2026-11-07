@@ -23,6 +23,7 @@ import {
   startRing,
   stopRing,
   unreadStore,
+  pingCount,
 } from '../lib/notify';
 import { currentPath, go, linkTo, parseRoute, useRoute } from '../lib/router';
 import { socialStore } from '../lib/social';
@@ -69,6 +70,7 @@ import { AccountSwitcher } from './AccountSwitcher';
 import { rememberCurrent, watchTokens } from '../lib/accounts';
 import { startOnlineHeartbeat, stopOnlineHeartbeat } from '../lib/online';
 import { mentionsMe } from './Markdown';
+import { pingKind, recordPing } from '../lib/mentions';
 import { openAudioMenu, openAudioMenuAt } from './audioMenu';
 
 export function useActiveCall() {
@@ -121,6 +123,25 @@ function useMessageAlerts(servers: Server[]) {
     }
     const mention = !isDm && mentionsMe(text, me.id, myRolesByServer.get(meta.server_id ?? '') ?? []);
     addUnread(row.channel_id, meta.server_id, mention);
+    // keep it in the Mentions inbox (DMs too), with what kind of ping it was
+    {
+      const pk = isDm ? { kind: 'dm' as const } : mention ? pingKind(text, me.id, myRolesByServer.get(meta.server_id ?? '') ?? []) : null;
+      if (pk && meta.request_to !== me.id) {
+        await loadProfiles([row.author_id]);
+        const server = serversRef.current.find((x) => x.id === meta.server_id);
+        void recordPing({
+          id: row.id,
+          channelId: row.channel_id,
+          serverId: meta.server_id,
+          authorId: row.author_id,
+          kind: pk.kind,
+          roleId: 'roleId' in pk ? pk.roleId : undefined,
+          where: isDm ? (meta.is_group ? meta.name : displayName(row.author_id)) : `#${meta.name}${server ? ` · ${server.name}` : ''}`,
+          text: text.replace(/<@&?[0-9a-f-]{36}>/g, '@someone'),
+          at: row.created_at,
+        });
+      }
+    }
     if ((getSettings().dms.mutedUntil[row.channel_id] ?? 0) > Date.now()) return;
     if (meta.server_id && getSettings().rail.folders.some((f) => f.muted && f.servers.includes(meta.server_id!))) return;
     if ((!isDm && !mention) || rel?.muted || me.presence === 'dnd' || meta.request_to === me.id) return;
@@ -620,7 +641,7 @@ function ServerRail({
             {initials(s.name)}
           </span>
         )}
-        {st.mentions > 0 && !folder?.muted && <span className="badge">{st.mentions}</span>}
+        {st.mentions > 0 && !folder?.muted && <span className="badge">{pingCount(st.mentions)}</span>}
         {s.verified && (
           <span className="rail-verified">
             <VerifiedMark size={14} />
@@ -634,7 +655,7 @@ function ServerRail({
     <nav className="rail" aria-label="Servers">
       <button className={`rail-item home${current === null && !discover ? ' active' : ''}`} onClick={() => openServer(null)} title="Direct messages">
         <Logo size={46} />
-        {dmUnread > 0 && <span className="badge">{dmUnread > 99 ? '99+' : dmUnread}</span>}
+        {dmUnread > 0 && <span className="badge">{pingCount(dmUnread)}</span>}
       </button>
       <div className="rail-sep" />
       {railItems.map((it) =>
@@ -892,7 +913,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
         </span>
         {muted && <Icon name="bellOff" size={12} />}
         {isPinned(d) && <Icon name="pin" size={12} />}
-        {(unread.counts[d.channel.id] ?? 0) > 0 && !muted && <span className="badge inline">{unread.counts[d.channel.id]}</span>}
+        {(unread.counts[d.channel.id] ?? 0) > 0 && !muted && <span className="badge inline">{pingCount(unread.counts[d.channel.id] ?? 0)}</span>}
       </button>
     );
   };
@@ -1611,7 +1632,7 @@ custom &&
                   <Icon name={channelIcon(c, data.server?.welcome_channel_id)} size={18} />
                   <span className={`channel-name${unread.counts[c.id] && selected !== c.id ? ' unread' : ''}`}>{c.name}</span>
                   {c.is_private && <Icon name="lock" size={12} />}
-                  {(unread.mentions[c.id] ?? 0) > 0 && selected !== c.id && <span className="badge inline">{unread.mentions[c.id]}</span>}
+                  {(unread.mentions[c.id] ?? 0) > 0 && selected !== c.id && <span className="badge inline">{pingCount(unread.mentions[c.id] ?? 0)}</span>}
                   {canManage && (
                     <button
                       className="icon-btn channel-gear"

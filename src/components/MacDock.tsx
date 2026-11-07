@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DmChannel, Server } from '../lib/types';
 import { openServer } from '../hooks/data';
-import { unreadStore } from '../lib/notify';
+import { pingCount, unreadStore } from '../lib/notify';
 import { getSettings, updateSettings, useSettings } from '../lib/settings';
 import { useDragSort, type DropWhere } from '../lib/useDragSort';
 import { Icon, initials } from './ui';
@@ -65,7 +65,7 @@ function DockItem({
       {...extra}
     >
       <span className="dock-icon">{children}</span>
-      {mentions ? <span className="dock-badge">{mentions > 99 ? '99+' : mentions}</span> : null}
+      {mentions ? <span className="dock-badge">{pingCount(mentions)}</span> : null}
       <span className="dock-tip">{label}</span>
       <span className={`dock-dot${active ? ' on' : unread ? ' unread' : ''}`} />
     </button>

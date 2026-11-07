@@ -8,10 +8,38 @@ import { Icon } from './ui';
 
 type Tab = 'favorites' | 'search' | 'server' | 'make';
 
+/** The same GIF can arrive in different sizes/links (…/md/x.gif vs …/hd/x.gif?v=2): compare a normalised key. */
+export function gifKey(url: string): string {
+  try {
+    const u = new URL(url.trim());
+    return (u.host + u.pathname).toLowerCase().replace(/\/(xs|sm|md|hd|lg|tiny|small|medium|large|original)(?=\/|\.)/g, '/').replace(/\.(gif|webp|mp4|webm)$/, '');
+  } catch {
+    return url.trim().toLowerCase();
+  }
+}
+export const isGifFavorite = (list: GifFavorite[], url: string) => {
+  const k = gifKey(url);
+  return list.some((f) => gifKey(f.url) === k);
+};
+
 export function toggleGifFavorite(g: GifFavorite) {
+  const k = gifKey(g.url);
   updateSettings((s) => ({
-    gifFavorites: s.gifFavorites.some((f) => f.url === g.url) ? s.gifFavorites.filter((f) => f.url !== g.url) : [g, ...s.gifFavorites],
+    gifFavorites: s.gifFavorites.some((f) => gifKey(f.url) === k) ? s.gifFavorites.filter((f) => gifKey(f.url) !== k) : [g, ...s.gifFavorites],
   }));
+}
+
+/** Masonry: put each GIF in the shorter of two columns, so there are no gaps. */
+function columns(list: GifFavorite[]): [GifFavorite[], GifFavorite[]] {
+  const out: [GifFavorite[], GifFavorite[]] = [[], []];
+  const hgt = [0, 0];
+  for (const g of list) {
+    const ratio = g.width > 1 && g.height > 1 ? g.height / g.width : 0.75;
+    const i = hgt[0] <= hgt[1] ? 0 : 1;
+    out[i].push(g);
+    hgt[i] += ratio + 0.04;
+  }
+  return out;
 }
 
 export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) => void; onFile: (f: File) => void; onClose: () => void }) {
@@ -120,9 +148,13 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
           ))}
         </div>
       ) : (
-        <div className="gif-grid">
-          {(tab === 'favorites' ? favorites : items).map((g) => (
-            <GifTile key={g.url} g={g} fav={favorites.some((f) => f.url === g.url)} onPick={() => pick(g)} />
+        <div className="gif-grid gif-masonry">
+          {columns(tab === 'favorites' ? favorites : items).map((col, ci) => (
+            <div className="gif-col" key={ci}>
+              {col.map((g) => (
+                <GifTile key={g.url} g={g} fav={isGifFavorite(favorites, g.url)} onPick={() => pick(g)} />
+              ))}
+            </div>
           ))}
           {tab === 'favorites' && !favorites.length && (
             <p className="small muted gif-empty">Star a GIF to keep it here. Your favorites sync to every device.</p>
@@ -149,27 +181,34 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
   );
 }
 
-/** Star toggle: filled + a little pop when favorited, click the filled star to unfavorite. */
+/** Star toggle: a sparkle burst when you favorite, a little shrink when you un-favorite. */
 export function FavoriteStar({ g, fav, className = '' }: { g: GifFavorite; fav: boolean; className?: string }) {
-  const [burst, setBurst] = useState(0);
+  const [anim, setAnim] = useState<{ n: number; on: boolean }>({ n: 0, on: false });
   return (
     <button
       type="button"
       className={`gif-star${fav ? ' on' : ''}${className ? ' ' + className : ''}`}
-      title={fav ? 'Remove from favorites' : 'Add to favorites'}
+      title={fav ? 'Favorited — click to remove' : 'Add to favorites'}
       aria-label={fav ? 'Remove from favorites' : 'Add to favorites'}
       aria-pressed={fav}
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
-        if (!fav) setBurst((b) => b + 1);
+        setAnim((a) => ({ n: a.n + 1, on: !fav }));
         toggleGifFavorite(g);
       }}
     >
-      <span key={burst} className={burst && fav ? 'star-pop' : undefined}>
+      <span key={anim.n} className={anim.n ? (anim.on ? 'star-pop' : 'star-drop') : undefined}>
         <Icon name="star" size={16} filled={fav} />
       </span>
-      {burst > 0 && fav && <span key={`b${burst}`} className="star-burst" aria-hidden />}
+      {anim.n > 0 && anim.on && (
+        <span key={`b${anim.n}`} className="star-fx" aria-hidden>
+          <i className="star-ring" />
+          {Array.from({ length: 8 }, (_, i) => (
+            <i key={i} className="star-spark" style={{ ['--a' as string]: `${i * 45}deg` }} />
+          ))}
+        </span>
+      )}
     </button>
   );
 }

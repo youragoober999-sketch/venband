@@ -35,7 +35,7 @@ import { copyText, openMenu, type Entry } from './ContextMenu';
 import { askConfirm, askText, showAlert } from './Dialogs';
 import { loadMyReports, myReports, reportMessage } from '../lib/reports';
 import { Embed, findEmbeds, isBareGif, Markdown, mentionsMe, type MentionContext } from './Markdown';
-import { FavoriteStar, toggleGifFavorite } from './GifPicker';
+import { FavoriteStar, isGifFavorite, toggleGifFavorite } from './GifPicker';
 import { openProfile, ServerTag, userMenu } from './People';
 import { Composer, fillComposer, useTyping, type Mentionables, type PendingFile, type SendOptions } from './Composer';
 import { EditHistoryModal, PollView, QuickReactBar, quickReactionSet, Reactions, ThreadSummary } from './MessageParts';
@@ -215,11 +215,25 @@ export function ChatView({
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
+    const toBottom = () => {
       if (stick.current) el.scrollTop = el.scrollHeight;
-    });
+    };
+    // the box keeps its size while its content grows, so watch the content too
+    const ro = new ResizeObserver(toBottom);
     ro.observe(el);
-    return () => ro.disconnect();
+    const watch = () => Array.from(el.children).forEach((c) => ro.observe(c));
+    watch();
+    const mo = new MutationObserver(watch);
+    mo.observe(el, { childList: true });
+    // pictures, GIFs and videos that finish loading later
+    el.addEventListener('load', toBottom, true);
+    el.addEventListener('loadedmetadata', toBottom, true);
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      el.removeEventListener('load', toBottom, true);
+      el.removeEventListener('loadedmetadata', toBottom, true);
+    };
   }, []);
 
   useEffect(() => {
@@ -452,6 +466,52 @@ export function ChatView({
     return messages.find((m) => m.row.created_at > openedAt && m.row.author_id !== me.id)?.row.id ?? null;
   }, [messages, openedAt, me.id]);
 
+  // "You have unread messages" bar: until you reach the first unread, mark read, or leave
+  const [unreadDone, setUnreadDone] = useState(false);
+  const pendingJump = useRef(false);
+  useEffect(() => {
+    setUnreadDone(false);
+    pendingJump.current = false;
+  }, [channel.id]);
+  const unreadCount = useMemo(() => (openedAt ? messages.filter((m) => m.row.created_at > openedAt && m.row.author_id !== me.id).length : 0), [messages, openedAt, me.id]);
+  const allUnreadLoaded = !hasMore || (messages[0] && openedAt ? messages[0].row.created_at <= openedAt : true);
+  const firstUnreadVisible = () => {
+    const box = scroller.current;
+    const el = firstUnread ? document.getElementById(`m-${firstUnread}`) : null;
+    if (!box || !el || !allUnreadLoaded) return false;
+    const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top;
+    return top >= 0 && top < box.clientHeight;
+  };
+  const jumpToUnread = () => {
+    if (!firstUnread || !allUnreadLoaded) {
+      pendingJump.current = true;
+      stick.current = false;
+      loadOlder();
+      return;
+    }
+    const el = document.getElementById(`m-${firstUnread}`);
+    if (!el) return;
+    stick.current = false;
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 2000);
+    setUnreadDone(true);
+  };
+  useEffect(() => {
+    if (!pendingJump.current) return;
+    if (allUnreadLoaded) {
+      pendingJump.current = false;
+      requestAnimationFrame(jumpToUnread);
+    } else if (keyStatus !== 'loading') loadOlder();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, allUnreadLoaded]);
+  const markAllRead = async () => {
+    setUnreadDone(true);
+    const last = messages[messages.length - 1];
+    if (last) await supabase.from('read_states').upsert({ user_id: me.id, channel_id: channel.id, last_read_at: last.row.created_at, manual_unread: false, updated_at: new Date().toISOString() });
+  };
+  const showUnreadBar = !isThread && unreadCount > 0 && !unreadDone && !manual.current;
+
   const expressions = expressionStore.use((s) => s.list);
   const mentionables: Mentionables = useMemo(() => {
     const people: Profile[] = data
@@ -608,13 +668,29 @@ export function ChatView({
           onScroll={(e) => {
             const el = e.currentTarget;
             stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-            if (el.scrollTop < 200 && hasMore && keyStatus !== 'loading' && messages.length) {
-              // infinite scroll upwards
-              stick.current = false;
+            if (showUnreadBar && firstUnreadVisible()) setUnreadDone(true);
+            if (el.scrollTop < 200 && hasMore && keyStatus !== 'loading' && messages.length && !stick.current) {
+              // infinite scroll upwards (only once you've scrolled up — a short
+              // chat that opens near the top must still stay on the newest message)
               loadOlder();
             }
           }}
         >
+          {showUnreadBar && (
+            <div className="unread-bar" role="status">
+              <button className="unread-bar-read" onClick={() => void markAllRead()}>
+                <Icon name="check" size={14} /> Mark as read
+              </button>
+              <button className="unread-bar-jump" onClick={jumpToUnread}>
+                You have {unreadCount}
+                {allUnreadLoaded ? '' : '+'} unread message{unreadCount === 1 ? '' : 's'}
+                {openedAt ? ` since ${new Date(openedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
+                <span className="unread-bar-go">
+                  Jump <Icon name="arrowUp" size={13} />
+                </span>
+              </button>
+            </div>
+          )}
           {keyStatus === 'loading' && !messages.length && <MessageSkeleton />}
           {hasMore && (
             <button className="btn link load-older" onClick={() => ((stick.current = false), loadOlder())}>
@@ -1421,7 +1497,7 @@ function MessageItem({
               <GifGuard key={e.src} url={e.src} active={e.kind === 'gif'} serverId={data?.server?.id ?? null}>
                 <div className="embed-wrap">
                   <Embed e={e} />
-                  {e.kind === 'gif' && <FavoriteStar className="embed-star" g={{ id: e.src, url: e.src, preview: e.src, width: 1, height: 1 }} fav={gifFavs.some((f) => f.url === e.src)} />}
+                  {e.kind === 'gif' && <FavoriteStar className="embed-star" g={{ id: e.src, url: e.src, preview: e.src, width: 1, height: 1 }} fav={isGifFavorite(gifFavs, e.src)} />}
                 </div>
               </GifGuard>
             ))}
