@@ -1,0 +1,19 @@
+/* Command options (/avatar user, /caption text) and the member picker (Composer.tsx). */
+.cmd-hint { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; padding: 7px 8px 7px 10px; border-radius: 12px; font-size: 13px;
+  background: var(--bg-2); border: 1px solid var(--line); box-shadow: 0 8px 24px -16px #000a; animation: cmd-in .14s ease-out; }
+@keyframes cmd-in { from { opacity: 0; transform: translateY(4px); } }
+.cmd-chip { flex: none; padding: 3px 9px; border-radius: 8px; font-weight: 800; color: var(--accent-text, var(--text)); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.cmd-opt { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 8px; border: 1px dashed var(--line-2, var(--line)); color: var(--text-2); max-width: 46%; min-width: 0; }
+.cmd-opt b { font-weight: 700; }
+.cmd-opt.filled { border-style: solid; border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--text); }
+.cmd-opt.filled b { color: var(--muted); }
+.cmd-opt-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.cmd-desc { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-desc.warn { color: var(--warning, #f5a524); font-weight: 600; }
+.cmd-hint .icon-btn { flex: none; }
+
+/* members list: avatar, display name, username on the right */
+.mention-option .mention-label { min-width: 0; }
+.mention-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mention-sub { margin-left: auto; padding-left: 14px; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mention-option kbd { margin-left: 10px; }

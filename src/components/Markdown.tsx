@@ -11,6 +11,7 @@ import { copyText, openMenu } from './ContextMenu';
 import { EXPRESSION_TOKEN, expressionStore, noteUnknownExpression } from '../lib/expressions';
 import { isOurAsset } from '../lib/soundboard';
 import { gifBySlug, type GifFavorite } from '../lib/klipy';
+import { useCaptionAction } from './captionContext';
 import { useSettings } from '../lib/settings';
 
 export interface MentionContext {
@@ -413,6 +414,7 @@ export function Embed({ e }: { e: EmbedInfo }) {
 }
 
 function KlipyEmbed({ slug, url }: { slug: string; url: string }) {
+  const caption = useCaptionAction();
   const [g, setG] = useState<GifFavorite | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -439,12 +441,41 @@ function KlipyEmbed({ slug, url }: { slug: string; url: string }) {
       </div>
     );
   if (!g) return <div className="embed-card klipy">Klipy · loading gif…</div>;
-  return <img className="embed-gif" src={g.url} alt="GIF" loading="lazy" />;
+  return (
+    <img
+      className="embed-gif"
+      src={g.url}
+      alt="GIF"
+      loading="lazy"
+      onContextMenu={(ev) =>
+        openMenu(ev, [
+          caption && { label: 'Caption', icon: 'edit', hint: '/caption', onClick: caption },
+          { label: 'Copy link', icon: 'link', onClick: () => copyText(url) },
+        ])
+      }
+    />
+  );
 }
 
 function GifImage({ src, autoplay }: { src: string; autoplay: boolean }) {
   const [play, setPlay] = useState(autoplay);
-  if (play) return <img className="embed-gif" src={src} alt="GIF" loading="lazy" onClick={() => !autoplay && setPlay(false)} />;
+  const caption = useCaptionAction();
+  if (play)
+    return (
+      <img
+        className="embed-gif"
+        src={src}
+        alt="GIF"
+        loading="lazy"
+        onClick={() => !autoplay && setPlay(false)}
+        onContextMenu={(ev) =>
+          openMenu(ev, [
+            caption && { label: 'Caption', icon: 'edit', hint: '/caption', onClick: caption },
+            { label: 'Copy link', icon: 'link', onClick: () => copyText(src) },
+          ])
+        }
+      />
+    );
   return (
     <button className="embed-gif paused" onClick={() => setPlay(true)}>
       GIF · click to play

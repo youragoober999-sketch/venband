@@ -27,6 +27,8 @@ import { has, P } from '../lib/permissions';
 import { isSaved, loadSavedIds, setPinned, setSaved, useChannelExtras, type PollState, type ReactionGroup, type ThreadInfo } from '../lib/chatExtras';
 import { Avatar, Icon, LogoGlyph, StyledName } from './ui';
 import { BUILTIN_APP, BUILTIN_COMMANDS, isBuiltin, runBuiltin } from '../lib/builtinCommands';
+import { hasCaptionable } from '../lib/caption';
+import { CaptionContext } from './captionContext';
 import { reminderFor, reminderMenu, whenLabel } from './Reminders';
 import { Badges, OwnerCrown, RoleIcon } from './Badges';
 import { copyText, openMenu, type Entry } from './ContextMenu';
@@ -35,7 +37,7 @@ import { loadMyReports, myReports, reportMessage } from '../lib/reports';
 import { Embed, findEmbeds, isBareGif, Markdown, mentionsMe, type MentionContext } from './Markdown';
 import { FavoriteStar, toggleGifFavorite } from './GifPicker';
 import { openProfile, ServerTag, userMenu } from './People';
-import { Composer, useTyping, type Mentionables, type PendingFile, type SendOptions } from './Composer';
+import { Composer, fillComposer, useTyping, type Mentionables, type PendingFile, type SendOptions } from './Composer';
 import { EditHistoryModal, PollView, QuickReactBar, quickReactionSet, Reactions, ThreadSummary } from './MessageParts';
 import { EmojiPicker } from './EmojiPicker';
 import { toggleReaction } from '../lib/chatExtras';
@@ -463,7 +465,7 @@ export function ChatView({
       emoji: customEmoji(expressions),
       commands: [
         ...(isDm ? dmCommands : botCommands),
-        ...BUILTIN_COMMANDS.filter((b) => !(isDm ? dmCommands : botCommands).some((c) => c.name === b.name)).map((b) => ({ ...BUILTIN_APP, name: b.name, description: b.usage ? `${b.description} — ${b.usage}` : b.description })),
+        ...BUILTIN_COMMANDS.filter((b) => !(isDm ? dmCommands : botCommands).some((c) => c.name === b.name)).map((b) => ({ ...BUILTIN_APP, name: b.name, description: b.description, usage: b.usage, options: b.options })),
       ],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -730,6 +732,14 @@ export function ChatView({
                     setUnread(channel.id, channel.server_id ?? null, Math.max(1, n));
                   }}
                   onReply={() => setReplyTo(m)}
+                  onCaption={
+                    hasCaptionable(m)
+                      ? () => {
+                          setReplyTo(m);
+                          fillComposer(composerKey, '/caption ');
+                        }
+                      : null
+                  }
                   onEdit={() => setEditing(m.row.id)}
                   onCancelEdit={() => setEditing(null)}
                   onSaveEdit={(t) => saveEdit(m, t)}
@@ -780,6 +790,7 @@ export function ChatView({
           }
           disabled={!canSend || keyStatus === 'loading' || threadLocked}
           replyTo={replyTo ? nameOf(replyTo.row.author_id) : null}
+          replyHasImage={hasCaptionable(replyTo)}
           quote={quote?.payload ? { author: nameOf(quote.row.author_id), text: quote.payload.text } : null}
           onCancelReply={() => setReplyTo(null)}
           onCancelQuote={() => setQuote(null)}
@@ -1032,12 +1043,14 @@ function MessageItem({
   onQuote,
   onMarkUnread,
   onReply,
+  onCaption,
   onReport,
   onEdit,
   onCancelEdit,
   onSaveEdit,
   onDelete,
 }: {
+  onCaption?: (() => void) | null;
   m: DecryptedMessage;
   grouped: boolean;
   name: string;
@@ -1230,6 +1243,7 @@ function MessageItem({
   const timeLabel = time.toLocaleTimeString(undefined, { hour: clock24 ? '2-digit' : 'numeric', minute: '2-digit', hour12: !clock24 });
 
   return (
+    <CaptionContext.Provider value={onCaption ?? null}>
     <div
       id={`m-${m.row.id}`}
       className={`message${grouped ? ' grouped' : ''}${mentioned ? ' mentioned' : ''}${pinned ? ' pinned' : ''}`}
@@ -1458,6 +1472,7 @@ function MessageItem({
         </div>
       </div>
     </div>
+    </CaptionContext.Provider>
   );
 }
 

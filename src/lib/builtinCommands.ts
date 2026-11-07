@@ -6,21 +6,29 @@ import type { Profile } from './types';
 import { getProfile, loadProfiles } from './directory';
 import { downloadDecrypted, fileKind } from './files';
 import { toGif } from './myGifs';
+import { captionImage, imageOf } from './caption';
 
 export const BUILTIN_APP = { app_id: 'venband', app_name: 'Venband' };
-export const BUILTIN_COMMANDS: { name: string; description: string; usage?: string }[] = [
-  { name: 'avatar', description: 'Post someone’s profile picture', usage: '/avatar @someone' },
-  { name: 'banner', description: 'Post someone’s profile banner', usage: '/banner @someone' },
+/** A command option: 'user' opens the member picker, 'text' is free text. */
+export interface CommandOption {
+  name: string;
+  type: 'user' | 'text';
+  description: string;
+}
+export const BUILTIN_COMMANDS: { name: string; description: string; usage?: string; options?: CommandOption[] }[] = [
+  { name: 'avatar', description: 'Post someone’s profile picture', usage: '/avatar @someone', options: [{ name: 'user', type: 'user', description: 'Whose avatar to post — leave empty for yours' }] },
+  { name: 'banner', description: 'Post someone’s profile banner', usage: '/banner @someone', options: [{ name: 'user', type: 'user', description: 'Whose banner to post — leave empty for yours' }] },
+  { name: 'caption', description: 'Reply to a picture or GIF to put a caption on top', usage: 'reply to a picture, then /caption your text', options: [{ name: 'text', type: 'text', description: 'What the caption says' }] },
   { name: 'gif', description: 'Reply to a picture to turn it into a GIF', usage: 'reply to a picture, then /gif' },
-  { name: 'roll', description: 'Roll dice (2d6, d20…)', usage: '/roll 2d6' },
+  { name: 'roll', description: 'Roll dice (2d6, d20…)', usage: '/roll 2d6', options: [{ name: 'dice', type: 'text', description: 'Like 2d6 or d20' }] },
   { name: 'coin', description: 'Flip a coin' },
-  { name: '8ball', description: 'Ask the magic ball', usage: '/8ball will it rain?' },
-  { name: 'choose', description: 'Pick one for you', usage: '/choose pizza, tacos, sushi' },
+  { name: '8ball', description: 'Ask the magic ball', usage: '/8ball will it rain?', options: [{ name: 'question', type: 'text', description: 'Your yes-or-no question' }] },
+  { name: 'choose', description: 'Pick one for you', usage: '/choose pizza, tacos, sushi', options: [{ name: 'choices', type: 'text', description: 'Separate them with commas' }] },
   { name: 'shrug', description: 'Add ¯\\_(ツ)_/¯' },
   { name: 'tableflip', description: 'Add (╯°□°)╯︵ ┻━┻' },
   { name: 'unflip', description: 'Add ┬─┬ノ( º _ ºノ)' },
-  { name: 'me', description: 'Say something as an action', usage: '/me waves' },
-  { name: 'spoiler', description: 'Hide text behind a spoiler', usage: '/spoiler the ending' },
+  { name: 'me', description: 'Say something as an action', usage: '/me waves', options: [{ name: 'action', type: 'text', description: 'What you do' }] },
+  { name: 'spoiler', description: 'Hide text behind a spoiler', usage: '/spoiler the ending', options: [{ name: 'text', type: 'text', description: 'What to hide' }] },
 ];
 export const isBuiltin = (name: string) => BUILTIN_COMMANDS.some((c) => c.name === name);
 
@@ -98,6 +106,11 @@ export async function runBuiltin(name: string, args: string, ctx: { me: Profile;
       if (!att) throw new Error('Reply to a message with a picture, then use /gif.');
       const gif = await toGif(await downloadDecrypted(att), att.name.replace(/\.[^.]+$/, '') || 'venband');
       return { text: a, files: [gif] };
+    }
+    case 'caption': {
+      const img = await imageOf(ctx.replyTo);
+      if (!img) throw new Error('Reply to a picture or GIF (or right-click it → Caption), then type /caption and your text.');
+      return { text: '', files: [await captionImage(img.blob, a, img.name)] };
     }
     case 'roll': {
       const m = /^(\d{0,2})d(\d{1,4})$/i.exec(a || 'd6');

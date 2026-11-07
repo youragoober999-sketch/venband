@@ -21,8 +21,14 @@ import { openMenu, openMenuAt, type Entry } from './ContextMenu';
 import { askText, showAlert } from './Dialogs';
 import { Avatar, Field, Icon, Modal } from './ui';
 import { Select } from './Select';
+import type { CommandOption } from '../lib/builtinCommands';
+import './commands.css';
 
 export const MAX_TEXT = 3000;
+
+/** window event: put text in the composer of a channel ({ channelId, text }). */
+export const COMPOSER_FILL = 'venband:composer-fill';
+export const fillComposer = (channelId: string, text: string) => window.dispatchEvent(new CustomEvent(COMPOSER_FILL, { detail: { channelId, text } }));
 const HARD_MAX = 200_000; // longer messages go out as a .txt file
 
 export interface Mentionables {
@@ -32,7 +38,7 @@ export interface Mentionables {
   everyone: boolean;
   emoji?: CustomEmoji[];
   /** slash commands from the server's bots */
-  commands?: { app_id: string; app_name: string; name: string; description: string }[];
+  commands?: { app_id: string; app_name: string; name: string; description: string; usage?: string; options?: CommandOption[] }[];
 }
 
 export interface PendingFile {
@@ -87,6 +93,7 @@ export function Composer({
   canAttach = true,
   slowmode = 0,
   onQuoteDrop,
+  replyHasImage = false,
 }: {
   channelId: string;
   placeholder: string;
@@ -108,6 +115,8 @@ export function Composer({
   slowmode?: number;
   /** a message was dragged onto the box */
   onQuoteDrop?: (messageId: string) => void;
+  /** the message being replied to has a picture or GIF (for /caption) */
+  replyHasImage?: boolean;
 }) {
   const chat = useSettings((s) => s.chat);
   const [text, setText] = useState('');
@@ -236,8 +245,35 @@ export function Composer({
     }
   }, [text]);
 
+  // something else (e.g. right-click → Caption) asks to start a message here
+  useEffect(() => {
+    const onFill = (e: Event) => {
+      const d = (e as CustomEvent<{ channelId: string; text: string }>).detail;
+      if (!d || d.channelId !== channelId) return;
+      tokens.current = new Map();
+      setText(d.text);
+      pendingCaret.current = d.text.length;
+      requestAnimationFrame(() => textarea.current?.focus());
+    };
+    window.addEventListener(COMPOSER_FILL, onFill);
+    return () => window.removeEventListener(COMPOSER_FILL, onFill);
+  }, [channelId]);
+
+  // a command with options being typed: "/avatar @Bob" -> the hint bar + member picker
+  const activeCmd = useMemo(() => {
+    const m = /^\/([a-z0-9_-]{1,32}) ([\s\S]*)$/i.exec(text);
+    if (!m) return null;
+    const cmd = mentionables.commands?.find((c) => c.name === m[1].toLowerCase() && c.options?.length);
+    if (!cmd) return null;
+    return { cmd, opt: cmd.options![0] as CommandOption, arg: m[2], argStart: m[1].length + 2 };
+  }, [text, mentionables.commands]);
+
   const query = useMemo(() => {
     const before = text.slice(0, caret);
+    if (activeCmd?.opt.type === 'user' && caret >= activeCmd.argStart) {
+      const um = /^@?([^\s@]{0,32})$/.exec(text.slice(activeCmd.argStart, caret));
+      if (um) return { trigger: 'user', q: um[1].toLowerCase(), start: activeCmd.argStart };
+    }
     const slash = before.match(/^\/([a-z0-9_-]{0,32})$/i);
     if (slash && mentionables.commands?.length) return { trigger: '/', q: slash[1].toLowerCase(), start: 0 };
     const m = before.match(/(^|\s)([@#])([^\s@#]{0,32})$/);
@@ -245,7 +281,7 @@ export function Composer({
     const e = before.match(/(^|[\s(])(:)([a-z0-9_+-]{2,32})$/i);
     if (e) return { trigger: ':', q: e[3].toLowerCase(), start: caret - e[3].length - 1 };
     return null;
-  }, [text, caret]);
+  }, [text, caret, activeCmd]);
 
   const suggestions: Suggestion[] = useMemo(() => {
     if (!query || dismissed === `${query.start}:${query.trigger}`) return [];
@@ -274,10 +310,13 @@ export function Composer({
         .slice(0, 8)
         .map((c) => ({ key: c.id, insert: `#${c.label}`, token: `<#${c.id}>`, label: <># {c.label}</> }));
     const out: Suggestion[] = mentionables.people
+      .slice()
+      .sort((a, b) => Number(b.label.toLowerCase().startsWith(query.q)) - Number(a.label.toLowerCase().startsWith(query.q)))
       .filter((p) => p.label.toLowerCase().includes(query.q) || p.sub.includes(query.q))
       .filter((p) => !socialStore.get().relations[p.id]?.blocked)
       .slice(0, 8)
-      .map((p) => ({ key: p.id, insert: `@${p.label}`, token: `<@${p.id}>`, label: <><Avatar profile={p.profile} size={22} /> {p.label}</>, sub: p.sub }));
+      .map((p) => ({ key: p.id, insert: `@${p.label}`, token: `<@${p.id}>`, label: <><Avatar profile={p.profile} size={24} /> <b className="mention-name">{p.label}</b></>, sub: p.sub }));
+    if (query.trigger === 'user') return out;
     for (const r of mentionables.roles.filter((r) => r.label.toLowerCase().includes(query.q)).slice(0, 5))
       out.push({ key: r.id, insert: `@${r.label}`, token: `<@&${r.id}>`, label: <span style={{ color: r.color }}>@{r.label}</span>, sub: 'role' });
     if (mentionables.everyone)
@@ -547,9 +586,33 @@ export function Composer({
           <Icon name="clock" size={14} /> {notice}
         </div>
       )}
+      {activeCmd && (
+        <div className="cmd-hint" role="status">
+          <span className="cmd-chip">/{activeCmd.cmd.name}</span>
+          <span className={`cmd-opt${activeCmd.arg.trim() ? ' filled' : ''}`}>
+            <b>{activeCmd.opt.name}</b>
+            {activeCmd.arg.trim() && <span className="cmd-opt-val">{activeCmd.arg.trim()}</span>}
+          </span>
+          <span className={`cmd-desc${activeCmd.cmd.name === 'caption' && !replyHasImage ? ' warn' : ''}`}>
+            {activeCmd.cmd.name === 'caption' && !replyHasImage ? 'Reply to a picture or GIF first (right-click it → Caption)' : activeCmd.opt.description}
+          </span>
+          <button
+            className="icon-btn"
+            aria-label="Cancel command"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setText('');
+              tokens.current = new Map();
+              textarea.current?.focus();
+            }}
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+      )}
       {suggestions.length > 0 && (
         <div className="mention-pop" role="listbox">
-          <div className="mention-pop-title">{query?.trigger === ':' ? `Emoji matching :${query.q}` : query?.trigger === '#' ? 'Channels' : query?.trigger === '/' ? 'Commands' : 'Members & roles'}</div>
+          <div className="mention-pop-title">{query?.trigger === ':' ? `Emoji matching :${query.q}` : query?.trigger === '#' ? 'Channels' : query?.trigger === '/' ? 'Commands' : query?.trigger === 'user' ? 'Members' : mentionables.roles.length || mentionables.everyone ? 'Members & roles' : 'Members'}</div>
           {suggestions.map((s, i) => (
             <button
               key={s.key}
@@ -560,8 +623,8 @@ export function Composer({
               onMouseEnter={() => setSel(i)}
             >
               <span className="mention-label">{s.label}</span>
-              {s.sub && <span className="small muted">{s.sub}</span>}
-              {i === 0 && <kbd className="small">Enter</kbd>}
+              {s.sub && <span className="small muted mention-sub">{s.sub}</span>}
+              {i === 0 && query?.trigger !== 'user' && query?.trigger !== '@' && <kbd className="small">Enter</kbd>}
             </button>
           ))}
         </div>

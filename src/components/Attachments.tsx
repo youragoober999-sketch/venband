@@ -13,6 +13,7 @@ import { copyText, openMenu } from './ContextMenu';
 import { Icon, Modal } from './ui';
 import { Select } from './Select';
 import { getSettings } from '../lib/settings';
+import { useCaptionAction } from './captionContext';
 
 export function formatSize(n: number) {
   if (n < 1024) return `${n} B`;
@@ -154,6 +155,7 @@ function shouldAutoload(kind: keyof typeof AUTO_LOAD, size: number): boolean {
 
 function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
   const { url, blob, progress, error, load } = useDecrypted(a, auto);
+  const caption = useCaptionAction();
   const [big, setBig] = useState(false);
   const [broken, setBroken] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -180,6 +182,8 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
     <>
       <span className="attachment-img-wrap">
         <img className="attachment-img" src={url} alt={a.alt || a.name} title={a.alt || undefined} onClick={() => setBig(true)} onError={() => setBroken(true)} onContextMenu={(e) => openMenu(e, [
+          caption && { label: 'Caption', icon: 'edit', hint: '/caption', onClick: caption },
+          caption && { type: 'sep' },
           { label: 'Save image', icon: 'download', onClick: () => { const a2 = document.createElement('a'); a2.href = url; a2.download = a.name; a2.click(); } },
           { label: 'Save as GIF', icon: 'star', hint: 'to your GIFs', onClick: () => void saveAsGif() },
           { label: 'Download as GIF', icon: 'sparkles', onClick: async () => {
