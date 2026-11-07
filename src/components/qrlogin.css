@@ -1,0 +1,49 @@
+/* QR code login (QrLogin.tsx) */
+.auth-card.wide { max-width: 800px; }
+.auth-split { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 32px; align-items: center; }
+.auth-split-qr { border-left: 1px solid var(--line); padding-left: 32px; }
+.only-narrow, .btn.only-narrow { display: none; }
+@media (max-width: 760px) {
+  .auth-card.wide { max-width: 440px; }
+  .auth-split { grid-template-columns: 1fr; }
+  .auth-split-qr { display: none; }
+  .only-narrow, .btn.only-narrow { display: flex; }
+}
+
+.qr-login { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.qr-login h2 { margin: 18px 0 6px; font-size: 20px; }
+.qr-login.compact h2 { font-size: 18px; }
+.qr-help { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; max-width: 300px; }
+.qr-frame { position: relative; width: 196px; height: 196px; padding: 12px; border-radius: 18px; background: #fff; display: grid; place-items: center; box-shadow: 0 12px 34px -16px #000a, 0 0 0 1px var(--line); }
+.qr-login.compact .qr-frame { width: 176px; height: 176px; }
+.qr-frame img { width: 100%; height: 100%; display: block; image-rendering: pixelated; animation: qr-in .35s ease; }
+@keyframes qr-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+.qr-frame .spinner { border-color: #0002; border-top-color: #333; }
+.qr-badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; color: #fff; background: #0b0b10; box-shadow: 0 0 0 5px #fff; }
+.qr-frame.scanned, .qr-frame.signing, .qr-frame.error { background: var(--bg-3); box-shadow: 0 0 0 1px var(--line); }
+.qr-scanned { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text); font-size: 13px; }
+.qr-scanned b { font-size: 15px; }
+.qr-scanned span { color: var(--muted); }
+.qr-timer { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qr-timer-bar { width: 70px; height: 4px; border-radius: 4px; background: var(--bg-3); overflow: hidden; }
+.qr-timer-bar i { display: block; height: 100%; background: var(--accent); transform-origin: left; transition: transform .2s linear; }
+.qr-note { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+
+.qr-approve .simple-card { padding: 30px; border-radius: 16px; background: var(--bg-2); border: 1px solid var(--line-2, var(--line)); display: flex; flex-direction: column; gap: 10px; align-items: stretch; text-align: center; }
+.qr-approve .simple-card > .spinner { align-self: center; }
+.qr-approve h1 { margin: 6px 0 0 !important; }
+.qr-approve .sub { margin: 0 0 8px; color: var(--muted); }
+.qr-approve-icon { align-self: center; width: 60px; height: 60px; border-radius: 18px; display: grid; place-items: center; color: var(--accent-text, var(--text)); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.qr-approve-icon.ok { color: var(--success); background: color-mix(in srgb, var(--success) 16%, transparent); }
+.qr-approve-icon.warn { color: #ff9f0a; background: color-mix(in srgb, #ff9f0a 16%, transparent); }
+.qr-device { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--bg-1); border: 1px solid var(--line); text-align: left; }
+.qr-device div { display: flex; flex-direction: column; }
+.qr-device span { font-size: 12.5px; color: var(--muted); }
+.qr-as { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13.5px; color: var(--muted); }
+.qr-as b { color: var(--text); }
+.qr-warn { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; padding: 10px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.45; text-align: left; color: var(--text-2); background: color-mix(in srgb, #ff9f0a 12%, transparent); }
+.qr-warn svg { flex: none; margin-top: 1px; color: #ff9f0a; }
+
+.qr-scan-video { width: 100%; max-height: 320px; border-radius: 12px; background: #000; object-fit: cover; }
+.qr-paste { display: flex; gap: 8px; margin-top: 10px; }
+.qr-paste input { flex: 1; min-width: 0; }

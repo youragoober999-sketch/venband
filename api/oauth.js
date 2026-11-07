@@ -1,4 +1,4 @@
-// Vercel Function: finishes "Connect" for providers that can't be finished in
+// Vercel Function: finishes QR-code logins (action 'qr-approve', below) and "Connect" for providers that can't be finished in
 // the browser — a client secret is needed (GitHub, Google/YouTube, TikTok),
 // the provider's token endpoint has no CORS (Microsoft/Xbox, Steam), or the
 // result must be verified server-side (Twitch, Steam).
@@ -11,6 +11,7 @@
 // a response. Provider access tokens are used once to read the profile and
 // then dropped — none are returned to the browser or stored.
 import { json, preflight, readJson } from './_lib/rpc.js';
+import { userFromRequest } from './_lib/net.js';
 
 const env = (k) => (process.env[k] || '').trim();
 
@@ -204,6 +205,67 @@ async function steam({ query }) {
 
 const HANDLERS = { github, youtube, tiktok, twitch, xbox, steam };
 
+// ------------------------------------------------------------- QR login ----
+// POST /api/oauth { action: 'qr-approve', code } with the APPROVING device's
+// sign-in token. Makes a brand-new sign-in for that same account and seals it
+// to the waiting device's one-time key, so only that device can use it.
+// Needs SUPABASE_SERVICE_ROLE_KEY (Vercel env only — it can create sign-ins).
+
+const SUPA = () => (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+const b64 = (buf) => Buffer.from(buf).toString('base64');
+
+async function admin(path, body) {
+  const key = secret('SUPABASE_SERVICE_ROLE_KEY', 'QR login');
+  const r = await fetch(`${SUPA()}${path}`, {
+    method: 'POST',
+    headers: { apikey: key, authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const text = await r.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = text;
+  }
+  if (!r.ok) throw new Fail(r.status === 404 ? 503 : 400, (data && (data.message || data.msg || data.error_description)) || 'QR login failed on the server.');
+  return data;
+}
+
+/** ECIES: P-256 ECDH with a throwaway key -> HKDF -> AES-GCM, to the waiting device's public key. */
+async function sealTo(pubkeyB64, text) {
+  const { subtle } = globalThis.crypto;
+  const P256 = { name: 'ECDH', namedCurve: 'P-256' };
+  const them = await subtle.importKey('spki', Buffer.from(pubkeyB64, 'base64'), P256, false, []);
+  const eph = await subtle.generateKey(P256, true, ['deriveBits']);
+  const ephPub = new Uint8Array(await subtle.exportKey('spki', eph.publicKey));
+  const shared = await subtle.deriveBits({ name: 'ECDH', public: them }, eph.privateKey, 256);
+  const ikm = await subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey']);
+  const key = await subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: ephPub, info: new TextEncoder().encode('venband/v1/qr-login') }, ikm, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const ct = await subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text));
+  return JSON.stringify({ e: b64(ephPub), iv: b64(iv), ct: b64(ct) });
+}
+
+async function qrApprove(request, b) {
+  const code = String(b.code || '');
+  if (!/^[0-9a-f]{64}$/.test(code)) throw new Fail(400, 'That QR code isn’t valid.');
+  const user = await userFromRequest(request);
+  if (!user?.id) throw new Fail(401, 'Log in on this device first.');
+  if (!user.email) throw new Fail(400, 'This account has no email, so it can’t use QR login.');
+  const pubkey = await admin('/rest/v1/rpc/qr_login_pubkey', { p_code: code, p_user: user.id });
+  if (!pubkey || typeof pubkey !== 'string') throw new Fail(404, 'This QR code expired. Scan the new one on the login screen.');
+  // a one-time sign-in link for this account (nothing is emailed)
+  const link = await admin('/auth/v1/admin/generate_link', { type: 'magiclink', email: user.email });
+  const tokenHash = link.hashed_token || link.properties?.hashed_token;
+  if (!tokenHash) throw new Fail(500, 'Couldn’t create the sign-in.');
+  const sealed = await sealTo(pubkey, JSON.stringify({ token_hash: tokenHash, type: 'magiclink' }));
+  const ok = await admin('/rest/v1/rpc/qr_login_finish', { p_code: code, p_user: user.id, p_sealed: sealed });
+  if (ok !== true) throw new Fail(404, 'This QR code expired. Scan the new one on the login screen.');
+  return { ok: true };
+}
+
 export function OPTIONS() {
   return preflight();
 }
@@ -213,6 +275,7 @@ export async function POST(request) {
     const b = await readJson(request).catch(() => {
       throw new Fail(400, 'bad request');
     });
+    if (b.action === 'qr-approve') return json(200, await qrApprove(request, b));
     const run = HANDLERS[b.provider];
     if (!run) throw new Fail(400, 'unknown provider');
     if (b.redirect_uri !== undefined && !okRedirect(b.redirect_uri)) throw new Fail(400, 'redirect_uri not allowed');

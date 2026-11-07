@@ -1,4 +1,4 @@
-import { askText } from './Dialogs';
+import { QrLoginPanel } from './QrLogin';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { currentPath, go, parseRoute, useRoute } from '../lib/router';
 import { supabase } from '../lib/supabase';
@@ -36,7 +36,7 @@ interface NavActions {
   onHome: () => void;
 }
 
-function AuthLayout({ children, nav }: { children: ReactNode; nav?: NavActions }) {
+function AuthLayout({ children, nav, wide }: { children: ReactNode; nav?: NavActions; wide?: boolean }) {
   const notice = sessionStore.use((s) => s.notice);
   return (
     <div className="auth">
@@ -52,7 +52,7 @@ function AuthLayout({ children, nav }: { children: ReactNode; nav?: NavActions }
         </header>
       )}
       <main className="auth-main">
-        <div className="auth-card">
+        <div className={`auth-card${wide ? ' wide' : ''}`}>
           {notice && <div className="notice">{notice}</div>}
           {children}
         </div>
@@ -116,10 +116,28 @@ export function AuthScreen() {
   if (mode === 'home') return <Landing onLogin={nav.onLogin} onSignup={nav.onSignup} />;
 
   return (
-    <AuthLayout nav={nav}>
-      {mode === 'login' && <Login email={email} setEmail={setEmail} setMode={setMode} />}
+    <AuthLayout nav={nav} wide={mode === 'login'}>
+      {mode === 'login' && (
+        <div className="auth-split">
+          <div className="auth-split-form">
+            <Login email={email} setEmail={setEmail} setMode={setMode} />
+          </div>
+          <div className="auth-split-qr">
+            <QrLoginPanel compact />
+          </div>
+        </div>
+      )}
       {mode === 'email' && <EmailLogin email={email} setEmail={setEmail} setMode={setMode} />}
-      {mode === 'qr' && <QrLogin setMode={setMode} />}
+      {mode === 'qr' && (
+        <>
+          <QrLoginPanel />
+          <p className="switch">
+            <button type="button" className="btn link" onClick={() => setMode('login')}>
+              Back to log in
+            </button>
+          </p>
+        </>
+      )}
       {mode === 'email-code' && <EmailCode email={email} setEmail={setEmail} setMode={setMode} />}
       {mode === 'signup' && <Signup email={email} setEmail={setEmail} setMode={setMode} />}
       {mode === 'verify' && <VerifySent email={email} setMode={setMode} />}
@@ -247,7 +265,7 @@ function Login({ email, setEmail, setMode }: FormProps) {
       <button type="button" className="btn secondary full" onClick={() => setMode('email')}>
         Log in with email
       </button>
-      <button type="button" className="btn secondary full" onClick={() => setMode('qr')}>
+      <button type="button" className="btn secondary full only-narrow" onClick={() => setMode('qr')}>
         Log in with QR code
       </button>
       <p className="switch">
@@ -512,75 +530,6 @@ function Signup({ email, setEmail, setMode }: FormProps) {
         </button>
       </p>
     </form>
-  );
-}
-
-function QrLogin({ setMode }: { setMode: (m: Mode) => void }) {
-  const [status, setStatus] = useState('idle');
-  const [err, setErr] = useState<string | null>(null);
-
-  async function scan() {
-    setErr(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      await video.play();
-      const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
-      const interval = setInterval(async () => {
-        try {
-          const codes = await detector.detect(video);
-          if (codes.length) {
-            clearInterval(interval);
-            stream.getTracks().forEach((t) => t.stop());
-            const t = codes[0].rawValue;
-            await poll(t);
-          }
-        } catch {}
-      }, 500);
-      setTimeout(() => { clearInterval(interval); stream.getTracks().forEach((t) => t.stop()); }, 30000);
-    } catch {
-      const t = await askText({ title: 'Couldn’t scan the code', label: 'Paste the sign-in token instead', maxLength: 400, confirm: 'Sign in' });
-      if (t) { await poll(t); }
-    }
-  }
-
-  async function poll(t: string) {
-    setStatus('waiting');
-    const deviceInfo = navigator.userAgent.slice(0, 80);
-    await fetch('/api/vdl?r=qr&action=scan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t, device_info: deviceInfo }) });
-    const iv = setInterval(async () => {
-      const r = await fetch(`/api/vdl?r=qr&action=status&token=${encodeURIComponent(t)}`);
-      const j = await r.json();
-      if (j.status === 'approved' && j.issued_token) {
-        clearInterval(iv);
-        document.cookie = `vdl_session=${j.issued_token}; path=/; max-age=${30 * 24 * 3600}`;
-        setStatus('approved');
-        window.location.reload();
-      } else if (j.status === 'denied') {
-        clearInterval(iv);
-        setStatus('denied');
-        setErr('Login denied.');
-      }
-    }, 2000);
-    setTimeout(() => clearInterval(iv), 5 * 60 * 1000);
-  }
-
-  return (
-    <div>
-      <h1>Log in with QR code</h1>
-      <p className="sub">Scan the QR code shown on another signed-in device.</p>
-      {status === 'idle' && (
-        <button className="btn primary full" onClick={scan}>Scan QR code</button>
-      )}
-      {status === 'waiting' && <div className="spinner" />}
-      {status === 'approved' && <p className="small good">Approved! Signing in…</p>}
-      {status === 'denied' && <p className="small danger-text">{err}</p>}
-      {err && status !== 'denied' && <div className="form-error">{err}</div>}
-      <p className="switch">
-        <button type="button" className="btn link" onClick={() => setMode('login')}>Back to log in</button>
-      </p>
-    </div>
   );
 }
 

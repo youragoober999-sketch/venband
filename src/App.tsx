@@ -30,6 +30,7 @@ const VooglePage = lazyNamed(() => import('./components/Voogle'), 'VooglePage');
 const publicPages = () => import('./components/PublicPages');
 const StatusPage = lazyNamed(publicPages, 'StatusPage');
 const legalPages = () => import('./components/Legal');
+const QrApprovePage = lazyNamed(() => import('./components/QrLogin'), 'QrApprovePage');
 const TermsPage = lazyNamed(legalPages, 'TermsPage');
 const PrivacyPage = lazyNamed(legalPages, 'PrivacyPage');
 const ConnectionsPolicyPage = lazyNamed(legalPages, 'ConnectionsPolicyPage');
@@ -166,6 +167,17 @@ export default function App() {
     );
   // /callback, /auth/<provider> and /github/auth finish a Connections sign-in.
   if (route.kind === 'callback') return <Splash label="Connecting…" />;
+  // a login QR code scanned on this device: "Log in on that device?"
+  if (route.kind === 'qr-approve')
+    return (
+      <>
+        <Load>
+          <QrApprovePage code={route.code} />
+        </Load>
+        <DialogHost />
+        <ContextMenuHost />
+      </>
+    );
   // venband.com shows the landing page even when you're signed in; open the
   // app from the "Open Venband" button instead of landing straight in your DMs.
   if (route.kind === 'root' && status === 'ready' && hasProfile) {

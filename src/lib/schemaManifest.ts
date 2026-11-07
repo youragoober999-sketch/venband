@@ -809,5 +809,21 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
     "bodies": {
       "my_connections": "a424789781e4023bbd1474f24c9431f3"
     }
+  },
+  {
+    "migration": "20261107150000_qr_login.sql",
+    "tables": [
+      "qr_logins"
+    ],
+    "functions": [
+      "qr_code_hash",
+      "qr_login_deny",
+      "qr_login_finish",
+      "qr_login_pubkey",
+      "qr_login_scan",
+      "qr_login_start",
+      "qr_login_status"
+    ],
+    "bodies": {}
   }
 ];

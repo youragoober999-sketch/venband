@@ -69,19 +69,6 @@ const GETS = {
     fail(503, 'version info unavailable');
   },
 
-  async qr({ q }) {
-    const token = q.get('token');
-    need(token, 400, 'token required');
-    const { rows } = await sql`select status, device_info, approver_id, issued_token from vdl_qr_sessions where token = ${token} and expires_at > now()`;
-    need(rows.length, 404, 'session expired or not found');
-    const s = rows[0];
-    // hand the issued session to the waiting device exactly once
-    if (s.status === 'approved' && s.issued_token) {
-      await sql`update vdl_qr_sessions set issued_token = null, status = 'consumed' where token = ${token}`;
-    }
-    return { status: s.status, device_info: s.device_info, approver_id: s.approver_id, issued_token: s.issued_token };
-  },
-
   async auth({ me }) {
     need(me, 401, 'not signed in');
     return { user: me };
@@ -475,39 +462,6 @@ const POSTS = {
     },
   },
 
-  qr: {
-    async create({ body, request }) {
-      if (await rateLimited(`qr:${clientIp(request)}`, 30, 600)) fail(429, 'Too many QR codes. Wait a few minutes.');
-      const token = crypto.randomBytes(24).toString('base64url');
-      await sql`insert into vdl_qr_sessions (token, device_info, expires_at) values (${token}, ${String(body.device_info || 'Unknown device').slice(0, 200)}, now() + interval '5 minutes')`;
-      await sql`delete from vdl_qr_sessions where expires_at < now() - interval '1 day'`;
-      return { token, expires_in: 300 };
-    },
-    async scan({ body, q }) {
-      const token = body.token || q.get('token');
-      need(token, 400, 'token required');
-      const { rowCount } = await sql`update vdl_qr_sessions set status = 'scanned', device_info = ${String(body.device_info || 'Unknown device').slice(0, 200)} where token = ${token} and status = 'pending' and expires_at > now()`;
-      need(rowCount, 404, 'This QR code expired or was already used.');
-      return { ok: true };
-    },
-    async approve({ me, body, q }) {
-      need(me, 401, 'not signed in');
-      const token = body.token || q.get('token');
-      need(token, 400, 'token required');
-      const issued = await signSession(me);
-      const { rowCount } = await sql`update vdl_qr_sessions set status = 'approved', approver_id = ${me.id}, issued_token = ${issued} where token = ${token} and status in ('pending', 'scanned') and expires_at > now()`;
-      need(rowCount, 404, 'This QR code expired or was already used.');
-      await audit(me.id, 'qr_login_approved', { user: me.id });
-      return { ok: true };
-    },
-    async deny({ body, q }) {
-      const token = body.token || q.get('token');
-      need(token, 400, 'token required');
-      await sql`update vdl_qr_sessions set status = 'denied', issued_token = null where token = ${token} and status in ('pending', 'scanned')`;
-      return { ok: true };
-    },
-  },
-
   emails: {
     async queue({ me, body }) {
       need(isTopStaff(me), 403, 'top staff only');
@@ -632,7 +586,7 @@ export async function POST(request) {
     const handler = group && Object.hasOwn(group, action) ? group[action] : null;
     if (!handler) return json(400, { error: `unknown action “${action || '(none)'}” for “${r}”` });
     const me = await vdlUser(request);
-    const isPublic = r === 'auth' || (r === 'qr' && action !== 'approve');
+    const isPublic = r === 'auth';
     if (!isPublic && !me) return json(401, { error: 'not signed in' });
     const out = await handler({ request, q, body, me });
     return out instanceof Response ? out : json(200, out);

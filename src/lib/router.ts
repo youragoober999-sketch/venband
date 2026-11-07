@@ -52,6 +52,7 @@ export type Route =
   | { kind: 'server'; serverId: string; channelId: string | null; messageId?: string }
   | { kind: 'discover' }
   | { kind: 'callback' }
+  | { kind: 'qr-approve'; code: string }
   | { kind: 'invite'; code: string }
   | { kind: 'template'; code: string }
   | { kind: 'group-invite'; code: string }
@@ -88,6 +89,8 @@ const PAGES: Record<string, PublicPage> = {
 
 export function parseRoute(path = currentPath()): Route {
   const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
+  // a scanned login QR code: /login/qr/code/<64 hex>
+  if (parts[0] === 'login' && parts[1] === 'qr' && parts[2] === 'code' && /^[0-9a-f]{64}$/i.test(parts[3] ?? '')) return { kind: 'qr-approve', code: parts[3].toLowerCase() };
   if (parts[0] === 'sign-in' || parts[0] === 'login') return { kind: 'sign-in' };
   if (parts[0] === 'register' || parts[0] === 'signup') return { kind: 'register' };
   if (parts[0] === 'discover') return { kind: 'discover' };
