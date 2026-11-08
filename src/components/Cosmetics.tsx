@@ -360,6 +360,18 @@ export const EFFECT_LIST: { id: string; label: string }[] = [
   { id: 'shooting_stars', label: 'Shooting Stars' },
   { id: 'fireflies', label: 'Fireflies' },
   { id: 'aurora', label: 'Northern Lights' },
+  { id: 'prism', label: 'Prismatic Shards' },
+  { id: 'crystals', label: 'Crystal Garden' },
+  { id: 'butterflies', label: 'Butterfly Drift' },
+  { id: 'music', label: 'Soundwave' },
+  { id: 'orbits', label: 'Celestial Orbits' },
+  { id: 'runes', label: 'Arcane Runes' },
+  { id: 'fireworks', label: 'Starlight Bursts' },
+  { id: 'matrix', label: 'Digital Rain' },
+  { id: 'geometric', label: 'Geometry Flow' },
+  { id: 'galaxy_dust', label: 'Galaxy Dust' },
+  { id: 'clouds', label: 'Dream Clouds' },
+  { id: 'royal', label: 'Royal Flourish' },
 ];
 
 interface P {
@@ -424,6 +436,120 @@ const fall = (speed: [number, number], sway: number) => (p: P, dt: number, t: nu
   p.rot += p.vr * dt;
   void speed;
 };
+
+type ShapeKind = 'diamond' | 'hexagon' | 'triangle' | 'flower' | 'butterfly' | 'ring' | 'music' | 'crown' | 'rune' | 'spiral' | 'comet' | 'spark';
+interface ShapeEffectOptions {
+  count: number;
+  kind: ShapeKind;
+  hue: number;
+  hueSpread?: number;
+  size: [number, number];
+  speed: [number, number];
+  rise?: boolean;
+  gravity?: number;
+  drift?: number;
+  lifetime?: [number, number];
+  glow?: number;
+}
+
+/** Crisp vector silhouettes: no image assets, external fonts, or runtime dependencies. */
+function drawVectorShape(c: CanvasRenderingContext2D, kind: ShapeKind, s: number, t: number, phase: number) {
+  c.beginPath();
+  switch (kind) {
+    case 'diamond':
+      c.moveTo(0, -s); c.lineTo(s * 0.72, 0); c.lineTo(0, s); c.lineTo(-s * 0.72, 0); c.closePath();
+      break;
+    case 'hexagon':
+      for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + i * Math.PI / 3; const x = Math.cos(a) * s; const y = Math.sin(a) * s; if (!i) c.moveTo(x, y); else c.lineTo(x, y); } c.closePath();
+      break;
+    case 'triangle':
+      for (let i = 0; i < 3; i++) { const a = -Math.PI / 2 + i * Math.PI * 2 / 3; const x = Math.cos(a) * s; const y = Math.sin(a) * s; if (!i) c.moveTo(x, y); else c.lineTo(x, y); } c.closePath();
+      break;
+    case 'flower':
+      for (let i = 0; i < 5; i++) { const a = i * Math.PI * 2 / 5 + t * 0.12; c.moveTo(Math.cos(a) * s * 0.22, Math.sin(a) * s * 0.22); c.ellipse(Math.cos(a) * s * 0.55, Math.sin(a) * s * 0.55, s * 0.27, s * 0.48, a, 0, Math.PI * 2); }
+      break;
+    case 'butterfly':
+      c.moveTo(0, 0); c.bezierCurveTo(-s * 0.2, -s * 1.15, -s * 1.25, -s * 1.1, -s, -s * 0.18); c.bezierCurveTo(-s * 0.92, s * 0.6, -s * 0.28, s * 0.45, 0, 0); c.bezierCurveTo(s * 0.28, s * 0.45, s * 0.92, s * 0.6, s, -s * 0.18); c.bezierCurveTo(s * 1.25, -s * 1.1, s * 0.2, -s * 1.15, 0, 0); c.closePath();
+      break;
+    case 'ring':
+      c.arc(0, 0, s * 0.72, 0, Math.PI * 2); break;
+    case 'music':
+      c.moveTo(s * 0.35, -s); c.lineTo(s * 0.35, s * 0.35); c.ellipse(0, s * 0.48, s * 0.43, s * 0.27, -0.3, 0, Math.PI * 2); c.moveTo(s * 0.35, -s); c.lineTo(s, -s * 0.78); c.lineTo(s, -s * 0.48); c.lineTo(s * 0.35, -s * 0.68); break;
+    case 'crown':
+      c.moveTo(-s, s * 0.55); c.lineTo(-s * 0.82, -s * 0.55); c.lineTo(-s * 0.25, -s * 0.05); c.lineTo(0, -s); c.lineTo(s * 0.28, -s * 0.05); c.lineTo(s * 0.82, -s * 0.55); c.lineTo(s, s * 0.55); c.closePath();
+      break;
+    case 'rune':
+      c.moveTo(0, -s); c.lineTo(s * 0.68, s); c.lineTo(-s * 0.68, s); c.closePath(); c.moveTo(-s * 0.38, 0); c.lineTo(s * 0.38, 0); c.moveTo(0, -s * 0.45); c.lineTo(0, s * 0.62); break;
+    case 'spiral':
+      for (let i = 0; i <= 42; i++) { const a = i / 42 * Math.PI * 3.5 + phase; const r = s * 0.08 + s * 0.72 * i / 42; const x = Math.cos(a) * r; const y = Math.sin(a) * r; if (!i) c.moveTo(x, y); else c.lineTo(x, y); } break;
+    case 'comet':
+      c.moveTo(-s * 1.2, s * 0.2); c.quadraticCurveTo(-s * 0.15, -s * 0.45, s * 0.9, -s * 0.9); c.quadraticCurveTo(s * 0.35, s * 0.05, -s * 1.2, s * 0.2); c.closePath(); break;
+    default:
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; const r = i % 2 ? s * 0.22 : s; const x = Math.cos(a) * r; const y = Math.sin(a) * r; if (!i) c.moveTo(x, y); else c.lineTo(x, y); } c.closePath();
+  }
+}
+
+function makeShapeEffect(o: ShapeEffectOptions): EffectDef {
+  return {
+    count: o.count,
+    additive: true,
+    spawn: (w, h, initial) => {
+      const speed = o.speed[0] + R() * (o.speed[1] - o.speed[0]);
+      const rise = o.rise !== false;
+      return base({
+        x: R() * w,
+        y: initial ? R() * h : (rise ? h + 24 : -24),
+        vx: (R() - 0.5) * (o.drift ?? 24),
+        vy: rise ? -speed : speed,
+        size: o.size[0] + R() * (o.size[1] - o.size[0]),
+        max: o.lifetime ? o.lifetime[0] + R() * (o.lifetime[1] - o.lifetime[0]) : 4 + R() * 5,
+        hue: o.hue + R() * (o.hueSpread ?? 36),
+        rot: R() * Math.PI * 2,
+        vr: (R() - 0.5) * 2.4,
+        depth: 0.35 + R() * 0.65,
+      });
+    },
+    step: (p, dt, t) => {
+      p.y += (p.vy + Math.sin(t * 1.1 + p.phase) * (o.drift ?? 24) * 0.22) * dt * p.depth;
+      p.x += (p.vx + Math.cos(t * 0.8 + p.phase) * (o.drift ?? 24) * 0.35) * dt * p.depth;
+      p.rot += p.vr * dt;
+    },
+    draw: (c, p, t) => {
+      const alpha = fade(p) * (0.55 + p.depth * 0.45);
+      const pulse = 0.88 + Math.sin(t * 2.2 + p.phase) * 0.12;
+      const size = p.size * pulse;
+      c.save();
+      c.rotate(p.rot);
+      c.globalAlpha = alpha;
+      c.lineJoin = 'round';
+      c.lineCap = 'round';
+      c.shadowColor = `hsl(${p.hue} 100% 68%)`;
+      c.shadowBlur = o.glow ?? 12;
+      const grad = c.createLinearGradient(-size, -size, size, size);
+      grad.addColorStop(0, `hsl(${p.hue} 100% 94%)`);
+      grad.addColorStop(0.48, `hsl(${p.hue + 12} 100% 70%)`);
+      grad.addColorStop(1, `hsl(${p.hue + 28} 92% 48%)`);
+      c.fillStyle = grad;
+      c.strokeStyle = 'rgba(255,255,255,.72)';
+      c.lineWidth = Math.max(0.55, size * 0.075);
+      drawVectorShape(c, o.kind, size, t, p.phase);
+      if (o.kind === 'ring' || o.kind === 'spiral' || o.kind === 'rune') c.stroke();
+      else { c.fill(); c.stroke(); }
+      if (o.kind === 'diamond' || o.kind === 'hexagon') {
+        c.globalAlpha = alpha * 0.42;
+        c.beginPath(); c.moveTo(0, -size); c.lineTo(size * 0.08, 0); c.lineTo(0, size); c.closePath();
+        c.fillStyle = '#fff'; c.fill();
+      }
+      c.restore();
+    },
+    backdrop: (c, w, h, t) => {
+      const g = c.createRadialGradient(w * 0.5, h * 0.45, 0, w * 0.5, h * 0.45, Math.max(w, h) * 0.72);
+      g.addColorStop(0, `hsla(${o.hue + 12} 95% 58% / ${0.035 + Math.sin(t * 0.55) * 0.012})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = g; c.fillRect(0, 0, w, h);
+    },
+  };
+}
 
 const EFFECTS: Record<string, EffectDef> = {
   sparkles: {
@@ -737,7 +863,7 @@ const EFFECTS: Record<string, EffectDef> = {
         vr: 12 + R() * 18,
       });
     },
-    step: (p, dt) => {
+    step: (p, dt, t) => {
       if (p.hue === 1) {
         p.x += p.vx * dt;
         p.y += p.vy * dt;
@@ -929,6 +1055,20 @@ const EFFECTS: Record<string, EffectDef> = {
       c.fillRect(0, 0, w, h * 0.55);
     },
   },
+
+  // New vector-rich effects. Each uses a distinct silhouette and motion profile.
+  prism: makeShapeEffect({ count: 28, kind: 'diamond', hue: 185, hueSpread: 145, size: [3, 9], speed: [9, 24], rise: false, drift: 14, glow: 16 }),
+  crystals: makeShapeEffect({ count: 25, kind: 'hexagon', hue: 178, hueSpread: 72, size: [3, 8], speed: [8, 22], rise: false, drift: 10, glow: 18 }),
+  butterflies: makeShapeEffect({ count: 17, kind: 'butterfly', hue: 292, hueSpread: 65, size: [4, 9], speed: [8, 19], rise: true, drift: 42, glow: 13, lifetime: [6, 10] }),
+  music: makeShapeEffect({ count: 22, kind: 'music', hue: 268, hueSpread: 85, size: [3, 7], speed: [12, 28], rise: true, drift: 28, glow: 14 }),
+  orbits: makeShapeEffect({ count: 30, kind: 'ring', hue: 195, hueSpread: 105, size: [3, 8], speed: [2, 9], rise: true, drift: 34, glow: 16, lifetime: [5, 9] }),
+  runes: makeShapeEffect({ count: 19, kind: 'rune', hue: 260, hueSpread: 55, size: [5, 11], speed: [5, 13], rise: true, drift: 12, glow: 18, lifetime: [5, 9] }),
+  fireworks: makeShapeEffect({ count: 42, kind: 'spark', hue: 35, hueSpread: 310, size: [2, 6], speed: [18, 48], rise: false, drift: 55, glow: 20, lifetime: [2.5, 4.5] }),
+  matrix: makeShapeEffect({ count: 34, kind: 'hexagon', hue: 112, hueSpread: 24, size: [1.5, 4], speed: [22, 52], rise: false, drift: 5, glow: 9 }),
+  geometric: makeShapeEffect({ count: 32, kind: 'triangle', hue: 205, hueSpread: 135, size: [3, 8], speed: [7, 20], rise: true, drift: 32, glow: 13 }),
+  galaxy_dust: makeShapeEffect({ count: 46, kind: 'spiral', hue: 270, hueSpread: 85, size: [2, 6], speed: [3, 12], rise: true, drift: 24, glow: 15, lifetime: [5, 10] }),
+  clouds: makeShapeEffect({ count: 20, kind: 'comet', hue: 190, hueSpread: 75, size: [4, 11], speed: [4, 12], rise: true, drift: 20, glow: 12, lifetime: [6, 11] }),
+  royal: makeShapeEffect({ count: 24, kind: 'crown', hue: 38, hueSpread: 25, size: [3, 8], speed: [7, 17], rise: true, drift: 17, glow: 17, lifetime: [5, 9] }),
 };
 
 /** Full-card particle effect over a profile. Purely decorative, never blocks clicks. */
