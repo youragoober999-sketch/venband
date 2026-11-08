@@ -863,7 +863,7 @@ const EFFECTS: Record<string, EffectDef> = {
         vr: 12 + R() * 18,
       });
     },
-    step: (p, dt, t) => {
+    step: (p, dt) => {
       if (p.hue === 1) {
         p.x += p.vx * dt;
         p.y += p.vy * dt;
