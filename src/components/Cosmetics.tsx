@@ -577,41 +577,142 @@ const EFFECTS: Record<string, EffectDef> = {
       c.fillRect(-p.size, -p.size * 0.45, p.size * 2, p.size * 0.9);
     },
   },
-  shooting_stars: {
-    count: 28,
-    additive: true,
-    spawn: (w, h, init) =>
-      R() < 0.12 && !init
-        ? base({ x: w * (0.3 + R() * 0.9), y: -10 + R() * h * 0.3, vx: -(260 + R() * 160), vy: 120 + R() * 80, size: 1.6, max: 0.9, hue: 1 })
-        : base({ x: R() * w, y: R() * h, size: 0.6 + R() * 1.4, max: 2 + R() * 4 }),
-    step: (p, dt) => {
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-    },
-    draw: (c, p) => {
-      if (p.hue === 1) {
-        const k = Math.sin((p.life / p.max) * Math.PI);
-        const g = c.createLinearGradient(0, 0, -p.vx * 0.18, -p.vy * 0.18);
-        g.addColorStop(0, `rgba(255,255,255,${k})`);
-        g.addColorStop(1, 'rgba(160,200,255,0)');
-        c.strokeStyle = g;
-        c.lineWidth = 1.6;
-        c.lineCap = 'round';
-        c.beginPath();
-        c.moveTo(0, 0);
-        c.lineTo(-p.vx * 0.18, -p.vy * 0.18);
-        c.stroke();
-        return;
-      }
-      c.globalAlpha = Math.sin((p.life / p.max) * Math.PI) * 0.9;
-      c.fillStyle = '#fff';
-      c.shadowColor = '#9cc7ff';
-      c.shadowBlur = 4;
+
+shooting_stars: {
+  count: 110,
+  additive: true,
+
+  spawn: (w: number, h: number, init: boolean) => {
+    const r = R();
+
+    if (init || r > 0.13) {
+      return base({
+        x: R() * w,
+        y: R() * h,
+        vx: 0,
+        vy: 0,
+        size: 0.35 + R() * 1.35,
+        max: 3 + R() * 5,
+        hue: 0,
+        type: 0,
+        phase: R() * Math.PI * 2,
+        twinkle: 1 + R() * 3,
+      });
+    }
+
+    const angle = Math.PI * (0.25 + R() * 0.15);
+    const speed = 420 + R() * 780;
+
+    return base({
+      x: R() * w * 1.2,
+      y: -30 + R() * h * 0.65,
+      vx: -Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: 0.8 + R() * 1.8,
+      max: 0.7 + R() * 1.1,
+      hue: 1,
+      type: 1,
+      length: 65 + R() * 190,
+      speed,
+      glow: 12 + R() * 24,
+      phase: R() * Math.PI * 2,
+    });
+  },
+
+  step: (p: any, dt: number) => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.phase += dt * 12;
+  },
+
+  draw: (c: CanvasRenderingContext2D, p: any) => {
+    const progress = Math.min(1, p.life / p.max);
+    const fade = Math.sin(progress * Math.PI);
+
+    if (p.hue !== 1) {
+      const pulse = 0.35 + (Math.sin(p.phase) + 1) * 0.275;
+
+      c.globalAlpha = pulse * fade;
+      c.fillStyle = '#ffffff';
+      c.shadowColor = '#9ecbff';
+      c.shadowBlur = 8;
+
       c.beginPath();
       c.arc(0, 0, p.size, 0, Math.PI * 2);
       c.fill();
-    },
+
+      c.shadowBlur = 0;
+      c.globalAlpha = 1;
+      return;
+    }
+
+    const tailX = -p.vx / p.speed * p.length;
+    const tailY = -p.vy / p.speed * p.length;
+
+    const flicker = 0.88 + Math.sin(p.phase) * 0.12;
+    const alpha = fade * flicker;
+
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    c.lineCap = 'round';
+
+    // Atmospheric glow
+    c.globalAlpha = alpha * 0.16;
+    c.strokeStyle = '#8fcaff';
+    c.lineWidth = p.size * 11;
+    c.shadowColor = '#8fcaff';
+    c.shadowBlur = p.glow * 2;
+
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.lineTo(tailX, tailY);
+    c.stroke();
+
+    // Outer blue trail
+    c.globalAlpha = alpha * 0.55;
+    c.lineWidth = p.size * 4;
+
+    const gradient = c.createLinearGradient(
+      0, 0, tailX, tailY
+    );
+
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.25, 'rgba(150,205,255,0.85)');
+    gradient.addColorStop(1, 'rgba(100,150,255,0)');
+
+    c.strokeStyle = gradient;
+    c.shadowBlur = p.glow;
+
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.lineTo(tailX, tailY);
+    c.stroke();
+
+    // Sharp inner trail
+    c.globalAlpha = alpha * 0.95;
+    c.strokeStyle = '#ffffff';
+    c.lineWidth = p.size * 0.85;
+    c.shadowBlur = 5;
+
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.lineTo(tailX * 0.55, tailY * 0.55);
+    c.stroke();
+
+    // Meteor head
+    c.globalAlpha = alpha;
+    c.fillStyle = '#ffffff';
+    c.shadowColor = '#a9d7ff';
+    c.shadowBlur = p.glow;
+
+    c.beginPath();
+    c.arc(0, 0, p.size * 1.5, 0, Math.PI * 2);
+    c.fill();
+
+    c.restore();
+    c.globalAlpha = 1;
   },
+},
   fireflies: {
     count: 16,
     additive: true,

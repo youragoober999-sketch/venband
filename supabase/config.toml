@@ -254,7 +254,7 @@ subject = "Reset your Venband password"
 content_path = "./supabase/templates/recovery.html"
 
 [auth.email.template.magic_link]
-subject = "Your Venband sign-in link"
+subject = "Your Venband sign-in code"
 content_path = "./supabase/templates/magic_link.html"
 
 [auth.email.template.email_change]

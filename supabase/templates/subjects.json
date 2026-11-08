@@ -1,7 +1,7 @@
 {
   "confirmation": "Confirm your Venband account",
   "recovery": "Reset your Venband password",
-  "magic_link": "Your Venband sign-in link",
+  "magic_link": "Your Venband sign-in code",
   "email_change": "Confirm your new Venband email",
   "invite": "You’ve been invited to Venband",
   "reauthentication": "Your Venband verification code"
