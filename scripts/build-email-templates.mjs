@@ -110,14 +110,15 @@ const TEMPLATES = {
     }),
   },
   magic_link: {
-    subject: 'Your Venband sign-in link',
+    subject: 'Your Venband sign-in code',
     html: layout({
-      preheader: 'Tap to sign in to Venband.',
+      preheader: 'Your Venband sign-in code: {{ .Token }}',
       title: 'Sign in to Venband',
-      body: 'Tap the button below to sign in. The link works once and expires soon.',
-      action: button('{{ .ConfirmationURL }}', 'Sign in'),
+      body: 'Enter this code in Venband to sign in. It expires in 1 hour and can only be used once.',
+      action: code('{{ .Token }}'),
       fallbackUrl: '{{ .ConfirmationURL }}',
-      footnote: 'Didn’t try to sign in? Ignore this email — nobody can get in without it.',
+      fallbackLabel: 'Prefer a link? Open this one instead:',
+      footnote: 'Didn’t try to sign in? Ignore this email — nobody can get in without the code.',
     }),
   },
   email_change: {
