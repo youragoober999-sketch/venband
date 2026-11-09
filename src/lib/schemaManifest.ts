@@ -435,8 +435,7 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "list_bot_templates"
     ],
     "bodies": {
-      "bot_directory": "79a04286cdf7e93da1cb4c611872af90",
-      "create_application": "71443ff7a77b9955ce94bcc017f3c8c3"
+      "bot_directory": "79a04286cdf7e93da1cb4c611872af90"
     }
   },
   {
@@ -892,5 +891,13 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "moderate_bot"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261108000000_bot_requires_2fa.sql",
+    "tables": [],
+    "functions": [],
+    "bodies": {
+      "create_application": "a793b36fe700e95e6d75176384972ab5"
+    }
   }
 ];
