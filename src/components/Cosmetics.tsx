@@ -1096,6 +1096,36 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
     let last = performance.now();
     let t = 0;
     let frame: (now: number) => void;
+    // Mouse-reactive insanity: particles flee / swirl around the cursor and
+    // clicks detonate a burst of sparks. Works for every equipped effect.
+    let mx = -9999, my = -9999, mouseActive = false;
+    const bursts: { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number }[] = [];
+    const trail: { x: number; y: number; when: number }[] = [];
+    const inside = (e: MouseEvent) => {
+      const r = canvas.getBoundingClientRect();
+      return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    };
+    const onMove = (e: MouseEvent) => {
+      if (!inside(e)) { mouseActive = false; return; }
+      const r = canvas.getBoundingClientRect();
+      mx = e.clientX - r.left; my = e.clientY - r.top; mouseActive = true;
+      trail.push({ x: mx, y: my, when: performance.now() });
+      if (trail.length > 28) trail.shift();
+    };
+    const onLeave = () => { mouseActive = false; };
+    const onClick = (e: MouseEvent) => {
+      if (!inside(e)) return;
+      const r = canvas.getBoundingClientRect();
+      const cx = e.clientX - r.left, cy = e.clientY - r.top;
+      for (let i = 0; i < 46; i++) {
+        const a = (i / 46) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
+        const sp = 90 + Math.random() * 170;
+        bursts.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0, max: 0.5 + Math.random() * 0.7, size: 1.5 + Math.random() * 4, hue: Math.random() * 360 });
+      }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseout', onLeave);
+    window.addEventListener('click', onClick);
 
     const stop = () => {
       if (raf) cancelAnimationFrame(raf);
@@ -1141,6 +1171,17 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
           const p = ps[i];
           p.life += dt;
           (layer.step ?? def.step)?.(p, dt, t, w, h);
+          if (mouseActive) {
+            const dx = p.x - mx, dy = p.y - my;
+            const d = Math.hypot(dx, dy) || 1;
+            if (d < 170) {
+              const f = ((170 - d) / 170) * 520;
+              p.vx += (dx / d) * f * dt;
+              p.vy += (dy / d) * f * dt;
+              p.vx += (-dy / d) * f * 0.55 * dt;
+              p.vy += (dx / d) * f * 0.55 * dt;
+            }
+          }
           if (p.life > p.max || p.y > h + 24 || p.y < -34 || p.x < -34 || p.x > w + 44) {
             ps[i] = layer.spawn(w, h, false);
             continue;
@@ -1150,6 +1191,45 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
           (layer.draw ?? def.draw)(ctx, p, t);
           ctx.restore();
         }
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = bursts.length - 1; i >= 0; i--) {
+        const b = bursts[i];
+        b.life += dt; b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 260 * dt; b.vx *= 0.94; b.vy *= 0.94;
+        if (b.life > b.max) { bursts.splice(i, 1); continue; }
+        const a = 1 - b.life / b.max;
+        ctx.globalAlpha = a;
+        ctx.fillStyle = `hsl(${b.hue}, 100%, 70%)`;
+        ctx.shadowColor = `hsl(${b.hue}, 100%, 60%)`;
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.size * (0.4 + a * 0.6), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const nowMs = performance.now();
+      for (let i = 0; i < trail.length; i++) {
+        const tr = trail[i];
+        const age = (nowMs - tr.when) / 600;
+        if (age > 1) continue;
+        const a = (1 - age) * 0.6;
+        ctx.globalAlpha = a;
+        ctx.fillStyle = `rgba(255,255,255,${a})`;
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(tr.x, tr.y, 3 + (1 - age) * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (mouseActive) {
+        const g = ctx.createRadialGradient(mx, my, 0, mx, my, 90);
+        g.addColorStop(0, 'rgba(255,255,255,0.45)');
+        g.addColorStop(0.4, 'rgba(180,220,255,0.18)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = g;
+        ctx.fillRect(mx - 90, my - 90, 180, 180);
       }
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
@@ -1177,6 +1257,9 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
     else start();
     return () => {
       stop();
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseout', onLeave);
+      window.removeEventListener('click', onClick);
       ro.disconnect();
       io.disconnect();
     };
