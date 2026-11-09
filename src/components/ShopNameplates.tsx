@@ -37,70 +37,101 @@ const batSvg = <svg viewBox="0 0 24 12"><path d="M12 4c-2-4-6-5-12-3 3 1 4 4 3 6
 const crowSvg = <svg viewBox="0 0 24 10"><path d="M0 3c4-3 8-2 12 3 4-5 8-6 12-3-4 0-7 2-9 6h-6C7 5 4 3 0 3Z" fill="currentColor" /></svg>;
 
 const SCENES: Record<string, () => ReactNode> = {
-  gradient: () => <b className="sp-sky sp-flow" />,
+  gradient: () => (
+    <>
+      <b className="sp-sky sp-flow" />
+      <b className="sp-sheen" />
+      {bits('gr', 12, 'sp-glint', { s: [1.2, 2.6] })}
+    </>
+  ),
   night_sky: () => (
     <>
       <b className="sp-sky" />
-      {bits('ns', 18, 'sp-star', { s: [1, 2.6] })}
+      {bits('ns', 34, 'sp-star', { s: [1, 2.8] })}
+      {bits('nsg', 9, 'sp-glint', { y: [5, 75], s: [1.3, 2.8] })}
+      <b className="sp-shoot" />
       <b className="sp-moon" />
+      <b className="sp-fog" />
     </>
   ),
   eclipse: () => (
     <>
       <b className="sp-sky" />
+      {bits('ec', 20, 'sp-star', { s: [1, 2.4] })}
       <b className="sp-corona" />
       <b className="sp-disc" />
+      {bits('ecg', 8, 'sp-glint', { s: [1.4, 3] })}
     </>
   ),
   petals: () => (
     <>
       <b className="sp-sky" />
-      {bits('pt', 12, 'sp-petal', { s: [5, 8], t: [4, 8] })}
+      {bits('pt', 24, 'sp-petal', { s: [4, 9], t: [4, 9] })}
+      {bits('ptb', 10, 'sp-bokeh', { s: [10, 22], y: [10, 80] })}
+      {bits('ptg', 8, 'sp-glint', { s: [1.2, 2.6] })}
     </>
   ),
   rain_glass: () => (
     <>
       <b className="sp-sky" />
-      {bits('rgl', 6, 'sp-bokeh', { s: [10, 22], y: [10, 90] })}
-      {bits('rgd', 20, 'sp-drop', { s: [6, 14], t: [0.9, 2] })}
+      {bits('rgl', 9, 'sp-bokeh', { s: [10, 24], y: [10, 90] })}
+      {bits('rgd', 30, 'sp-drop', { s: [6, 15], t: [0.8, 2.2] })}
+      <b className="sp-fog" />
     </>
   ),
   fire_wall: () => (
     <>
       <b className="sp-sky" />
-      {bits('fw', 14, 'sp-flame', { x: [25, 100], y: [55, 70], s: [14, 26], t: [0.5, 1.1] })}
-      {bits('fwe', 10, 'sp-ember', { y: [40, 100], s: [1.5, 3], t: [1.4, 2.6] })}
+      {bits('fw', 22, 'sp-flame', { x: [20, 100], y: [52, 72], s: [12, 28], t: [0.5, 1.2] })}
+      {bits('fws', 5, 'sp-smoke', { y: [15, 62], s: [14, 24], t: [5, 9] })}
+      {bits('fwe', 16, 'sp-ember', { y: [30, 100], s: [1.4, 3], t: [1.3, 2.8] })}
     </>
   ),
   ocean: () => (
     <>
       <b className="sp-sky" />
+      <b className="sp-moon" />
       {svg(
         <>
-          <path className="sp-wave w1" d="M0 30q15-8 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0V44H0Z" />
-          <path className="sp-wave w2" d="M0 35q15-6 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0V44H0Z" />
+          <path className="sp-wave w1" d="M0 28q15-8 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0V44H0Z" />
+          <path className="sp-wave w2" d="M0 33q15-6 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0V44H0Z" />
+          <path className="sp-wave w3" d="M0 38q15-4 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0V44H0Z" />
         </>,
       )}
-      {bits('oc', 8, 'sp-glint', { y: [10, 60], s: [1.5, 3] })}
+      {bits('oc', 12, 'sp-glint', { y: [10, 70], s: [1.4, 3.2] })}
+      {bits('ob', 8, 'sp-bubble', { y: [50, 90], s: [2, 4], t: [4, 7] })}
     </>
   ),
   snow: () => (
     <>
       <b className="sp-sky" />
-      {svg(<path d="M0 44V34q40-14 80-4t80-6 80 4V44Z" className="sp-hill" />)}
-      {bits('sn', 24, 'sp-flake', { s: [1.4, 3.4], t: [3, 7] })}
+      {svg(
+        <>
+          <path d="M0 44V32q40-16 80-4t80-8 80 6V44Z" className="sp-hill" />
+          <path d="M0 44V38q40-10 80-2t80-4 80 2V44Z" className="sp-hill deep" />
+        </>,
+      )}
+      {bits('sn', 34, 'sp-flake', { s: [1.2, 3.8], t: [2.5, 7] })}
+      <b className="sp-fog" />
     </>
   ),
   lightning: () => (
     <>
       <b className="sp-sky" />
-      {svg(<path className="sp-bolt" d="M170 0l-12 18h10l-16 26 30-30h-12l12-14Z" />)}
+      {svg(
+        <>
+          <path className="sp-bolt" d="M170 0l-12 18h10l-16 26 30-30h-12l12-14Z" />
+          <path className="sp-bolt b2" d="M198 2l-8 13h7l-11 18 20-21h-8l8-10Z" />
+        </>,
+      )}
+      {bits('lr', 22, 'sp-rain-streak', { s: [2, 5], t: [0.5, 1] })}
       <b className="sp-flash" />
     </>
   ),
   neon_city: () => (
     <>
       <b className="sp-sky" />
+      {bits('nc', 18, 'sp-star', { s: [1, 2.2] })}
       {svg(
         <>
           {[[100, 22], [116, 30], [130, 16], [148, 26], [166, 12], [186, 24], [204, 18], [222, 28]].map(([x, h], i) => (
@@ -112,39 +143,53 @@ const SCENES: Record<string, () => ReactNode> = {
             </g>
           ))}
           <text x="168" y="9" className="sp-neon">OPEN</text>
+          <text x="104" y="11" className="sp-neon alt">24H</text>
+          <rect x="100" y="10" width="36" height="1" className="sp-neon-line" />
         </>,
       )}
+      {bits('ncg', 9, 'sp-glint', { s: [1.2, 2.6] })}
     </>
   ),
   grid: () => (
     <>
       <b className="sp-sky" />
+      {bits('gd', 22, 'sp-star', { s: [1, 2.3] })}
+      <b className="sp-horizon-glow" />
       <b className="sp-sun" />
       <b className="sp-gridlines" />
+      {bits('gg', 7, 'sp-glint', { s: [1.2, 2.6] })}
     </>
   ),
   cipher: () => (
     <>
       <b className="sp-sky" />
-      {bits('cp', 14, 'sp-col', { s: [9, 11], t: [2, 4] }, <span>A7#F0=K3/9Q</span>)}
+      {bits('cp', 22, 'sp-col', { s: [8, 12], t: [2, 4.5] }, <span>A7#F0=K3/9Q</span>)}
+      {bits('cp2', 8, 'sp-col alt', { s: [7, 9], t: [2.4, 5] }, <span>Z1$X8@M2</span>)}
+      {bits('cpg', 6, 'sp-glint', { s: [1.2, 2.2] })}
     </>
   ),
   blocks: () => (
     <>
       <b className="sp-sky" />
-      {bits('bl', 14, 'sp-block', { s: [5, 7], t: [2, 4] })}
+      {bits('bl', 20, 'sp-block', { s: [4, 8], t: [1.8, 4.2] })}
+      {bits('blf', 12, 'sp-block faint', { s: [2.5, 5], t: [3, 6] })}
+      {bits('blg', 6, 'sp-glint', { s: [1.2, 2.4] })}
     </>
   ),
   equalizer: () => (
     <>
       <b className="sp-sky" />
-      <span className="sp-eq">{Array.from({ length: 22 }, (_, i) => <i key={i} style={{ animationDelay: `${-((i * 37) % 10) / 10}s`, animationDuration: `${0.6 + (i % 4) * 0.15}s` }} />)}</span>
+      {bits('eqs', 24, 'sp-star', { s: [1, 2] })}
+      <span className="sp-eq">{Array.from({ length: 24 }, (_, i) => <i key={i} style={{ animationDelay: `${-((i * 37) % 10) / 10}s`, animationDuration: `${0.6 + (i % 4) * 0.15}s` }} />)}</span>
+      {bits('eqg', 8, 'sp-glint', { s: [1.2, 2.6] })}
     </>
   ),
   butterflies: () => (
     <>
       <b className="sp-sky" />
-      {bits('bf', 6, 'sp-bfly', { y: [15, 75], s: [8, 11], t: [7, 12] }, <><em /><em className="r" /></>)}
+      {bits('bf', 10, 'sp-bfly', { y: [10, 80], s: [7, 13], t: [6, 13] }, <><em /><em className="r" /></>)}
+      {bits('bfp', 8, 'sp-petal', { s: [3, 5], t: [5, 9] })}
+      {bits('bfg', 7, 'sp-glint', { s: [1.2, 2.6] })}
     </>
   ),
   forest_fog: () => (
@@ -152,11 +197,12 @@ const SCENES: Record<string, () => ReactNode> = {
       <b className="sp-sky" />
       {svg(
         <>
-          {[110, 128, 146, 160, 178, 196, 214, 230].map((x, i) => (
+          {[104, 118, 132, 146, 160, 174, 188, 202, 216, 230].map((x, i) => (
             <path key={x} d={`M${x} 44V${30 - (i % 3) * 4}l-8 10h5l-6 8h18l-6-8h5Z`} transform={`translate(0 ${i % 2 ? 4 : 0})`} className="sp-pine" />
           ))}
         </>,
       )}
+      {bits('ff', 12, 'sp-firefly', { y: [18, 82], s: [1.6, 3], t: [3, 6] })}
       <b className="sp-fog" />
       <b className="sp-fog f2" />
     </>
@@ -164,20 +210,24 @@ const SCENES: Record<string, () => ReactNode> = {
   hearts: () => (
     <>
       <b className="sp-sky" />
-      {bits('hr', 10, 'sp-heart', { s: [7, 12], t: [3, 5] }, heartSvg)}
+      {bits('hr', 16, 'sp-heart', { s: [6, 13], t: [2.8, 5.4] }, heartSvg)}
+      {bits('hrg', 10, 'sp-glint', { s: [1.2, 2.6] })}
     </>
   ),
   clouds: () => (
     <>
       <b className="sp-sky" />
-      {bits('cl', 5, 'sp-cloud', { y: [10, 70], s: [18, 30], t: [14, 24] })}
+      {bits('cl', 9, 'sp-cloud', { y: [5, 78], s: [16, 32], t: [12, 26] })}
+      {bits('clb', 7, 'sp-bokeh', { s: [12, 26], y: [5, 70] })}
+      {bits('clg', 6, 'sp-glint', { s: [1.2, 2.4] })}
     </>
   ),
   leopard: () => (
     <>
       <b className="sp-sky sp-spots" />
       <b className="sp-sheen" />
-      {bits('lp', 6, 'sp-glint', { s: [1.4, 2.4] })}
+      {bits('lp', 12, 'sp-glint', { s: [1.2, 2.8] })}
+      {bits('lpb', 6, 'sp-bokeh', { s: [8, 18], y: [10, 80] })}
     </>
   ),
   roses: () => (
@@ -187,7 +237,8 @@ const SCENES: Record<string, () => ReactNode> = {
       {svg(
         <>
           <path d="M60 44c30-16 60-6 90-18s50-14 90-6" className="sp-vine" />
-          {[[120, 30], [168, 22], [210, 26]].map(([x, y], i) => (
+          <path d="M96 38c22-8 40-4 58-10m-22 4-4-5m16 3 3-5M150 26l-5-4m18 2 4-4" className="sp-thorn" />
+          {[[112, 32], [142, 25], [174, 21], [206, 27], [230, 18]].map(([x, y], i) => (
             <g key={i} className="sp-rose" style={{ transformOrigin: `${x}px ${y}px`, animationDelay: `${-i}s` }}>
               <circle cx={x} cy={y} r="6.5" />
               <path d={`M${x - 3} ${y - 2}c2-3 6-2 6 1s-4 4-5 1`} className="sp-rose-line" />
@@ -195,31 +246,43 @@ const SCENES: Record<string, () => ReactNode> = {
           ))}
         </>,
       )}
+      {bits('rp', 12, 'sp-petal', { s: [3, 6], t: [5, 9] })}
+      <b className="sp-fog" />
     </>
   ),
   crows: () => (
     <>
       <b className="sp-sky" />
-      {bits('cr', 7, 'sp-crow', { y: [10, 70], s: [10, 16], t: [5, 9] }, crowSvg)}
+      <b className="sp-moon" />
+      {bits('cr', 12, 'sp-crow', { y: [8, 75], s: [8, 17], t: [4, 10] }, crowSvg)}
+      <b className="sp-fog" />
+      <b className="sp-fog f2" />
     </>
   ),
   eyes: () => (
     <>
       <b className="sp-sky" />
-      {bits('ey', 7, 'sp-eye', { y: [20, 80], s: [5, 8], t: [3.5, 6] }, <><em /><em /></>)}
+      {bits('ey', 12, 'sp-eye', { y: [12, 85], s: [4, 9], t: [3, 6.5] }, <><em /><em /></>)}
+      {bits('eyg', 8, 'sp-glint', { s: [1, 2.2] })}
+      <b className="sp-fog" />
     </>
   ),
   ghosts: () => (
     <>
       <b className="sp-sky" />
-      {bits('gh', 4, 'sp-ghost', { y: [15, 60], s: [11, 15], t: [7, 11] })}
+      {bits('gh', 7, 'sp-ghost', { y: [10, 65], s: [9, 16], t: [6, 12] })}
+      {bits('ghg', 8, 'sp-glint', { s: [1.2, 2.4] })}
+      <b className="sp-fog" />
+      <b className="sp-fog f2" />
     </>
   ),
   gold_leaf: () => (
     <>
       <b className="sp-sky sp-goldflow" />
-      {bits('gl', 10, 'sp-leaf', { s: [3, 6], t: [4, 7] })}
-      {bits('gg', 8, 'sp-glint', { s: [1.4, 2.6] })}
+      <b className="sp-sheen" />
+      {bits('gl', 18, 'sp-leaf', { s: [2.6, 6], t: [4, 8] })}
+      {bits('gg', 14, 'sp-glint', { s: [1.2, 2.8] })}
+      {bits('gb', 6, 'sp-bokeh', { s: [8, 18], y: [10, 80] })}
     </>
   ),
   starry_night: () => (
@@ -240,11 +303,14 @@ const SCENES: Record<string, () => ReactNode> = {
           <path d="M100 44c2-14 4-26 8-36 3 10 5 22 6 36Z" className="sp-cypress" />
         </>,
       )}
+      {bits('sng', 9, 'sp-glint', { s: [1.2, 2.8] })}
+      <b className="sp-sheen" />
     </>
   ),
   great_wave: () => (
     <>
       <b className="sp-sky" />
+      {bits('gw', 14, 'sp-star', { s: [1, 2.2] })}
       {svg(
         <g className="sp-wavepat">
           {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -255,33 +321,39 @@ const SCENES: Record<string, () => ReactNode> = {
           ))}
         </g>,
       )}
+      {bits('gwf', 10, 'sp-glint', { s: [1.2, 2.6] })}
       <b className="sp-fuji" />
     </>
   ),
   gold_mosaic: () => (
     <>
       <b className="sp-sky sp-mosaic" />
-      {bits('gm', 8, 'sp-spiral', { y: [15, 85], s: [7, 10], t: [6, 10] })}
+      {bits('gm', 12, 'sp-spiral', { y: [12, 88], s: [6, 11], t: [5, 11] })}
       <b className="sp-sheen" />
+      {bits('gmg', 14, 'sp-glint', { s: [1.2, 2.8] })}
     </>
   ),
   scream: () => (
     <>
       <b className="sp-sky" />
       {svg(
-        <g className="sp-bands">
-          {[6, 13, 20, 27].map((y, i) => (
-            <path key={y} d={`M0 ${y}q20-6 40 0t40 0 40 0 40 0 40 0 40 0 40 0 40 0`} className={`sp-band b${i}`} />
-          ))}
-        </g>,
+        <>
+          <g className="sp-bands">
+            {[6, 13, 20, 27, 34].map((y, i) => (
+              <path key={y} d={`M0 ${y}q20-6 40 0t40 0 40 0 40 0 40 0 40 0 40 0 40 0`} className={`sp-band b${i}`} />
+            ))}
+          </g>
+          <path d="M80 44L240 30v4L84 44Z" className="sp-bridge" />
+        </>,
       )}
-      {svg(<path d="M80 44L240 30v4L84 44Z" className="sp-bridge" />)}
+      {bits('scg', 8, 'sp-glint', { s: [1.2, 2.6] })}
+      <b className="sp-fog" />
     </>
   ),
   moon_voyage: () => (
     <>
       <b className="sp-sky" />
-      {bits('mv', 12, 'sp-star', { s: [1, 2.4] })}
+      {bits('mv', 22, 'sp-star', { s: [1, 2.6] })}
       {svg(
         <>
           <g className="sp-mface">
@@ -291,9 +363,11 @@ const SCENES: Record<string, () => ReactNode> = {
           </g>
           <g className="sp-capsule">
             <path d="M0 0h12q6 3 0 6H0Z" transform="translate(120 26) rotate(-18)" />
+            <path d="M-18 2h12" transform="translate(120 26) rotate(-18)" className="sp-trail" />
           </g>
         </>,
       )}
+      {bits('mvg', 8, 'sp-glint', { s: [1.2, 2.6] })}
     </>
   ),
   film_reel: () => (
@@ -302,11 +376,15 @@ const SCENES: Record<string, () => ReactNode> = {
       <b className="sp-sprockets" />
       <b className="sp-sprockets bottom" />
       <b className="sp-scratch" />
+      <b className="sp-scratch s2" />
+      {bits('fr', 10, 'sp-glint', { s: [1, 2.2] })}
+      <b className="sp-sheen" />
     </>
   ),
   brick_road: () => (
     <>
       <b className="sp-sky" />
+      {bits('ozs', 20, 'sp-star', { s: [1, 2.2] })}
       {svg(
         <>
           <path d="M60 44C110 40 140 34 170 28s40-8 54-10" className="sp-road" />
@@ -316,29 +394,186 @@ const SCENES: Record<string, () => ReactNode> = {
           ))}
         </>,
       )}
-      {bits('oz', 8, 'sp-glint', { x: [70, 100], y: [5, 50], s: [1.6, 3] })}
+      {bits('oz', 14, 'sp-glint', { x: [70, 100], y: [3, 55], s: [1.4, 3.2] })}
     </>
   ),
   wonderland: () => (
     <>
       <b className="sp-sky sp-spiralbg" />
-      {bits('wl', 9, 'sp-card', { s: [7, 10], t: [3, 6] }, <span>♥</span>)}
-      {bits('wc', 4, 'sp-clock', { s: [8, 11], t: [4, 7] })}
+      {bits('wl', 16, 'sp-card', { s: [6, 11], t: [2.6, 6.5] }, <span>♥</span>)}
+      {bits('wc', 7, 'sp-clock', { s: [7, 12], t: [3.5, 7.5] })}
+      {bits('wg', 10, 'sp-glint', { s: [1.2, 2.8] })}
     </>
   ),
   castle: () => (
     <>
       <b className="sp-sky" />
       <b className="sp-moon blood" />
-      {svg(<path d="M130 44V30h5v-5h5v5h5V18l6-7 6 7v12h5v-6h5v6h5V22l5-6 5 6v22Z" className="sp-castle" />)}
-      {bits('ca', 6, 'sp-bat', { y: [10, 60], s: [9, 12], t: [4, 7] }, batSvg)}
+      {svg(
+        <>
+          <path d="M130 44V30h5v-5h5v5h5V18l6-7 6 7v12h5v-6h5v6h5V22l5-6 5 6v22Z" className="sp-castle" />
+          <path d="M138 30h4v4h-4Zm12 0h4v4h-4Zm12 0h4v4h-4Z" className="sp-castle-win" />
+        </>,
+      )}
+      {bits('ca', 11, 'sp-bat', { y: [8, 65], s: [8, 13], t: [3.5, 8] }, batSvg)}
+      <b className="sp-fog" />
+      <b className="sp-fog f2" />
     </>
   ),
   deep_sea: () => (
     <>
       <b className="sp-sky" />
       <b className="sp-rays" />
-      {bits('ds', 14, 'sp-bubble', { s: [2, 5], t: [3, 6] })}
+      {bits('ds', 22, 'sp-bubble', { s: [2, 5.5], t: [2.6, 6.5] })}
+      {bits('dsj', 4, 'sp-jelly', { x: [40, 100], y: [20, 68], s: [7, 12], t: [7, 12] })}
+      {bits('dsg', 9, 'sp-glint', { s: [1.1, 2.4] })}
+    </>
+  ),
+  constellation: () => (
+    <>
+      <b className="sp-sky" />
+      {bits('cn', 22, 'sp-star', { s: [1, 2.4] })}
+      {svg(
+        <>
+          <path className="sp-const cn1" d="M92 34 116 12 140 26 160 6 180 22" />
+          <path className="sp-const cn2" d="M146 42 164 32 184 38 204 18 224 26" />
+          <path className="sp-const cn3" d="M196 12 208 6 220 12" />
+          {[[116, 12], [140, 26], [160, 6], [180, 22], [204, 18], [224, 26]].map(([x, y], i) => (
+            <circle key={i} cx={x} cy={y} r={1.6 + (i % 2)} className="sp-cnode" style={{ animationDelay: `${-i * 0.6}s` }} />
+          ))}
+        </>,
+      )}
+      {bits('cg', 8, 'sp-glint', { s: [1.2, 2.4] })}
+    </>
+  ),
+  supernova: () => (
+    <>
+      <b className="sp-sky" />
+      {bits('svn', 16, 'sp-star', { s: [1, 2.6] })}
+      <b className="sp-nova" />
+      <b className="sp-nova-ring" />
+      <b className="sp-nova-ring r2" />
+      <b className="sp-nova-ring r3" />
+      {bits('svg', 10, 'sp-glint', { s: [1.4, 2.8] })}
+    </>
+  ),
+  blizzard: () => (
+    <>
+      <b className="sp-sky" />
+      {svg(
+        <>
+          <path d="M0 44V30q40-14 80-4t80-6 80 4V44Z" className="sp-hill" />
+          <path d="M0 44V37q40-10 80-2t80-4 80 2V44Z" className="sp-hill deep" />
+        </>,
+      )}
+      {bits('bg', 3, 'sp-gust', { y: [18, 78], s: [20, 34], t: [3, 6] })}
+      {bits('bz', 30, 'sp-flake', { s: [1.2, 3], t: [2, 4] })}
+    </>
+  ),
+  inferno: () => (
+    <>
+      <b className="sp-sky" />
+      {svg(<path d="M0 44V33h10v-5h12v5h14v-7h10v7h12v-4h10v4h12v-6h10v6h12v-3h10v3h12v-5h10v5h14v-2h10v2h12v11Z" className="sp-ridge-dark" />)}
+      {bits('if', 16, 'sp-flame', { x: [20, 100], y: [50, 66], s: [12, 24], t: [0.5, 1.1] })}
+      {bits('ifs', 4, 'sp-smoke', { y: [20, 60], s: [14, 22], t: [5, 9] })}
+      {bits('ife', 12, 'sp-ember', { y: [30, 100], s: [1.5, 3], t: [1.4, 2.6] })}
+    </>
+  ),
+  tide: () => (
+    <>
+      <b className="sp-sky" />
+      <b className="sp-moon" />
+      {bits('tdg', 8, 'sp-glint', { x: [55, 80], y: [25, 60], s: [1.4, 2.6] })}
+      {svg(
+        <>
+          <path className="sp-wave w1" d="M0 28q15-8 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0V44H0Z" />
+          <path className="sp-wave w2" d="M0 34q15-6 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0V44H0Z" />
+          <path className="sp-wave w3" d="M0 39q15-4 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0V44H0Z" />
+        </>,
+      )}
+      {bits('td', 8, 'sp-glint', { y: [55, 85], s: [1.4, 2.8] })}
+    </>
+  ),
+  jellyfish: () => (
+    <>
+      <b className="sp-sky" />
+      <b className="sp-rays" />
+      {bits('jl', 5, 'sp-jelly', { x: [35, 100], y: [15, 75], s: [10, 16], t: [6, 10] })}
+      {bits('jb', 12, 'sp-bubble', { s: [2, 5], t: [3, 6] })}
+    </>
+  ),
+  inkbloom: () => (
+    <>
+      <b className="sp-sky sp-inkpaper" />
+      {bits('ib', 5, 'sp-ink', { x: [35, 100], y: [15, 80], s: [12, 22], t: [6, 9] })}
+      {bits('id', 10, 'sp-drop', { x: [30, 100], s: [5, 9], t: [1.6, 3] })}
+      {bits('ig', 6, 'sp-glint', { s: [1.2, 2.4] })}
+    </>
+  ),
+  phantoms: () => (
+    <>
+      <b className="sp-sky" />
+      <b className="sp-moon blood" />
+      {svg(
+        <>
+          <path d="M196 44v-8a6 6 0 0 1 12 0v8Z" className="sp-grave" />
+          <path d="M214 44v-6a4 4 0 0 1 8 0v6Z" className="sp-grave thin" />
+          <path d="M206 36v-3m-4 3h8" className="sp-grave-line" />
+        </>,
+      )}
+      {bits('ph', 4, 'sp-ghost', { y: [20, 65], s: [10, 14], t: [7, 11] })}
+      <b className="sp-fog" />
+      <b className="sp-fog f2" />
+    </>
+  ),
+  pixel_pop: () => (
+    <>
+      <b className="sp-sky" />
+      <b className="sp-pixel-sun" />
+      {svg(<path d="M0 44V34h14v-6h12v6h16v-9h12v9h18v-5h12v5h16v-8h12v8h18v-4h12v4h18v10Z" className="sp-pixel-hills" />)}
+      {bits('pxb', 10, 'sp-block', { s: [4, 6], t: [2.5, 5] })}
+      {bits('pxh', 7, 'sp-heart', { s: [5, 9], t: [3, 5] }, heartSvg)}
+      <b className="sp-scan" />
+    </>
+  ),
+  candy: () => (
+    <>
+      <b className="sp-sky" />
+      {bits('cdc', 5, 'sp-cloud', { y: [8, 55], s: [16, 26], t: [14, 24] })}
+      {bits('cll', 4, 'sp-lolly', { x: [55, 100], y: [35, 80], s: [9, 14], t: [5, 8] })}
+      {bits('cs', 20, 'sp-sprinkle', { s: [4, 7], t: [3, 6] })}
+    </>
+  ),
+  leviathan: () => (
+    <>
+      <b className="sp-sky" />
+      <b className="sp-rays" />
+      {svg(
+        <>
+          <path className="sp-serpent" d="M-20 34C20 6 52 40 86 20s52-16 86 6 44 8 88-6" />
+          <path className="sp-serpent thin" d="M-20 37C20 9 52 43 86 23s52-16 86 6 44 8 88-6" />
+        </>,
+      )}
+      <b className="sp-leye" />
+      {bits('lv', 10, 'sp-bubble', { s: [2, 5], t: [3, 6] })}
+      {bits('lvg', 8, 'sp-glint', { s: [1.2, 2.4] })}
+    </>
+  ),
+  phoenix: () => (
+    <>
+      <b className="sp-sky" />
+      <b className="sp-phx-sun" />
+      {svg(
+        <g className="sp-phx">
+          <path className="tail" d="M120 28c-4 6-9 10-14 12m14-12c4 6 9 10 14 12" />
+          <path className="wing l" d="M115 23C102 12 88 13 80 20c7-1 11 3 12 8 5-2 10 0 13 4Z" />
+          <path className="wing r" d="M125 23c13-11 27-10 35-3-7-1-11 3-12 8-5-2-10 0-13 4Z" />
+          <path className="body" d="M120 17c-3-5-7-5-9 0 2 1 3 4 3 7l6 6 6-6c0-3 1-6 3-7-2-5-6-5-9 0Z" />
+          <path className="crest" d="M117 13l-2-5 3 2 2-4 2 4 3-2-2 5Z" />
+        </g>,
+      )}
+      {bits('pxe', 10, 'sp-ember', { y: [30, 100], s: [1.4, 3], t: [1.4, 2.6] })}
+      {bits('pxg', 7, 'sp-glint', { s: [1.2, 2.6] })}
     </>
   ),
 };

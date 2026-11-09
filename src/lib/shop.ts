@@ -218,6 +218,18 @@ export const EFFECTS_DEF: Def[] = [
   ['lab_lightning', 'It’s Alive!', 'storybook', 'mythic', 'toxic frost', 'Arcs of lightning crawl between electrodes.', 'Frankenstein (Mary Shelley, 1818)'],
   ['raven_feathers', 'Nevermore', 'storybook', 'mythic', 'void', 'Black feathers falling through the gloom.', 'The Raven (Edgar Allan Poe, 1845)'],
   ['scream_swirl', 'The Scream', 'museum', 'legendary', 'scream', 'Bands of sky twisting in panic.', 'The Scream (Edvard Munch, 1893)'],
+  ['constellation', 'Living Constellations', 'celestial', 'epic', 'midnight lilac gold frost', 'Star-beasts wheel across a sky that never repeats.'],
+  ['supernova', 'Supernova', 'celestial', 'mythic', 'ember gold void neon', 'A dying star tears itself open in rings of light.'],
+  ['blizzard', 'Whiteout', 'elements', 'epic', 'frost snow sky midnight', 'A howling blizzard swallows the pines whole.'],
+  ['inferno', 'Inferno', 'elements', 'legendary', 'ember crimson autumn blood', 'A wall of fire, a sky of smoke, and nowhere to run.'],
+  ['tide', 'Moon Tide', 'elements', 'rare', 'ocean aurora frost', 'Silver moonlight on four layers of rolling sea.'],
+  ['jellyfish', 'Bloom of Jellies', 'nature', 'epic', 'aurora ocean lilac mint', 'Living lanterns pulse through the deep.'],
+  ['inkbloom', 'Inkbloom', 'spooky', 'epic', 'ink void crimson silver', 'Rorschach flowers bleed open on wet paper.'],
+  ['phantoms', 'Phantom Procession', 'spooky', 'legendary', 'void frost lilac mint', 'The graveyard exhales, and something answers.'],
+  ['pixel_pop', 'Pixel Pop', 'gamer', 'epic', 'neon candy toxic aurora', 'A CRT dream of hearts, coins and chiptune stars.'],
+  ['candy', 'Sugar Rush', 'cute', 'rare', 'candy sakura blush mint', 'Lollipops, gumdrops and a permanent sprinkle drizzle.'],
+  ['leviathan', 'Leviathan', 'myth', 'mythic', 'ocean emerald gold void', 'Something older than maps coils beneath the light.', 'The Leviathan (Book of Job)'],
+  ['phoenix', 'Phoenix Rising', 'myth', 'legendary', 'ember gold crimson sunset', 'Ember feathers climb out of the sun.', 'The phoenix of Greek and Egyptian myth'],
 ];
 
 export const NAMEPLATES_DEF: Def[] = [
@@ -255,6 +267,18 @@ export const NAMEPLATES_DEF: Def[] = [
   ['wonderland', 'Down the Rabbit Hole', 'storybook', 'legendary', 'crimson lilac', 'Cards and clocks falling forever.', 'Alice’s Adventures in Wonderland (1865)'],
   ['castle', 'Castle Dracula', 'storybook', 'mythic', 'blood void', 'Bats around towers under a red moon.', 'Dracula (Bram Stoker, 1897)'],
   ['deep_sea', 'Twenty Thousand Leagues', 'storybook', 'legendary', 'ocean gold', 'Bubbles and lights in the deep.', 'Twenty Thousand Leagues Under the Seas (Jules Verne, 1870)'],
+  ['constellation', 'Star Chart', 'celestial', 'epic', 'midnight lilac gold frost', 'Star-beasts wheel across a living sky.'],
+  ['supernova', 'Supernova', 'celestial', 'mythic', 'ember gold void neon', 'A dying star tears itself open behind your name.'],
+  ['blizzard', 'Whiteout', 'elements', 'epic', 'frost snow sky midnight', 'A howling blizzard swallows the pines whole.'],
+  ['inferno', 'Inferno', 'elements', 'legendary', 'ember crimson autumn blood', 'A skyline of fire and smoke.'],
+  ['tide', 'Moon Tide', 'elements', 'rare', 'ocean aurora frost', 'Silver moonlight over three layers of rolling sea.'],
+  ['jellyfish', 'Bloom of Jellies', 'nature', 'epic', 'aurora ocean lilac mint', 'Living lanterns pulse through the deep.'],
+  ['inkbloom', 'Inkbloom', 'spooky', 'epic', 'ink void crimson silver', 'Rorschach flowers bleed open on wet paper.'],
+  ['phantoms', 'Phantom Procession', 'spooky', 'legendary', 'void frost lilac mint', 'The graveyard exhales, and something answers.'],
+  ['pixel_pop', 'Pixel Pop', 'gamer', 'epic', 'neon candy toxic aurora', 'A CRT dream of hearts, coins and chiptune stars.'],
+  ['candy', 'Sugar Rush', 'cute', 'rare', 'candy sakura blush mint', 'Lollipops, gumdrops and a permanent sprinkle drizzle.'],
+  ['leviathan', 'Leviathan', 'myth', 'mythic', 'ocean emerald gold void', 'Something older than maps coils beneath the light.', 'The Leviathan (Book of Job)'],
+  ['phoenix', 'Phoenix Rising', 'myth', 'legendary', 'ember gold crimson sunset', 'Ember feathers climb out of the sun.', 'The phoenix of Greek and Egyptian myth'],
 ];
 
 /** Official themes: [id, name, collection, rarity, colors: bg, panel, text, accent, (optional) wallpaper gradient] */
@@ -329,7 +353,7 @@ export const PRODUCTS: Product[] = [];
 export interface ThemeColors { bg: string; panel: string; text: string; accent: string; wallpaper?: string; mode: 'light' | 'glass' | 'dark' }
 const THEME_COLORS = new Map<string, ThemeColors>();
 export const ITEMS = new Map<string, ShopItem>();
-const NEW_BASES = new Set(['moon_voyage', 'starry_ring', 'great_wave', 'cheshire', 'count_castle', 'raven', 'watching_eyes', 'eclipse', 'grand_wings', 'chains_lock']);
+const NEW_BASES = new Set(['moon_voyage', 'starry_ring', 'great_wave', 'cheshire', 'count_castle', 'raven', 'watching_eyes', 'eclipse', 'grand_wings', 'chains_lock', 'constellation', 'supernova', 'blizzard', 'inferno', 'tide', 'jellyfish', 'inkbloom', 'phantoms', 'pixel_pop', 'candy', 'leviathan', 'phoenix']);
 function addDefs(kind: Exclude<ShopKind, 'bundle' | 'theme'>, defs: Def[]) {
   for (const [base, name, collection, rarity, pals, desc, credit] of defs) {
     const key = `${KIND_PREFIX[kind]}.${base}`;

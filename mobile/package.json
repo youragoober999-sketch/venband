@@ -5,7 +5,8 @@
   "description": "Venband for Android and iOS (Capacitor shell around the web app)",
   "scripts": {
     "build:web": "cd .. && npm run build",
-    "sync": "npm run build:web && cap sync",
+    "prune:downloads": "node scripts/prune-downloads.mjs",
+    "sync": "npm run build:web && npm run prune:downloads && cap sync",
     "android": "npm run sync && cap open android",
     "ios": "npm run sync && cap open ios",
     "assets": "capacitor-assets generate --android --ios --iconBackgroundColor '#000000' --iconBackgroundColorDark '#000000' --splashBackgroundColor '#000000' --splashBackgroundColorDark '#000000'"

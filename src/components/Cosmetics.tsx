@@ -388,12 +388,16 @@ interface P {
   phase: number;
   depth: number;
 }
-interface EffectDef {
+interface EffectLayer {
   count: number;
   additive?: boolean;
   spawn: (w: number, h: number, initial: boolean) => P;
   step?: (p: P, dt: number, t: number, w: number, h: number) => void;
   draw: (c: CanvasRenderingContext2D, p: P, t: number) => void;
+}
+interface EffectDef extends EffectLayer {
+  /** Extra particle groups drawn on top of the main one. */
+  layers?: EffectLayer[];
   backdrop?: (c: CanvasRenderingContext2D, w: number, h: number, t: number) => void;
 }
 const R = Math.random;
@@ -1082,9 +1086,10 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
     if (!ctx) return;
     const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
     const still = Boolean(motionQuery?.matches);
+    const layers: EffectLayer[] = def.layers?.length ? [def, ...def.layers] : [def];
     let w = 0;
     let h = 0;
-    let ps: P[] = [];
+    let groups: P[][] = [];
     let raf = 0;
     let visible = true;
     let running = false;
@@ -1111,12 +1116,14 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
       canvas.width = Math.max(1, Math.round(w * dpr));
       canvas.height = Math.max(1, Math.round(h * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (!ps.length && w > 0 && h > 0) {
-        ps = Array.from({ length: def.count }, () => {
-          const particle = def.spawn(w, h, true);
-          particle.life = R() * particle.max * 0.8;
-          return particle;
-        });
+      if (!groups.length && w > 0 && h > 0) {
+        groups = layers.map((layer) =>
+          Array.from({ length: layer.count }, () => {
+            const particle = layer.spawn(w, h, true);
+            particle.life = R() * particle.max * 0.8;
+            return particle;
+          }),
+        );
       }
     };
     frame = (now: number) => {
@@ -1125,19 +1132,24 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
       t += dt;
       ctx.clearRect(0, 0, w, h);
       def.backdrop?.(ctx, w, h, t);
-      ctx.globalCompositeOperation = def.additive ? 'lighter' : 'source-over';
-      for (let i = 0; i < ps.length; i++) {
-        const p = ps[i];
-        p.life += dt;
-        def.step?.(p, dt, t, w, h);
-        if (p.life > p.max || p.y > h + 20 || p.y < -30 || p.x < -30 || p.x > w + 40) {
-          ps[i] = def.spawn(w, h, false);
-          continue;
+      for (let li = 0; li < layers.length; li++) {
+        const layer = layers[li];
+        const ps = groups[li];
+        if (!ps) continue;
+        ctx.globalCompositeOperation = (layer.additive ?? def.additive) ? 'lighter' : 'source-over';
+        for (let i = 0; i < ps.length; i++) {
+          const p = ps[i];
+          p.life += dt;
+          (layer.step ?? def.step)?.(p, dt, t, w, h);
+          if (p.life > p.max || p.y > h + 24 || p.y < -34 || p.x < -34 || p.x > w + 44) {
+            ps[i] = layer.spawn(w, h, false);
+            continue;
+          }
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          (layer.draw ?? def.draw)(ctx, p, t);
+          ctx.restore();
         }
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        def.draw(ctx, p, t);
-        ctx.restore();
       }
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
