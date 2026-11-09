@@ -154,6 +154,107 @@ const TEMPLATES = {
       footnote: 'Didn’t request a code? Someone may know your password — change it in Settings → Security.',
     }),
   },
+  password_changed_notification: {
+    subject: 'Your Venband password was changed',
+    html: `<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="supported-color-schemes" content="dark light">
+  <title>Your Venband password was changed</title>
+</head>
+<body style="margin:0;padding:0;background:#0a0a0b;-webkit-text-size-adjust:100%">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Your Venband password was just changed.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0a0b" style="background:#0a0a0b">
+    <tr>
+      <td align="center" style="padding:40px 16px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px">
+          <tr>
+            <td align="center" style="padding:0 0 24px">
+              <a href="https://www.venband.com" target="_blank" style="text-decoration:none">
+                <img src="https://www.venband.com/icon-192.png" width="56" height="56" alt="V" style="display:block;width:56px;height:56px;border:1px solid #242428;border-radius:14px;background:#000;color:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:28px;font-weight:800;line-height:56px;text-align:center">
+              </a>
+              <div style="padding-top:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:700;letter-spacing:.5px;color:#f5f5f7">Venband</div>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#111113" style="background:#111113;border:1px solid #242428;border-radius:18px;padding:36px 32px;text-align:center">
+              <h1 style="margin:0 0 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:23px;line-height:1.3;font-weight:700;color:#f5f5f7">Your password was changed</h1>
+              <p style="margin:0 0 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#b4b4bb">The password for your Venband account was just changed.</p>
+              <p style="margin:0 0 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#b4b4bb">If you made this change, you're all set — nothing else to do.</p>
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#ff6b6b;font-weight:600">If you didn't change your password, reset it immediately from the Venband login screen ("Forgot password") and contact support — your account may be compromised.</p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:22px 12px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#77777f">
+              Didn’t make this change? Act now — reset your password and contact support.<br>
+              <a href="https://www.venband.com" target="_blank" style="color:#77777f;text-decoration:underline">Venband</a> · end-to-end encrypted chat
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+  },
+  email_changed_notification: {
+    subject: 'Your Venband email address was changed',
+    html: `<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="supported-color-schemes" content="dark light">
+  <title>Your Venband email address was changed</title>
+</head>
+<body style="margin:0;padding:0;background:#0a0a0b;-webkit-text-size-adjust:100%">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Your Venband email address was changed.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0a0b" style="background:#0a0a0b">
+    <tr>
+      <td align="center" style="padding:40px 16px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px">
+          <tr>
+            <td align="center" style="padding:0 0 24px">
+              <a href="https://www.venband.com" target="_blank" style="text-decoration:none">
+                <img src="https://www.venband.com/icon-192.png" width="56" height="56" alt="V" style="display:block;width:56px;height:56px;border:1px solid #242428;border-radius:14px;background:#000;color:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:28px;font-weight:800;line-height:56px;text-align:center">
+              </a>
+              <div style="padding-top:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:700;letter-spacing:.5px;color:#f5f5f7">Venband</div>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#111113" style="background:#111113;border:1px solid #242428;border-radius:18px;padding:36px 32px;text-align:center">
+              <h1 style="margin:0 0 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:23px;line-height:1.3;font-weight:700;color:#f5f5f7">Your email address was changed</h1>
+              <p style="margin:0 0 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#b4b4bb">The email address on your Venband account was changed.</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px">
+                <tr>
+                  <td style="padding:12px 16px;background:#1a1a1d;border:1px solid #242428;border-radius:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#b4b4bb;text-align:left">
+                    <div style="color:#77777f;font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">From</div>
+                    <div style="color:#f5f5f7;word-break:break-all">{{ .OldEmail }}</div>
+                    <div style="color:#77777f;font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin:10px 0 4px">To</div>
+                    <div style="color:#f5f5f7;word-break:break-all">{{ .Email }}</div>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#ff6b6b;font-weight:600">If you didn't make this change, contact support immediately — your account may be compromised.</p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:22px 12px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#77777f">
+              Didn’t make this change? Contact support right away.<br>
+              <a href="https://www.venband.com" target="_blank" style="color:#77777f;text-decoration:underline">Venband</a> · end-to-end encrypted chat
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+  },
 };
 
 fs.mkdirSync(OUT, { recursive: true });

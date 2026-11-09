@@ -269,11 +269,16 @@ content_path = "./supabase/templates/invite.html"
 subject = "Your Venband verification code"
 content_path = "./supabase/templates/reauthentication.html"
 
-# Uncomment to customize notification email template
-# [auth.email.notification.password_changed]
-# enabled = true
-# subject = "Your password has been changed"
-# content_path = "./supabase/templates/password_changed_notification.html"
+# Branded security notification templates (enabled).
+[auth.email.notification.password_changed]
+enabled = true
+subject = "Your Venband password was changed"
+content_path = "./supabase/templates/password_changed_notification.html"
+
+[auth.email.notification.email_changed]
+enabled = true
+subject = "Your Venband email address was changed"
+content_path = "./supabase/templates/email_changed_notification.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.

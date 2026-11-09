@@ -4,5 +4,7 @@
   "magic_link": "Your Venband sign-in code",
   "email_change": "Confirm your new Venband email",
   "invite": "You’ve been invited to Venband",
-  "reauthentication": "Your Venband verification code"
+  "reauthentication": "Your Venband verification code",
+  "password_changed_notification": "Your Venband password was changed",
+  "email_changed_notification": "Your Venband email address was changed"
 }

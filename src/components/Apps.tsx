@@ -6,6 +6,7 @@ import { sessionStore } from '../lib/session';
 import { go } from '../lib/router';
 import { appQuery, apiBase, connectBot, isRpcMissing, normalizeTags, PRESETS, type Application, type BotCommandResponse, type BotCommandRow, type BotTemplate, type Preset, type ServerBot } from '../lib/bots';
 import { Field, Icon } from './ui';
+import { openSettings } from '../lib/ui';
 import { askConfirm, askText, showAlert } from './Dialogs';
 import { Select } from './Select';
 import { PublicLayout, SignInCard } from './PublicPages';
@@ -127,6 +128,7 @@ function AppList() {
   const [tplMissing, setTplMissing] = useState(false);
   const [templateBusy, setTemplateBusy] = useState<string | null>(null);
   const [tplError, setTplError] = useState<string | null>(null);
+  const [hasMfa, setHasMfa] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     const { data: team } = await supabase.from('application_team').select('app_id').eq('user_id', me.id);
@@ -134,6 +136,8 @@ function AppList() {
     const { data, error } = await appQuery((cols) => supabase.from('applications').select(cols).or(`owner_id.eq.${me.id}${ids.length ? `,id.in.(${ids.join(',')})` : ''}`).order('created_at'));
     setError(error ? errorMessage(error) : null);
     setApps(((data ?? []) as unknown as Application[]));
+    const { data: factors } = await supabase.auth.mfa.listFactors();
+    setHasMfa(Boolean((factors?.totp ?? []).some((f: { status: string }) => f.status === 'verified')));
   }, [me.id]);
   useEffect(() => {
     load();
@@ -147,6 +151,13 @@ function AppList() {
 
   return (
     <>
+      {hasMfa === false && (
+        <div className="form-error" style={{ marginBottom: 16 }}>
+          <b>Two-factor authentication is required to create bots.</b> Turn on an authenticator app in{' '}
+          <button type="button" className="btn link" onClick={() => openSettings('security')}>Settings → Security</button>
+          {' '}first, then come back to make your bot.
+        </div>
+      )}
       <h2>Start from a preset</h2>
       <div className="preset-grid">
         {PRESETS.map((p) => (
@@ -174,7 +185,7 @@ function AppList() {
             </button>
             <button
               className="btn primary"
-              disabled={name.trim().length < 2}
+              disabled={name.trim().length < 2 || hasMfa === false}
               onClick={async () => {
                 setError(null);
                 const { data, error } = await supabase.rpc('create_application', { p_name: name.trim(), p_preset: creating });
@@ -215,7 +226,7 @@ function AppList() {
                 </span>
                 <button
                   className="btn primary small"
-                  disabled={templateBusy === t.slug}
+                  disabled={templateBusy === t.slug || hasMfa === false}
                   onClick={async () => {
                     const n = await askText({ title: `Name your ${t.name.toLowerCase()} bot`, label: 'Bot name', initial: t.name, maxLength: 32 });
                     if (!n?.trim()) return;
