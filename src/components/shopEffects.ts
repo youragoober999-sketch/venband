@@ -4500,7 +4500,7 @@ const genesisCenter = (w: number, hh: number) => [w / 2, hh * 0.2, Math.min(w, h
 BASES.sovereign = (col) => {
   const [gold, violet, light] = col;
   return {
-    count: 70,
+    count: 260,
     additive: true,
     // golden motes spiralling into the sigil (polar coords in vx = angle, vy = radius)
     spawn: (w, hh) => {
@@ -4542,8 +4542,8 @@ BASES.sovereign = (col) => {
       // god rays
       c.translate(cx, cy);
       c.rotate(t * 0.12);
-      for (let i = 0; i < 14; i++) {
-        c.rotate(TAU / 14);
+      for (let i = 0; i < 28; i++) {
+        c.rotate(TAU / 28);
         const rg = c.createLinearGradient(0, 0, big * 0.7, 0);
         rg.addColorStop(0, i % 2 ? `${gold}2a` : `${violet}30`); rg.addColorStop(1, '#00000000');
         c.fillStyle = rg;
@@ -4551,7 +4551,7 @@ BASES.sovereign = (col) => {
       }
       c.rotate(-t * 0.12 * 2.6);
       // spiral arms
-      for (let arm = 0; arm < 3; arm++) {
+      for (let arm = 0; arm < 6; arm++) {
         c.beginPath();
         for (let k = 0; k < 60; k++) {
           const th = k * 0.11 + arm * (TAU / 3) - t * 0.5, rr = R0 * 0.5 + k * (big * 0.006);
@@ -4582,7 +4582,7 @@ BASES.sovereign = (col) => {
       c.setLineDash([]);
       c.restore();
       // shockwave every 3.2s
-      const sw = (t % 3.2) / 3.2;
+      const sw = (t % 2.2) / 2.2;
       c.save();
       c.globalCompositeOperation = 'lighter';
       c.strokeStyle = gold; c.globalAlpha = (1 - sw) * 0.7; c.lineWidth = 3 * (1 - sw) + 0.5;

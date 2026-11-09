@@ -584,20 +584,30 @@ SCENES.sovereign = () => (
   <>
     <b className="sp-sky" />
     <b className="sp-throne-glow" />
+    <b className="sp-throne-glow sp-throne-glow2" />
     <b className="sp-sheen sp-throne-sheen" />
     {svg(
       <>
         <path className="sp-filigree" d="M70 38c20-8 34 6 50-2s22-20 40-14 26 18 44 10 24-14 36-10" />
         <path className="sp-filigree thin" d="M70 8c20 8 34-6 50 2s22 20 40 14 26-18 44-10 24 14 36 10" />
+        <path className="sp-filigree" d="M70 68c20-8 34 6 50-2s22-20 40-14 26 18 44 10 24-14 36-10" />
+        <path className="sp-filigree thin" d="M70 98c20 8 34-6 50 2s22 20 40 14 26-18 44-10 24 14 36 10" />
         <g className="sp-throne-crown">
           <path d="M206 30l-4-14 8 6 6-10 6 10 8-6-4 14Z" />
           <rect x="203" y="29" width="22" height="3.5" rx="1" />
           <circle cx="216" cy="12" r="1.8" className="gem" />
+          <circle cx="208" cy="12" r="1.2" className="gem" />
+          <circle cx="224" cy="12" r="1.2" className="gem" />
+        </g>
+        <g className="sp-throne-crown sp-throne-crown2">
+          <path d="M10 30l-4-14 8 6 6-10 6 10 8-6-4 14Z" />
+          <rect x="7" y="29" width="22" height="3.5" rx="1" />
         </g>
       </>,
     )}
-    {bits('sv', 5, 'sp-sigil', { y: [15, 70], s: [9, 13], t: [7, 11] }, sigilSvg)}
-    {bits('svs', 12, 'sp-glint', { s: [1.4, 3] })}
+    {bits('sv', 9, 'sp-sigil', { y: [10, 80], s: [9, 14], t: [6, 10] }, sigilSvg)}
+    {bits('svs', 24, 'sp-glint', { s: [1.4, 3.2] })}
+
   </>
 );
 

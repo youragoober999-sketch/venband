@@ -190,6 +190,9 @@
 @keyframes sp-filigree { 0% { stroke-dashoffset: 220; } 50%, 100% { stroke-dashoffset: 0; } }
 .sp-throne-crown { fill: #ffd56b; filter: drop-shadow(0 0 4px #ffd56b); animation: sp-bob 3s ease-in-out infinite; }
 .sp-throne-crown .gem { fill: #c4b5fd; animation: sp-twinkle 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.sp-throne-glow2 { inset: 0; background: radial-gradient(ellipse 60% 80% at 12% 50%, #7c3aed66, transparent 70%), radial-gradient(ellipse 40% 60% at 50% 0%, #ffe9a844, transparent 70%); animation: sp-throne-glow 2.6s ease-in-out infinite alternate-reverse; mix-blend-mode: screen; }
+.sp-throne-crown2 { fill: #c4b5fd; filter: drop-shadow(0 0 6px #c4b5fd); animation: sp-bob 2.4s ease-in-out infinite reverse; }
+.sp-throne-crown2 .gem { fill: #ffd56b; animation: sp-twinkle 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 .sp-sigil { color: #ffd56b; opacity: .55; filter: drop-shadow(0 0 3px #ffd56b); height: calc(var(--s) * .88px) !important; animation-name: sp-drift-left !important; }
 
 /* ---- new wave: celestial / elements / spooky / gamer / cute / myth -------- */
