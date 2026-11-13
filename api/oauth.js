@@ -215,7 +215,7 @@ const SUPA = () => (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL ||
 const b64 = (buf) => Buffer.from(buf).toString('base64');
 
 async function admin(path, body) {
-  const key = secret('SUPABASE_SERVICE_ROLE_KEY', 'QR login');
+  const key = secret('SUPABASE_SERVICE_ROLE_KEY', 'Account sign-in');
   const r = await fetch(`${SUPA()}${path}`, {
     method: 'POST',
     headers: { apikey: key, authorization: `Bearer ${key}`, 'content-type': 'application/json' },
@@ -246,6 +246,36 @@ async function sealTo(pubkeyB64, text) {
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
   const ct = await subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text));
   return JSON.stringify({ e: b64(ephPub), iv: b64(iv), ct: b64(ct) });
+}
+
+async function googleEmailLogin({ code, redirect_uri, code_verifier }) {
+  const redirect = new URL(need(redirect_uri, 'redirect_uri'));
+  if (!okRedirect(redirect.href) || redirect.pathname !== '/sign-in' || redirect.search !== '?google=1' || redirect.hash) {
+    throw new Fail(400, 'Invalid sign-in return address.');
+  }
+  if (!/^[A-Za-z0-9_-]{43}$/.test(code_verifier ?? '')) throw new Fail(400, 'Invalid sign-in verifier.');
+  const tokens = await call('https://oauth2.googleapis.com/token', form({
+    client_id: IDS.google,
+    client_secret: secret('GOOGLE_CLIENT_SECRET', 'Google login'),
+    grant_type: 'authorization_code',
+    code: need(code, 'code'),
+    redirect_uri: redirect.href,
+    code_verifier,
+  }), 'Google sign-in');
+  const account = await call('https://openidconnect.googleapis.com/v1/userinfo', {
+    headers: { authorization: `Bearer ${need(tokens.access_token, 'access token')}` },
+  }, 'Google account');
+  const email = typeof account.email === 'string' ? account.email.trim().toLowerCase() : '';
+  if (account.email_verified !== true || !/^[^\s@]+@gmail\.com$/.test(email)) {
+    throw new Fail(400, 'Choose a verified Gmail account, or use the email code option.');
+  }
+  const existing = await admin('/rest/v1/rpc/google_email_account', { p_email: email });
+  if (existing === 'new') return { email };
+  if (existing !== 'confirmed') throw new Fail(400, 'Confirm your original Venband email before using Google sign-in.');
+  const link = await admin('/auth/v1/admin/generate_link', { type: 'magiclink', email });
+  const tokenHash = link.hashed_token || link.properties?.hashed_token;
+  if (!tokenHash) throw new Fail(500, 'Couldn’t create the sign-in.');
+  return { tokenHash };
 }
 
 async function qrApprove(request, b) {
@@ -284,6 +314,7 @@ export async function POST(request) {
     const b = await readJson(request).catch(() => {
       throw new Fail(400, 'bad request');
     });
+    if (b.action === 'google-email-login') return json(200, await googleEmailLogin(b));
     if (b.action === 'qr-approve') return json(200, await qrApprove(request, b));
     const run = HANDLERS[b.provider];
     if (!run) throw new Fail(400, 'unknown provider');

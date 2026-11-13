@@ -1,13 +1,13 @@
-import { lazy, Suspense, useEffect, type ComponentType, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { configured } from './lib/supabase';
 import { initSession, sessionStore } from './lib/session';
 import { startIdleDetection, stopIdleDetection } from './lib/idle';
-import { startScreenTime } from './lib/screentime';
+import { startScreenTime, stopScreenTime } from './lib/screentime';
 import { AuthScreen, IdentityResetScreen, MfaScreen, RecoveryScreen, SetupErrorScreen, UnlockScreen } from './components/Auth';
 import { Logo } from './components/ui';
 import { ContextMenuHost } from './components/ContextMenu';
 import { Landing } from './components/Landing';
-import { parseRoute, go, useRoute, type Route } from './lib/router';
+import { parseRoute, go, resumeReturnPath, useRoute, type Route } from './lib/router';
 import { DialogHost, showAlert, askConfirm } from './components/Dialogs';
 import { openSettings, isAndroid } from './lib/ui';
 import { compareVersions, VERSION } from './lib/version';
@@ -59,7 +59,10 @@ export default function App() {
   const status = sessionStore.use((s) => s.status);
   const hasProfile = sessionStore.use((s) => Boolean(s.me));
   const needsOnboarding = sessionStore.use((s) => s.me?.onboarded === false);
+  const started = useRef(false);
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     // the Spotify connection was removed: forget any tokens it left on this device
     try {
       for (const k of ['spotify_access_token', 'spotify_refresh_token', 'spotify_expires_at', 'spotify_verifier']) localStorage.removeItem(k);
@@ -91,10 +94,22 @@ export default function App() {
       });
   }, []);
   useEffect(() => {
-    if (status === 'ready' && hasProfile) startIdleDetection();
-    return stopIdleDetection;
-    if (status === 'ready' && hasProfile) startScreenTime();
+    if (status !== 'ready' || !hasProfile) return;
+    startIdleDetection();
+    startScreenTime();
+    return () => {
+      stopIdleDetection();
+      stopScreenTime();
+    };
   }, [status, hasProfile]);
+  useEffect(() => {
+    if (status === 'ready' && hasProfile && !needsOnboarding) {
+      resumeReturnPath();
+      setRestored(true);
+    } else {
+      setRestored(false);
+    }
+  }, [status, hasProfile, needsOnboarding]);
   // Android auto-update check
   useEffect(() => {
     if (!isAndroid()) return;
@@ -115,6 +130,7 @@ export default function App() {
     })();
   }, []);
   const route = parseRoute(useRoute());
+  const [restored, setRestored] = useState(false);
   // Dedicated privacy-policy subdomain (privacy.venband.com and friends).
   if (window.location.hostname.toLowerCase().startsWith('privacy.')) {
     return (
@@ -206,7 +222,7 @@ export default function App() {
       return <SetupErrorScreen />;
     case 'ready':
       if (!hasProfile) return <SetupErrorScreen />;
-      return <Load>{needsOnboarding ? <Onboarding /> : <Shell />}</Load>;
+      return <Load>{needsOnboarding ? <Onboarding /> : restored ? <Shell /> : <Splash />}</Load>;
   }
 }
 

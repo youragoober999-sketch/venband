@@ -194,7 +194,7 @@ function Preview({ item, me, big }: { item: ShopItem; me: Profile; big?: boolean
           <i />
           <i className="short" />
         </div>
-        <ProfileEffect id={item.id} />
+        <ProfileEffect id={item.id} preview={!big} />
       </div>
     );
   if (item.kind === 'nameplate')
@@ -219,7 +219,7 @@ function Preview({ item, me, big }: { item: ShopItem; me: Profile; big?: boolean
   const deco = pick('deco.'), fx = pick('effect.'), plate = pick('plate.');
   return (
     <div className="shop-prev bundle">
-      {fx && <ProfileEffect id={fx} />}
+      {fx && <ProfileEffect id={fx} preview={!big} />}
       {deco && <Avatar profile={{ ...me, avatar_frame: deco } as Profile} size={big ? 96 : 64} />}
       {plate && (
         <div className="member nameplate-row shop-plate-row small">

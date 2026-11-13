@@ -118,7 +118,7 @@ function preview(p: Piece, me: Profile): ReactNode {
     return (
       <div className="special-fx-box">
         <Avatar profile={{ ...me, avatar_frame: 'none' } as Profile} size={52} />
-        <ProfileEffect id={p.id} />
+        <ProfileEffect id={p.id} preview />
       </div>
     );
   if (p.kind === 'decoration') return <Avatar profile={{ ...me, avatar_frame: p.id } as Profile} size={86} />;

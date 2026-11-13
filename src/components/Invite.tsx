@@ -5,7 +5,7 @@ import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { socialStore } from '../lib/social';
 import { displayName, getProfile, loadProfiles } from '../lib/directory';
-import { go } from '../lib/router';
+import { go, rememberReturnPath } from '../lib/router';
 import { inviteUrl, sendToUser } from '../lib/dmSend';
 import { openServer } from '../hooks/data';
 import type { Server } from '../lib/types';
@@ -200,11 +200,7 @@ export function InvitePage({ code }: { code: string }) {
                   <button
                     className="btn success big full"
                     onClick={() => {
-                      try {
-                        sessionStorage.setItem('venband:return-to', `invite/${code}`);
-                      } catch {
-                        /* ignore */
-                      }
+                      rememberReturnPath();
                       go('register');
                     }}
                   >
@@ -213,11 +209,7 @@ export function InvitePage({ code }: { code: string }) {
                   <button
                     className="btn link"
                     onClick={() => {
-                      try {
-                        sessionStorage.setItem('venband:return-to', `invite/${code}`);
-                      } catch {
-                        /* ignore */
-                      }
+                      rememberReturnPath();
                       go('sign-in');
                     }}
                   >

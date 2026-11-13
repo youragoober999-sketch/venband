@@ -6,7 +6,7 @@
 --
 -- How to use: Supabase dashboard → SQL Editor → New query → paste this whole
 -- file → Run. It creates every table, function, policy and storage bucket the
--- app needs, in order (74 migrations).
+-- app needs, in order (75 migrations).
 --
 -- Run it ONCE, on a project that doesn't have Venband set up yet. If Venband is
 -- already installed it stops right away (nothing is changed) — then run only the
@@ -13575,6 +13575,23 @@ begin
 end;
 $$;
 
+notify pgrst, 'reload schema';
+
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-- 20261113002000_google_email_login.sql
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+-- Only the server can look up an address after Google has verified it.
+create or replace function public.google_email_account(p_email text)
+returns text language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select case when email_confirmed_at is null then 'unconfirmed' else 'confirmed' end
+    from auth.users where email = p_email limit 1
+  ), 'new');
+$$;
+
+revoke execute on function public.google_email_account(text) from public, anon, authenticated;
+grant execute on function public.google_email_account(text) to service_role;
 notify pgrst, 'reload schema';
 
 -- make the API see everything immediately

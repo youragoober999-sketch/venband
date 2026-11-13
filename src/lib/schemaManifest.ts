@@ -918,5 +918,13 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "qr_login_scan": "5efd24a132034d42299734e65b846532",
       "qr_login_status": "71f0c822fc9a573b60fef5cc87d640a3"
     }
+  },
+  {
+    "migration": "20261113002000_google_email_login.sql",
+    "tables": [],
+    "functions": [
+      "google_email_account"
+    ],
+    "bodies": {}
   }
 ];

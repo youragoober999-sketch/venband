@@ -7,7 +7,7 @@
 // confirms, and the server makes a fresh sign-in for the same account, sealed to
 // the new device's one-time key. Only a hash of the code is ever stored.
 import { supabase } from './supabase';
-import { sessionStore, signInWithQr, transferQrIdentity } from './session';
+import { sessionStore, signInWithOneTimeLink, transferQrIdentity } from './session';
 import { fromB64, sha256, toB64, type SealedIdentity } from './crypto';
 
 export const QR_LIFETIME_MS = 30_000;
@@ -84,10 +84,10 @@ export async function codeStatus(code: string): Promise<QrState> {
 /** Open the sealed sign-in and sign this device in with it. */
 export async function finishLogin(sealed: string, privateKey: CryptoKey): Promise<void> {
   const { token_hash, identity } = await unseal(sealed, privateKey);
-  if (!identity) return signInWithQr(token_hash);
+  if (!identity) return signInWithOneTimeLink(token_hash);
   const peer = fromB64(identity.publicKey);
   const key = await sharedKey(privateKey, peer, peer, 'venband/v1/qr-identity');
-  await signInWithQr(token_hash, { userId: identity.userId, sealed: identity.sealed, key });
+  await signInWithOneTimeLink(token_hash, { userId: identity.userId, sealed: identity.sealed, key });
 }
 
 // --------------------------------------------------- the signed-in device ---

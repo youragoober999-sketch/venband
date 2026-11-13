@@ -45,6 +45,10 @@
 - **Public pages:** `/status` (live checks plus incidents staff can post), `/tos`, `/privacy`, `/guidelines`, `/changelog` and `/discovery` work without an account.
 - **Quality of life:** right-click menus everywhere, per-person and per-stream volume up to 200%, stream attenuation, resizable panels, and real URLs (`/sign-in`, `/register`, `/channels/@me/<user>`, `/channels/<server>/<channel>`).
 
+## Google account chooser
+
+For browser email login, add `https://www.venband.com/sign-in?google=1` to the Google OAuth client's authorized redirect URIs. Use the corresponding URL for any other supported site origin. Set matching `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID`, along with `GOOGLE_CLIENT_SECRET` and the server-only `SUPABASE_SERVICE_ROLE_KEY`. Apply the Google email login migration before deploying. Native shells continue to offer email codes because Google OAuth requires a supported browser.
+
 ## Repository layout
 
 - `src/` contains the React app shared by the browser, Electron and Capacitor. `src/features/gifs/` contains the picker, editor, encoding worker and takedown checks.

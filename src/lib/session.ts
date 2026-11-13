@@ -465,7 +465,7 @@ export async function transferQrIdentity(transferKey: CryptoKey, password: strin
   }
 }
 
-export async function signInWithQr(tokenHash: string, transferred?: { userId: string; sealed: SealedIdentity; key: CryptoKey }) {
+export async function signInWithOneTimeLink(tokenHash: string, transferred?: { userId: string; sealed: SealedIdentity; key: CryptoKey }) {
   authInProgress++;
   try {
     const identity = transferred && await unsealIdentity(transferred.userId, transferred.sealed, transferred.key);

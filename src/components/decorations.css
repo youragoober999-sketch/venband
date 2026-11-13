@@ -96,3 +96,18 @@
 @media (prefers-reduced-motion: reduce) {
   .fa.deco * { animation-play-state: paused !important; }
 }
+
+
+.dk-love-wave { animation: dk-love-wave 2.8s ease-out infinite; }
+.dk-love-pair { animation: dk-love-pair 2.8s ease-in-out infinite; }
+@keyframes dk-love-wave {
+  0%, 12% { opacity: 0; transform: scale(.82); }
+  20% { opacity: .75; }
+  65%, 100% { opacity: 0; transform: scale(1.55); }
+}
+@keyframes dk-love-pair {
+  0%, 50%, 100% { transform: scale(1); }
+  15% { transform: scale(1.16); }
+  25% { transform: scale(.99); }
+  34% { transform: scale(1.09); }
+}

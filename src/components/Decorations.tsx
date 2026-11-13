@@ -169,7 +169,11 @@ const ART: Record<string, Art> = {
           {heart(x as number, y as number, s as number, i % 2 ? b : a, { stroke: c, strokeWidth: 1.2 })}
         </g>
       ))}
-      <g className="dk-pulse" style={o('118px 118px', 0, 1.1)}>
+      <g className="dk-love-wave" style={o('118px 118px')}>
+        {heart(118, 118, 1.55, 'none', { stroke: c, strokeWidth: 1.5 })}
+      </g>
+      <g className="dk-love-pair" style={o('118px 118px')}>
+        {heart(104, 125, 0.76, a, { stroke: c, strokeWidth: 1 })}
         {heart(118, 118, 1.25, b, { stroke: c, strokeWidth: 1.4 })}
         <path d="M110 110c2-3 5-4 7-3" stroke="#fff" strokeWidth="1.6" fill="none" strokeLinecap="round" opacity=".7" />
       </g>

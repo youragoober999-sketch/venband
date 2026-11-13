@@ -161,18 +161,6 @@ function useMessageAlerts(servers: Server[]) {
 
 /** Keeps the address bar and the open view in sync, both ways. */
 function useRouterSync(servers: Server[], dms: DmChannel[], loaded: boolean) {
-  // came here from a link while logged out: go where the link pointed
-  useEffect(() => {
-    try {
-      const back = sessionStorage.getItem('venband:return-to');
-      if (back) {
-        sessionStorage.removeItem('venband:return-to');
-        go(back, { replace: true, keepQuery: true });
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
   const route = useRoute();
   const pending = useRef<string | null>(null);
   const navState = nav.use((s) => s);
@@ -803,6 +791,29 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
       /* storage blocked */
     }
   };
+  const [compactConversation, setCompactConversation] = useState(() => matchMedia('(max-width: 1100px), (pointer: coarse) and (max-height: 560px)').matches);
+  const [mobilePanel, setMobilePanel] = useState<string | null>(null);
+  useEffect(() => {
+    const query = matchMedia('(max-width: 1100px), (pointer: coarse) and (max-height: 560px)');
+    const update = () => setCompactConversation(query.matches);
+    query.addEventListener('change', update);
+    update();
+    return () => query.removeEventListener('change', update);
+  }, []);
+  useEffect(() => setMobilePanel(null), [selected, compactConversation]);
+  const panelOpen = compactConversation ? mobilePanel !== null && mobilePanel === selected : sidePanel;
+  const togglePanel = () => {
+    if (compactConversation) setMobilePanel(panelOpen ? null : selected);
+    else setSidePanel(!sidePanel);
+  };
+  useEffect(() => {
+    if (!compactConversation || !panelOpen) return;
+    const back = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) setMobilePanel(null);
+    };
+    window.addEventListener('keydown', back);
+    return () => window.removeEventListener('keydown', back);
+  }, [compactConversation, panelOpen]);
   const startCall = () => current && joinCall(identity, current.channel.id, current.channel.id, current.title, { ring: !othersInCall.length });
   useEffect(() => {
     setNoAnswer(false);
@@ -1020,7 +1031,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
       <main className="main">
         {current ? (
           <div className="convo-layout">
-          <div className="convo-main">
+          <div className="convo-main" inert={compactConversation && panelOpen}>
             {inCall && (
               <div className="dm-call">
                 {alone && !waiting && (
@@ -1044,6 +1055,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
             {isRequest && <RequestBanner dm={current} />}
             <ChatView
               key={current.channel.id}
+              covered={compactConversation && panelOpen}
               channel={current.channel}
               title={current.other ? displayName(current.other.id) : current.title}
               canSend={!isRequest}
@@ -1064,13 +1076,13 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
                       <Icon name="settings" />
                     </button>
                   )}
-                  {current.channel.is_group && (
-                    <button className={`icon-btn${sidePanel ? ' on' : ''}`} title={sidePanel ? 'Hide member list' : 'Show member list'} aria-label="Member list" aria-pressed={sidePanel} onClick={() => setSidePanel(!sidePanel)}>
+                  {current.channel.is_group && !isRequest && (
+                    <button className={`icon-btn${panelOpen ? ' on' : ''}`} title={panelOpen ? 'Hide member list' : 'Show member list'} aria-label="Member list" aria-pressed={panelOpen} onClick={togglePanel}>
                       <Icon name="users" />
                     </button>
                   )}
-                  {current.other && !current.bot && (
-                    <button className={`icon-btn${sidePanel ? ' on' : ''}`} title={sidePanel ? 'Hide user profile' : 'Show user profile'} aria-label="User profile" aria-pressed={sidePanel} onClick={() => setSidePanel(!sidePanel)}>
+                  {current.other && !current.bot && !isRequest && (
+                    <button className={`icon-btn${panelOpen ? ' on' : ''}`} title={panelOpen ? 'Hide user profile' : 'Show user profile'} aria-label="User profile" aria-pressed={panelOpen} onClick={togglePanel}>
                       <Icon name="user" />
                     </button>
                   )}
@@ -1078,11 +1090,20 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
               }
             />
           </div>
-          {sidePanel && !current.bot && !isRequest && current.channel.is_group && (
+          {panelOpen && !current.bot && !isRequest && (
+            <div className={`convo-details${compactConversation ? ' compact' : ''}`}>
+              {compactConversation && (
+                <button type="button" className="convo-back" autoFocus onClick={() => setMobilePanel(null)}>
+                  <Icon name="arrowLeft" size={20} /> Back to messages
+                </button>
+              )}
+          {current.channel.is_group && (
             <GroupMembersPanel dm={current} inCall={[...othersInCall.map((p) => p.user_id), ...(inCall ? [identity.userId] : [])]} onInvite={() => setGroupSettings(true)} />
           )}
-          {sidePanel && !current.bot && !isRequest && !current.channel.is_group && current.other && (
+          {!current.channel.is_group && current.other && (
             <DmProfilePanel dm={current} inCall={{ here: Boolean(inCall), others: othersInCall.map((p) => p.user_id) }} onJoinCall={startCall} />
+          )}
+            </div>
           )}
           </div>
         ) : homeTab === 'requests' ? (

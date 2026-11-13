@@ -1137,89 +1137,102 @@ const BASES: Record<string, Base> = {
     ],
   }),
 
-  hearts: (col) => ({
-    count: 20,
-    spawn: (w, hh, init) => P({
-      x: R() * w, y: init ? R() * hh : hh + 16,
-      vx: (R() - 0.5) * 14, vy: -(18 + R() * 30),
-      size: 4 + R() * 7, max: 5 + R() * 6, hue: Math.floor(R() * 3),
-      depth: 0.3 + R() * 0.7,
-    }),
-    step: (p, dt, t) => {
-      p.y += p.vy * dt * p.depth;
-      p.x += (p.vx + Math.sin(t * 1.8 + p.phase) * 16) * dt;
-      p.rot = Math.sin(t * 1.3 + p.phase) * 0.34;
-    },
-    draw: (c, p) => {
-      const cc = C(col, p.hue);
-      c.globalAlpha = fade(p) * (0.58 + p.depth * 0.42);
-      c.rotate(p.rot);
-      c.save();
-      c.scale(1 + Math.sin(p.phase * 3 + p.life * 2) * 0.06, 1);
-      const g = c.createLinearGradient(-p.size, -p.size, p.size, p.size);
-      g.addColorStop(0, lighten(cc, 0.6));
-      g.addColorStop(0.46, cc);
-      g.addColorStop(1, darken(cc, 0.18));
-      c.fillStyle = g;
-      c.shadowColor = cc;
-      c.shadowBlur = 10 + p.size;
-      heart(c, p.size);
-      c.fill();
-      c.globalAlpha *= 0.55;
-      c.strokeStyle = '#ffffff';
-      c.lineWidth = Math.max(0.5, p.size * 0.08);
-      c.stroke();
-      c.globalAlpha *= 0.7;
-      c.fillStyle = 'rgba(255,255,255,.65)';
-      c.beginPath();
-      c.ellipse(-p.size * 0.32, -p.size * 0.38, p.size * 0.16, p.size * 0.1, -0.5, 0, TAU);
-      c.fill();
-      c.restore();
-    },
-    backdrop: (c, w, hh, t) => {
-      wash(c, w, hh, A(col[3], 0.24), A(mix(col[3], col[1], 0.24), 0.12));
-      bloom(c, w * 0.5, hh * 0.55, w * 0.7, col[1], 0.2);
-      // soft heart bokeh
-      for (let i = 0; i < 9; i++) {
-        const x = h(i * 3.7) * w;
-        const y = hh - ((t * (7 + h(i) * 9) + h(i * 8.1) * hh) % (hh + 40));
-        c.save();
-        c.translate(x + Math.sin(t * 0.6 + i) * 8, y);
-        c.rotate(Math.sin(t * 0.5 + i) * 0.25);
-        c.globalAlpha = 0.08 + h(i * 2.3) * 0.08;
-        c.fillStyle = lighten(C(col, i), 0.35);
-        heart(c, 8 + h(i * 5.2) * 14);
-        c.fill();
-        c.restore();
+  hearts: (colors) => {
+    const [rose, blush, light, dark] = colors;
+    const sprites = new Map<string, HTMLCanvasElement>();
+    const sprite = (color: string, outline = false) => {
+      const key = color + outline;
+      let image = sprites.get(key);
+      if (image) return image;
+      image = document.createElement('canvas');
+      image.width = image.height = 128;
+      const art = image.getContext('2d')!;
+      art.translate(64, 70);
+      const lacquer = art.createLinearGradient(-26, -36, 24, 25);
+      lacquer.addColorStop(0, lighten(color, 0.75));
+      lacquer.addColorStop(0.48, color);
+      lacquer.addColorStop(1, darken(color, 0.3));
+      art.fillStyle = lacquer;
+      art.strokeStyle = lighten(color, 0.62);
+      art.lineWidth = outline ? 2 : 1.2;
+      art.shadowColor = color;
+      art.shadowBlur = 18;
+      heart(art, 42);
+      if (!outline) art.fill();
+      art.stroke();
+      if (!outline) {
+        art.shadowBlur = 0;
+        art.fillStyle = '#ffffffa8';
+        art.beginPath();
+        art.ellipse(-13, -16, 6, 2.8, -0.5, 0, TAU);
+        art.fill();
       }
-      vignette(c, w, hh, col[3], 0.34);
-    },
-    layers: [
-      {
-        count: 10, additive: true,
-        spawn: (w, hh) => P({ x: w * 0.5, y: hh * 0.62, size: 4 + R() * 4, max: 1.8 + R() * 1.2, k: Math.floor(R() * 3) }),
-        step: (p, dt) => { p.size += 26 * dt; },
-        draw: (c, p) => {
-          c.globalAlpha = (1 - p.life / p.max) * 0.4;
-          c.strokeStyle = C(col, p.k ?? 0);
-          c.lineWidth = 1.2;
-          heart(c, p.size);
-          c.stroke();
-        },
+      sprites.set(key, image);
+      return image;
+    };
+    const paintHeart = (c: CanvasRenderingContext2D, color: string, radius: number, outline = false) => {
+      c.drawImage(sprite(color, outline), -radius * 1.52, -radius * 1.67, radius * 3.04, radius * 3.04);
+    };
+    const halo = (c: CanvasRenderingContext2D, w: number, hh: number) => {
+      wash(c, w, hh, A(dark, 0.32), A(rose, 0.12));
+      bloom(c, w / 2, hh * 0.43, Math.max(w, hh) * 0.65, blush, 0.34);
+    };
+    let background: HTMLCanvasElement | undefined;
+    return {
+      count: 18,
+      spawn: (w, hh, initial) => P({
+        x: R() * w, y: initial ? R() * hh : hh + 12, vx: (R() - 0.5) * 14, vy: -(14 + R() * 23),
+        size: 4 + R() * 9, max: 5 + R() * 6, hue: Math.floor(R() * 3),
+      }),
+      step: (p, dt, t) => {
+        p.y += p.vy * dt * p.depth;
+        p.x += (p.vx + Math.sin(t * 1.5 + p.phase) * 14) * dt;
+        p.rot = Math.sin(t + p.phase) * 0.32;
       },
-      {
-        count: 26, additive: true,
-        spawn: (w, hh) => P({ x: R() * w, y: R() * hh, size: 0.5 + R() * 1.4, max: 2 + R() * 3 }),
-        draw: (c, p, t) => {
-          c.globalAlpha = Math.max(0, Math.sin(t * 2.4 + p.phase * 2)) * 0.65;
-          c.fillStyle = lighten(col[2], 0.4);
-          c.beginPath();
-          c.arc(0, 0, p.size, 0, TAU);
-          c.fill();
-        },
+      draw: (c, p) => {
+        c.globalAlpha = fade(p) * p.depth;
+        c.rotate(p.rot);
+        paintHeart(c, C(colors, p.hue), p.size);
       },
-    ],
-  }),
+      backdrop: (c, w, hh, t) => {
+        if (!background) {
+          background = document.createElement('canvas');
+          background.width = background.height = 128;
+          halo(background.getContext('2d')!, 128, 128);
+        }
+        c.drawImage(background, 0, 0, w, hh);
+        const unit = Math.min(w, hh);
+        const beat = (t % 2.8) / 2.8;
+        const heartbeat = (phase: number) => Math.max(0, 1 - Math.abs(beat - phase) * 18) ** 2;
+        const scale = 1 + heartbeat(0.14) * 0.17 + heartbeat(0.31) * 0.11;
+        c.translate(w / 2, hh * 0.43);
+        for (let i = 0; i < 2; i++) {
+          const wave = (beat + i * 0.5) % 1;
+          c.globalAlpha = (1 - wave) ** 2 * 0.52;
+          paintHeart(c, i ? blush : rose, unit * (0.21 + wave * 0.46), true);
+        }
+        for (let i = 0; i < 8; i++) {
+          const angle = t * 0.46 + i * TAU / 8;
+          c.save();
+          c.translate(Math.cos(angle) * unit * 0.52, Math.sin(angle) * unit * 0.23);
+          c.rotate(Math.sin(angle) * 0.42);
+          c.globalAlpha = 0.22 + (Math.sin(angle) + 1) * 0.23;
+          paintHeart(c, i % 2 ? rose : light, unit * (0.024 + (i % 3) * 0.011));
+          c.restore();
+        }
+        for (const side of [-1, 1]) {
+          c.save();
+          c.translate(side * unit * 0.145, Math.sin(t * 1.2 + side) * unit * 0.025);
+          c.rotate(side * -0.23);
+          c.globalAlpha = 0.68;
+          paintHeart(c, side < 0 ? rose : blush, unit * 0.23 * scale);
+          c.restore();
+        }
+        c.globalAlpha = 0.92;
+        paintHeart(c, blush, unit * 0.22 * scale);
+      },
+    };
+  },
 
   bubbles: (col) => ({
     count: 24,
@@ -4636,11 +4649,15 @@ function specialSignal(scene: '67' | 'flush' | 'camera'): Base {
       count: 24,
       additive: true,
       spawn: (w, hh) => P({ x: R() * w, y: R() * hh, vx: 6 + R() * 16, vy: -8 - R() * 16, size: 1 + R() * 3, max: 3 + R() * 6 }),
+      step(p, dt) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+      },
       draw(c, p) {
         c.globalAlpha *= fade(p) * 0.65;
         c.fillStyle = accent;
         c.beginPath();
-        c.arc(p.x, p.y, p.size, 0, TAU);
+        c.arc(0, 0, p.size, 0, TAU);
         c.fill();
       },
       backdrop(c, w, hh, t) {

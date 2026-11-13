@@ -9,6 +9,18 @@ export const configured = Boolean(url && anonKey);
 export const supabaseUrl = (url ?? '').replace(/\/$/, '');
 export const supabaseKey = anonKey ?? '';
 
+// Keep Google's authorization code out of Supabase's email-link handler.
+export const googleEmailReturn = (() => {
+  if (typeof window === 'undefined') return null;
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('google') !== '1') return null;
+  const params = new URLSearchParams(url.search);
+  for (const key of ['google', 'code', 'state', 'error', 'error_description', 'scope', 'authuser', 'prompt']) {
+    url.searchParams.delete(key);
+  }
+  window.history.replaceState(window.history.state, '', url);
+  return params;
+})();
 // The anon/publishable key is public by design; every table is protected by
 // Row Level Security (see supabase/migrations).
 export const supabase = createClient(url ?? 'http://localhost:54321', anonKey ?? 'missing', {

@@ -60,7 +60,7 @@
 .btn.gm-invite:hover { background: var(--bg-4); }
 
 @media (max-width: 1100px) { .dm-profile-panel { width: 300px; } }
-@media (max-width: 900px) { .dm-profile-panel, .group-members-panel { display: none; } }
+
 
 /* ---------------------------------------------- Venband profile panel (1:1) ---- */
 .dm-profile-panel.vb-pp { position: relative; isolation: isolate; padding: 0; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
@@ -108,3 +108,52 @@ button.vpp-stat:hover { background: color-mix(in srgb, var(--text) 9%, transpare
 button.vpp-mutual { cursor: pointer; }
 button.vpp-mutual:hover { background: var(--bg-hover); }
 .vpp-server { width: 28px; height: 28px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 800; color: #fff; flex: none; }
+
+.convo-layout { position: relative; }
+.convo-details { display: flex; flex: none; min-height: 0; }
+.convo-details.compact {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  flex-direction: column;
+  background: var(--bg-1);
+}
+.convo-details.compact :is(.dm-profile-panel.vb-pp, .group-members-panel) {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  border-left: 0;
+  overscroll-behavior: contain;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.convo-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 max(14px, env(safe-area-inset-left));
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+@media (max-width: 1100px), (pointer: coarse) and (max-height: 560px) {
+  .convo-main :is(.chat, .chat-with-panel, .messages, .composer-wrap) { min-width: 0; }
+  .convo-main .chat-header { gap: clamp(4px, 2vw, 12px); }
+  .convo-main .chat-header .icon-btn { flex: none; min-width: 40px; min-height: 40px; }
+  .convo-main .chat-header :is(h2, .chat-title) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .convo-main .messages { overscroll-behavior-y: contain; }
+  .convo-details.compact .vpp-body { overflow-wrap: anywhere; }
+}
+@media (max-width: 420px) {
+  .convo-details.compact :is(.vpp-actions, .vpp-stats) { gap: 6px; }
+  .convo-details.compact .vpp-stat { padding: 8px; }
+}
+@media (max-height: 560px) and (orientation: landscape) {
+  .convo-details.compact .vpp-hero { padding-top: 0; }
+  .convo-details.compact .vpp-avatar { transform: scale(.8); margin-block: -5px; }
+}

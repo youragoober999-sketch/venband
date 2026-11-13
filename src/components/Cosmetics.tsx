@@ -405,13 +405,6 @@ const R = Math.random;
 const base = (o: Partial<P>): P => ({ x: 0, y: 0, vx: 0, vy: 0, size: 3, rot: 0, vr: 0, life: 0, max: 6, hue: 0, phase: R() * Math.PI * 2, depth: 0.4 + R() * 0.6, ...o });
 const fade = (p: P) => Math.min(1, p.life / 0.6, (p.max - p.life) / 0.8);
 
-function heartPath(c: CanvasRenderingContext2D, s: number) {
-  c.beginPath();
-  c.moveTo(0, s * 0.35);
-  c.bezierCurveTo(-s * 1.1, -s * 0.35, -s * 0.45, -s * 1.05, 0, -s * 0.45);
-  c.bezierCurveTo(s * 0.45, -s * 1.05, s * 1.1, -s * 0.35, 0, s * 0.35);
-  c.closePath();
-}
 function star4(c: CanvasRenderingContext2D, s: number) {
   c.beginPath();
   for (let i = 0; i < 8; i++) {
@@ -590,41 +583,7 @@ const EFFECTS: Record<string, EffectDef> = {
     },
   },
 
-  hearts: {
-    count: 22,
-    spawn: (w, h, init) => base({
-      x: R() * w, y: init ? R() * h : h + 18,
-      vx: (R() - 0.5) * 12,
-      vy: -(15 + R() * 25),
-      size: 4 + R() * 7,
-      max: 5 + R() * 5,
-      hue: 326 + R() * 42,
-      vr: (R() - 0.5) * 0.7,
-      depth: 0.4 + R() * 0.6,
-    }),
-    step: (p, dt, t) => {
-      p.y += p.vy * dt * p.depth;
-      p.x += (p.vx + Math.sin(t * 1.7 + p.phase) * 12) * dt;
-      p.rot = Math.sin(t * 1.25 + p.phase) * 0.32;
-    },
-    draw: (c, p) => {
-      c.globalAlpha = fade(p) * (0.62 + p.depth * 0.38);
-      const g = c.createLinearGradient(-p.size, -p.size, p.size, p.size);
-      g.addColorStop(0, `hsl(${p.hue} 100% 88%)`);
-      g.addColorStop(0.55, `hsl(${p.hue} 100% 69%)`);
-      g.addColorStop(1, `hsl(${p.hue} 88% 48%)`);
-      c.fillStyle = g;
-      c.shadowColor = `hsl(${p.hue} 100% 66%)`;
-      c.shadowBlur = 9 + p.size;
-      c.rotate(p.rot);
-      heartPath(c, p.size);
-      c.fill();
-      c.globalAlpha *= 0.32;
-      c.strokeStyle = '#fff';
-      c.lineWidth = 0.7;
-      c.stroke();
-    },
-  },
+
 
   sakura: {
     count: 30,
@@ -1076,201 +1035,209 @@ const EFFECTS: Record<string, EffectDef> = {
   royal: makeShapeEffect({ count: 24, kind: 'crown', hue: 38, hueSpread: 25, size: [3, 8], speed: [7, 17], rise: true, drift: 17, glow: 17, lifetime: [5, 9] }),
 };
 
-/** Full-card particle effect over a profile. Purely decorative, never blocks clicks. */
-export function ProfileEffect({ id, className = '' }: { id?: string | null; className?: string }) {
+/** Decorative profile canvas. Catalog tiles animate only during interaction. */
+export function ProfileEffect({ id, className = '', preview = false }: { id?: string | null; className?: string; preview?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const reduceMotion = useSettings((settings) => settings.chat.reduceMotion);
-  const def = id ? (EFFECTS[id] ?? (id.startsWith('effect.') ? (shopEffect(id) as EffectDef | undefined) : undefined)) : undefined;
+  const love = id === 'hearts' || Boolean(id?.startsWith('effect.hearts.'));
+  const def = id === 'hearts' ? shopEffect('effect.hearts.rose') :
+    id ? (EFFECTS[id] ?? shopEffect(id)) : undefined;
+
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas || !def) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-    const still = reduceMotion || Boolean(motionQuery?.matches);
-    const layers: EffectLayer[] = def.layers?.length ? [def, ...def.layers] : [def];
-    let w = 0;
-    let h = 0;
-    let groups: P[][] = [];
-    let raf = 0;
-    let visible = false;
-    let running = false;
-    let last = performance.now();
-    let t = 0;
-    let frame: (now: number) => void;
-    // Mouse-reactive insanity: particles flee / swirl around the cursor and
-    // clicks detonate a burst of sparks. Works for every equipped effect.
-    let mx = -9999, my = -9999, mouseActive = false;
-    const bursts: { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number }[] = [];
-    const trail: { x: number; y: number; when: number }[] = [];
-    const inside = (e: MouseEvent) => {
-      const r = canvas.getBoundingClientRect();
-      return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-    };
-    const onMove = (e: MouseEvent) => {
-      if (!inside(e)) { mouseActive = false; return; }
-      const r = canvas.getBoundingClientRect();
-      mx = e.clientX - r.left; my = e.clientY - r.top; mouseActive = true;
-      trail.push({ x: mx, y: my, when: performance.now() });
-      if (trail.length > 28) trail.shift();
-    };
-    const onLeave = () => { mouseActive = false; };
-    const onClick = (e: MouseEvent) => {
-      if (!inside(e)) return;
-      const r = canvas.getBoundingClientRect();
-      const cx = e.clientX - r.left, cy = e.clientY - r.top;
-      for (let i = 0; i < 46; i++) {
-        const a = (i / 46) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
-        const sp = 90 + Math.random() * 170;
-        bursts.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0, max: 0.5 + Math.random() * 0.7, size: 1.5 + Math.random() * 4, hue: Math.random() * 360 });
-      }
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseout', onLeave);
-    window.addEventListener('click', onClick);
+    const host = (preview ? canvas?.closest<HTMLElement>('article, label, button') : null) ?? canvas?.parentElement;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !host || !ctx || !def) return;
 
-    const stop = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = 0;
-      running = false;
-    };
-    const start = () => {
-      if (still || !visible || document.hidden || running) return;
-      running = true;
-      last = performance.now();
-      raf = requestAnimationFrame(frame);
-    };
-    const size = () => {
-      const r = canvas.getBoundingClientRect();
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      w = Math.max(0, r.width);
-      h = Math.max(0, r.height);
-      canvas.width = Math.max(1, Math.round(w * dpr));
-      canvas.height = Math.max(1, Math.round(h * dpr));
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (!groups.length && w > 0 && h > 0) {
-        groups = layers.map((layer) =>
-          Array.from({ length: layer.count }, () => {
-            const particle = layer.spawn(w, h, true);
-            particle.life = R() * particle.max * 0.8;
-            return particle;
-          }),
-        );
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const layers = [def, ...(def.layers ?? [])];
+    let groups: P[][] = [];
+    let width = 0, height = 0, elapsed = 0;
+    let raf = 0, last = 0, costlyFrames = 0, cheapFrames = 0;
+    let visible = false, hovering = false, focused = host.matches(':focus-within');
+    let needsPaint = true, constrained = false;
+    const pulses: { x: number; y: number; start: number }[] = [];
+    const still = () => reduceMotion || motion.matches;
+    const animate = () => visible && !document.hidden && !still() && (!preview || hovering || focused);
+
+    function sync() {
+      if (visible && !document.hidden && (animate() || needsPaint)) {
+        if (!raf) raf = requestAnimationFrame(frame);
+      } else {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        last = 0;
       }
-    };
-    frame = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      t += dt;
-      ctx.clearRect(0, 0, w, h);
-      def.backdrop?.(ctx, w, h, t);
-      for (let li = 0; li < layers.length; li++) {
-        const layer = layers[li];
-        const ps = groups[li];
-        if (!ps) continue;
-        ctx.globalCompositeOperation = (layer.additive ?? def.additive) ? 'lighter' : 'source-over';
-        for (let i = 0; i < ps.length; i++) {
-          const p = ps[i];
-          p.life += dt;
-          (layer.step ?? def.step)?.(p, dt, t, w, h);
-          if (mouseActive) {
-            const dx = p.x - mx, dy = p.y - my;
-            const d = Math.hypot(dx, dy) || 1;
-            if (d < 170) {
-              const f = ((170 - d) / 170) * 520;
-              p.vx += (dx / d) * f * dt;
-              p.vy += (dy / d) * f * dt;
-              p.vx += (-dy / d) * f * 0.55 * dt;
-              p.vy += (dx / d) * f * 0.55 * dt;
-            }
-          }
-          if (p.life > p.max || p.y > h + 24 || p.y < -34 || p.x < -34 || p.x > w + 44) {
-            ps[i] = layer.spawn(w, h, false);
-            continue;
-          }
-          ctx.save();
-          ctx.translate(p.x, p.y);
-          (layer.draw ?? def.draw)(ctx, p, t);
-          ctx.restore();
+    }
+
+    function resize() {
+      const rect = canvas!.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const ratio = Math.min(window.devicePixelRatio || 1, preview || constrained ? 1 : 1.5,
+        Math.sqrt(310_000 / (rect.width * rect.height)));
+      const pixelWidth = Math.max(1, Math.round(rect.width * ratio));
+      const pixelHeight = Math.max(1, Math.round(rect.height * ratio));
+      if (width === rect.width && height === rect.height && canvas!.width === pixelWidth && canvas!.height === pixelHeight && groups.length) return;
+      const oldWidth = width;
+      const oldHeight = height;
+      width = rect.width;
+      height = rect.height;
+      canvas!.width = pixelWidth;
+      canvas!.height = pixelHeight;
+      ctx!.setTransform(pixelWidth / width, 0, 0, pixelHeight / height, 0, 0);
+      for (const group of groups) {
+        for (const particle of group) {
+          particle.x *= width / oldWidth;
+          particle.y *= height / oldHeight;
         }
       }
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 1;
-      ctx.shadowBlur = 0;
-      ctx.globalCompositeOperation = 'lighter';
-      for (let i = bursts.length - 1; i >= 0; i--) {
-        const b = bursts[i];
-        b.life += dt; b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 260 * dt; b.vx *= 0.94; b.vy *= 0.94;
-        if (b.life > b.max) { bursts.splice(i, 1); continue; }
-        const a = 1 - b.life / b.max;
-        ctx.globalAlpha = a;
-        ctx.fillStyle = `hsl(${b.hue}, 100%, 70%)`;
-        ctx.shadowColor = `hsl(${b.hue}, 100%, 60%)`;
-        ctx.shadowBlur = 14;
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, b.size * (0.4 + a * 0.6), 0, Math.PI * 2);
-        ctx.fill();
+      needsPaint = true;
+      sync();
+    }
+
+    function frame(now: number) {
+      raf = 0;
+      if (!visible || document.hidden || !width || !height) return;
+      const moving = animate();
+      const interval = preview || constrained ? 1000 / 30 : 1000 / 60;
+      if (moving && last && now - last < interval - 2) {
+        sync();
+        return;
       }
-      const nowMs = performance.now();
-      for (let i = 0; i < trail.length; i++) {
-        const tr = trail[i];
-        const age = (nowMs - tr.when) / 600;
-        if (age > 1) continue;
-        const a = (1 - age) * 0.6;
-        ctx.globalAlpha = a;
-        ctx.fillStyle = `rgba(255,255,255,${a})`;
-        ctx.shadowBlur = 0;
-        ctx.beginPath();
-        ctx.arc(tr.x, tr.y, 3 + (1 - age) * 4, 0, Math.PI * 2);
-        ctx.fill();
+      const dt = moving ? Math.min(0.05, last ? (now - last) / 1000 : 1 / 60) : 0;
+      last = moving ? now : 0;
+      elapsed += dt;
+      const started = performance.now();
+      const c = ctx!;
+      if (!groups.length) {
+        groups = layers.map((layer) => Array.from({ length: layer.count }, () => {
+          const particle = layer.spawn(width, height, true);
+          particle.life = R() * particle.max * 0.8;
+          return particle;
+        }));
       }
-      if (mouseActive) {
-        const g = ctx.createRadialGradient(mx, my, 0, mx, my, 90);
-        g.addColorStop(0, 'rgba(255,255,255,0.45)');
-        g.addColorStop(0.4, 'rgba(180,220,255,0.18)');
-        g.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = g;
-        ctx.fillRect(mx - 90, my - 90, 180, 180);
+
+      c.clearRect(0, 0, width, height);
+      c.save();
+      def!.backdrop?.(c, width, height, elapsed);
+      c.restore();
+
+      for (let layerIndex = 0; layerIndex < layers.length; layerIndex++) {
+        const layer = layers[layerIndex];
+        const particles = groups[layerIndex];
+        const count = Math.ceil(particles.length * (preview ? 0.45 : constrained ? 0.68 : 1));
+        c.globalCompositeOperation = (layer.additive ?? def!.additive) ? 'lighter' : 'source-over';
+        for (let i = 0; i < count; i++) {
+          const p = particles[i];
+          p.life += dt;
+          if (moving) (layer.step ?? def!.step)?.(p, dt, elapsed, width, height);
+          if (p.life > p.max || p.y > height + 24 || p.y < -34 || p.x < -34 || p.x > width + 44) {
+            particles[i] = layer.spawn(width, height, false);
+            continue;
+          }
+          c.save();
+          c.translate(p.x, p.y);
+          layer.draw(c, p, elapsed);
+          c.restore();
+        }
       }
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 1;
-      ctx.shadowBlur = 0;
-      if (!still && visible && !document.hidden) {
-        raf = requestAnimationFrame(frame);
-      } else {
-        running = false;
-        raf = 0;
+      c.globalCompositeOperation = 'source-over';
+      if (moving) {
+        for (let i = pulses.length - 1; i >= 0; i--) {
+          const pulse = pulses[i];
+          const age = (elapsed - pulse.start) / 0.7;
+          if (age >= 1) {
+            pulses.splice(i, 1);
+            continue;
+          }
+          c.save();
+          c.translate(pulse.x, pulse.y);
+          c.globalAlpha = (1 - age) * 0.8;
+          c.strokeStyle = love ? '#ff91bd' : '#d8e8ff';
+          c.lineWidth = 2 * (1 - age) + 0.5;
+          c.beginPath();
+          for (let ray = 0; ray < 12; ray++) {
+            const angle = ray * Math.PI / 6;
+            const inner = 7 + age * 52;
+            const outer = inner + (1 - age) * 12;
+            c.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+            c.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          }
+          c.stroke();
+          if (love) {
+            const size = 9 + age * 23;
+            c.beginPath();
+            c.moveTo(0, size * 0.66);
+            c.bezierCurveTo(-size * 1.55, -size * 0.37, -size * 0.64, -size * 1.14, 0, -size * 0.42);
+            c.bezierCurveTo(size * 0.64, -size * 1.14, size * 1.55, -size * 0.37, 0, size * 0.66);
+            c.stroke();
+          }
+          c.restore();
+        }
       }
+      needsPaint = false;
+      if (moving && !preview) {
+        const cost = performance.now() - started;
+        costlyFrames = cost > 7 ? costlyFrames + 1 : 0;
+        cheapFrames = cost < 3 ? cheapFrames + 1 : 0;
+        if (!constrained && costlyFrames >= 8) {
+          constrained = true;
+          cheapFrames = 0;
+          resize();
+        } else if (constrained && cheapFrames >= 120) {
+          constrained = false;
+          costlyFrames = 0;
+          resize();
+        }
+      }
+      sync();
+    }
+
+    const onEnter = (event: PointerEvent) => { hovering = event.pointerType !== 'touch'; sync(); };
+    const onLeave = () => { hovering = false; sync(); };
+    const onFocus = () => { focused = true; sync(); };
+    const onBlur = (event: FocusEvent) => { focused = event.relatedTarget instanceof Node && host.contains(event.relatedTarget); sync(); };
+    const onClick = (event: MouseEvent) => {
+      if (!animate() || event.detail === 0) return;
+      const rect = canvas.getBoundingClientRect();
+      if (pulses.length >= 3) pulses.shift();
+      pulses.push({ x: event.clientX - rect.left, y: event.clientY - rect.top, start: elapsed });
     };
-    size();
-    const ro = new ResizeObserver(size);
-    ro.observe(canvas);
+    const onMotion = () => {
+      pulses.length = 0;
+      last = 0;
+      needsPaint = true;
+      sync();
+    };
+    const ro = new ResizeObserver(resize);
     const io = new IntersectionObserver(([entry]) => {
-      const wasVisible = visible;
       visible = Boolean(entry?.isIntersecting);
-      if (visible && !wasVisible) {
-        if (still) frame(performance.now());
-        else start();
-      } else if (!visible) stop();
-    }, { threshold: 0 });
+      if (!visible) pulses.length = 0;
+      sync();
+    });
+    ro.observe(canvas);
     io.observe(canvas);
-    const onVisibility = () => {
-      if (document.hidden) stop();
-      else if (visible && !still) start();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    if (still) frame(performance.now());
+    if (preview) {
+      host.addEventListener('pointerenter', onEnter);
+      host.addEventListener('pointerleave', onLeave);
+      host.addEventListener('focusin', onFocus);
+      host.addEventListener('focusout', onBlur);
+    }
+    host.addEventListener('click', onClick);
+    document.addEventListener('visibilitychange', sync);
+    motion.addEventListener('change', onMotion);
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      stop();
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseout', onLeave);
-      window.removeEventListener('click', onClick);
+      cancelAnimationFrame(raf);
+      host.removeEventListener('pointerenter', onEnter);
+      host.removeEventListener('pointerleave', onLeave);
+      host.removeEventListener('focusin', onFocus);
+      host.removeEventListener('focusout', onBlur);
+      host.removeEventListener('click', onClick);
+      document.removeEventListener('visibilitychange', sync);
+      motion.removeEventListener('change', onMotion);
       ro.disconnect();
       io.disconnect();
     };
-  }, [def, reduceMotion]);
-  if (!def) return null;
-  return <canvas ref={ref} className={`profile-effect ${className}`} aria-hidden />;
+  }, [def, love, preview, reduceMotion]);
+  return def ? <canvas ref={ref} className={`profile-effect ${className}`} aria-hidden /> : null;
 }

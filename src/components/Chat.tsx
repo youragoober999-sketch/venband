@@ -177,6 +177,7 @@ export function ChatView({
   threadRoot,
   thread,
   onCloseThread,
+  covered = false,
 }: {
   channel: Channel;
   title: string;
@@ -190,6 +191,7 @@ export function ChatView({
   threadRoot?: string;
   thread?: ThreadInfo;
   onCloseThread?: () => void;
+  covered?: boolean;
 }) {
   const { messages, hasMore, loadOlder, keyStatus, upsertLocal, removeLocal } = useMessages(channel, threadRoot ?? null);
   const identity = sessionStore.use((s) => s.identity)!;
@@ -236,7 +238,7 @@ export function ChatView({
   const officialDm = isDm && (dmMembers ?? []).some((p) => p.id === VENBAND_SYSTEM_ID);
   const canPin = isDm || can(P.MANAGE_MESSAGES);
   const [unreadDone, setUnreadDone] = useState(false);
-  const { openedAt, markUnread, manual } = useReadMarker(channel.id, messages[messages.length - 1], !isThread, atBottom, isDm && !unreadDone);
+  const { openedAt, markUnread, manual } = useReadMarker(channel.id, messages[messages.length - 1], !isThread, atBottom, covered || (isDm && !unreadDone));
   const pinnedIds = useMemo(() => new Set(extras.pins.map((p) => p.message_id)), [extras.pins]);
   const [, bumpSaved] = useState(0);
 
@@ -336,8 +338,8 @@ export function ChatView({
   }, [channel.id, isThread]);
 
   useEffect(() => {
-    if (!isThread) setViewingBottom(atBottom && (!isDm || unreadDone));
-  }, [isThread, atBottom, isDm, unreadDone]);
+    if (!isThread) setViewingBottom(!covered && atBottom && (!isDm || unreadDone));
+  }, [isThread, covered, atBottom, isDm, unreadDone]);
 
   const typing = Object.entries(typingAt)
     .filter(([uid, at]) => !messages.some((m) => m.row.author_id === uid && new Date(m.row.created_at).getTime() >= at - 1000))

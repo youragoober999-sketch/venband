@@ -1,7 +1,8 @@
+import { completeGoogleEmailLogin, googleChooserSupported, startGoogleEmailLogin } from '../lib/googleEmailLogin';
 import { QrLoginPanel } from './QrLogin';
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { currentPath, go, parseRoute, useRoute } from '../lib/router';
-import { supabase } from '../lib/supabase';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { go, parseRoute, rememberReturnPath, useRoute } from '../lib/router';
+import { googleEmailReturn, supabase } from '../lib/supabase';
 import { vdlResolve } from '../lib/vdl';
 import { passwordStrength } from '../lib/crypto';
 import {
@@ -19,6 +20,7 @@ import {
   verifyEmailSignIn,
   verifyMfa,
   signIn,
+  signInWithOneTimeLink,
   signOut,
   signUp,
   signUpDisposable,
@@ -70,7 +72,7 @@ export function AuthScreen() {
   const [mode, setModeState] = useState<Mode | 'home'>(() => {
     const r = parseRoute();
     if (r.kind === 'register') return 'signup';
-    if (r.kind === 'sign-in' || r.kind === 'home' || r.kind === 'server' || r.kind === 'discover') return 'login';
+    if (r.kind === 'sign-in' || r.kind === 'home' || r.kind === 'server' || r.kind === 'discover' || r.kind === 'group-invite') return 'login';
     return hasNotice || new URLSearchParams(window.location.search).has('invite') ? 'login' : 'home';
   });
   // keep /sign-in and /register in the address bar
@@ -94,11 +96,7 @@ export function AuthScreen() {
     const r = parseRoute();
     // deep link while logged out: show the login form at /sign-in
     if (r.kind === 'home' || r.kind === 'server' || r.kind === 'discover' || r.kind === 'group-invite') {
-      try {
-        sessionStorage.setItem('venband:return-to', currentPath());
-      } catch {
-        /* ignore */
-      }
+      rememberReturnPath();
       go('sign-in', { replace: true, keepQuery: true });
     }
   }, []);
@@ -110,11 +108,31 @@ export function AuthScreen() {
       return '';
     }
   });
+  const [googleBusy, setGoogleBusy] = useState(Boolean(googleEmailReturn));
+  const [googleError, setGoogleError] = useState('');
+  const googleStarted = useRef(false);
+  useEffect(() => {
+    if (!googleEmailReturn || googleStarted.current) return;
+    googleStarted.current = true;
+    void completeGoogleEmailLogin(googleEmailReturn).then(async (result) => {
+      if ('email' in result) {
+        setEmail(result.email);
+        setMode('signup');
+      } else {
+        await signInWithOneTimeLink(result.tokenHash);
+      }
+    }).catch((error) => {
+      setGoogleError(friendlyError(error));
+      setMode('email');
+    }).finally(() => setGoogleBusy(false));
+  }, []);
   const nav: NavActions = {
     onLogin: () => setMode('login'),
     onSignup: () => setMode('signup'),
     onHome: () => setMode('home'),
   };
+
+  if (googleBusy) return <AuthLayout nav={nav}><p role="status">Signing in with Google…</p></AuthLayout>;
 
   if (mode === 'home') return <Landing onLogin={nav.onLogin} onSignup={nav.onSignup} />;
 
@@ -130,7 +148,7 @@ export function AuthScreen() {
           </div>
         </div>
       )}
-      {mode === 'email' && <EmailLogin email={email} setEmail={setEmail} setMode={setMode} />}
+      {mode === 'email' && <EmailLogin email={email} setEmail={setEmail} setMode={setMode} googleError={googleError} />}
       {mode === 'qr' && (
         <>
           <QrLoginPanel />
@@ -291,9 +309,9 @@ function Login({ email, setEmail, setMode }: FormProps) {
 }
 
 /** "Log in with email": ask Supabase to email a one-time code (no password). */
-function EmailLogin({ email, setEmail, setMode }: FormProps) {
+function EmailLogin({ email, setEmail, setMode, googleError }: FormProps & { googleError: string }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(googleError || null);
   return (
     <form
       onSubmit={async (e) => {
@@ -311,7 +329,19 @@ function EmailLogin({ email, setEmail, setMode }: FormProps) {
       }}
     >
       <h1>Log in with email</h1>
-      <p className="sub">We’ll email you a code. No password needed.</p>
+      {googleChooserSupported() && <>
+      <button type="button" className="btn secondary full" disabled={busy} onClick={async () => {
+        setBusy(true);
+        setError(null);
+        try {
+          await startGoogleEmailLogin();
+        } catch (error) {
+          setError(friendlyError(error));
+          setBusy(false);
+        }
+      }}>Choose a Gmail account</button>
+      <div className="auth-or"><span>or use an email code</span></div>
+      </>}
       <Field label="Email">
         <input type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
       </Field>

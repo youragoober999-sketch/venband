@@ -27,11 +27,31 @@ window.addEventListener('popstate', emit);
 
 export function go(path: string, opts: { replace?: boolean; keepQuery?: boolean } = {}) {
   const clean = path.replace(/^\/+/, '');
-  if (clean === currentPath()) return;
-  const url = BASE + clean + (opts.keepQuery ? window.location.search : '') + window.location.hash.replace(/^#$/, '');
+  const url = BASE + clean + (opts.keepQuery && !clean.includes('?') ? window.location.search : '') + window.location.hash.replace(/^#$/, '');
+  if (url === window.location.pathname + window.location.search + window.location.hash) return;
   if (opts.replace) window.history.replaceState(null, '', url);
   else window.history.pushState(null, '', url);
   emit();
+}
+
+/** Resume a local destination after account setup, including invite options. */
+export function rememberReturnPath(path = currentPath() + window.location.search) {
+  try {
+    sessionStorage.setItem('venband:return-to', path);
+  } catch {
+    // Navigation still works when storage is unavailable.
+  }
+}
+
+export function resumeReturnPath() {
+  try {
+    const path = sessionStorage.getItem('venband:return-to');
+    sessionStorage.removeItem('venband:return-to');
+    if (!path || !/^[a-z0-9@]/i.test(path)) return;
+    go(path, { replace: true });
+  } catch {
+    // Navigation still works when storage is unavailable.
+  }
 }
 
 export function useRoute(): string {

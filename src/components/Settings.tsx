@@ -851,7 +851,7 @@ function ProfileTab() {
             <div className="effect-grid">
               {[...EFFECT_LIST, ...ownedOptions('effect', owned)].map((f) => (
                 <button key={f.id} type="button" className={`effect-option${(preview.profile_effect ?? 'none') === f.id ? ' selected' : ''}`} onClick={() => set({ profile_effect: f.id })} aria-label={f.label} title={f.label}>
-                  <ProfileEffect id={f.id} />
+                  <ProfileEffect id={f.id} preview />
                   <span>{f.label}</span>
                 </button>
               ))}

@@ -210,8 +210,12 @@ const SCENES: Record<string, () => ReactNode> = {
   hearts: () => (
     <>
       <b className="sp-sky" />
-      {bits('hr', 16, 'sp-heart', { s: [6, 13], t: [2.8, 5.4] }, heartSvg)}
-      {bits('hrg', 10, 'sp-glint', { s: [1.2, 2.6] })}
+      <span className="sp-love-pair" aria-hidden>
+        <i>{heartSvg}</i>
+        <i>{heartSvg}</i>
+      </span>
+      {bits('hr', 8, 'sp-heart', { s: [6, 13], t: [3.6, 6.4] }, heartSvg)}
+      {bits('hrg', 4, 'sp-glint', { s: [1.2, 2.6] })}
     </>
   ),
   clouds: () => (

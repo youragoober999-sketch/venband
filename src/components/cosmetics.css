@@ -246,8 +246,13 @@
 @keyframes fr-moon { from { transform: rotate(0) translateY(var(--o)); } to { transform: rotate(360deg) translateY(var(--o)); } }
 
 /* hearts: rose ring, hearts floating up */
-.fa-hearts .fr-ring { background: conic-gradient(#ff4d8d, #ff9ec4, #ff2e6c, #ff9ec4, #ff4d8d); filter: drop-shadow(0 0 3px #ff4d8d88); animation: fr-spin 6s linear infinite, fr-beat 1.2s ease-in-out infinite; }
-@keyframes fr-beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.05); } 30% { transform: scale(.98); } }
+.fa-hearts .fr-ring { background: conic-gradient(#ff4d8d, #ff9ec4, #ff2e6c, #ff9ec4, #ff4d8d); filter: drop-shadow(0 0 3px #ff4d8d88); animation: fr-beat 2.8s ease-in-out infinite; }
+@keyframes fr-beat {
+  0%, 50%, 100% { transform: scale(1); }
+  15% { transform: scale(1.09); }
+  25% { transform: scale(.99); }
+  34% { transform: scale(1.05); }
+}
 .fr-heart { left: var(--x); bottom: 0; width: 22%; height: 22%; fill: #ff4d8d; filter: drop-shadow(0 0 2px #ff4d8d); animation: fr-heart var(--t) ease-out var(--d) infinite; }
 @keyframes fr-heart { 0% { transform: translateY(0) scale(.4); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-260%) scale(.9) rotate(15deg); opacity: 0; } }
 
@@ -277,4 +282,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .np-art *, .fa, .fa * { animation-play-state: paused !important; }
+}
+
+
+/* Keep the catalog readable and avoid running every decorative layer at once. */
+.shop-card:not(:hover, :focus-within) :is(.fa, .fa *, .np-art, .np-art *),
+.special-card:not(:hover, :focus-within) :is(.fa, .fa *, .np-art, .np-art *) {
+  animation-play-state: paused;
 }
