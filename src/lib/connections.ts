@@ -109,7 +109,6 @@ const CLIENT = {
   youtube: '319530075746-jvmsth0p5h4c36cdiu2q0spl1ccli8sf.apps.googleusercontent.com',
   // TikTok sandbox apps have their own key: set VITE_TIKTOK_CLIENT_KEY (and TIKTOK_CLIENT_KEY for the server) to switch
   tiktok: (import.meta.env.VITE_TIKTOK_CLIENT_KEY as string | undefined) || 'aw3rf61cawh6b01a',
-  github: import.meta.env.VITE_GITHUB_CLIENT_ID?.trim() || 'Iv23liN3W4bPnHUOj45w',
   xbox: 'fb0e8566-ac50-467e-bef4-9df4bd5f16e5',
   twitch: 'fj02sot13ldczefa3za7hcc3ryw9fe',
 };
@@ -250,8 +249,12 @@ async function navigateToProvider(provider: ConnectionProvider, tab: Window, acc
       });
     case 'github': {
       const { verifier, challenge } = await pkce();
+      const config = await fetch('/api/oauth');
+      if (!config.ok) throw new Error('Couldn’t load GitHub connection settings. Try again.');
+      const { githubClientId } = await config.json();
+      if (typeof githubClientId !== 'string' || !githubClientId) throw new Error('GitHub linking is not configured.');
       return to('https://github.com/login/oauth/authorize', {
-        client_id: CLIENT.github,
+        client_id: githubClientId,
         redirect_uri: REDIRECTS.github,
         state: save(verifier),
         code_challenge: challenge,

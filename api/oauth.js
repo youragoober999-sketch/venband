@@ -326,6 +326,10 @@ async function qrApprove(request, b) {
   return { ok: true };
 }
 
+export function GET() {
+  return json(200, { githubClientId: IDS.github });
+}
+
 export function OPTIONS() {
   return preflight();
 }
