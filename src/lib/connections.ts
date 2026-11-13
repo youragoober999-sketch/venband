@@ -12,7 +12,7 @@
 //     Client ids below are public by design (they're in every sign-in URL).
 import { supabase, errorMessage } from './supabase';
 
-export type ConnectionProvider = 'steam' | 'twitch' | 'discord' | 'github' | 'youtube' | 'xbox' | 'instagram' | 'tiktok';
+export type ConnectionProvider = 'steam' | 'twitch' | 'discord' | 'github' | 'youtube' | 'xbox' | 'tiktok';
 
 export interface ConnectionRow {
   provider: ConnectionProvider;
@@ -83,7 +83,6 @@ export const PROVIDERS: ProviderInfo[] = [
   { provider: 'tiktok', name: 'TikTok', color: '#000000', kind: 'ready', desc: 'Link your TikTok profile.' },
   { provider: 'github', name: 'GitHub', color: '#24292f', kind: 'ready', desc: 'Show off your GitHub profile.' },
   { provider: 'discord', name: 'Discord', color: '#5865f2', kind: import.meta.env.VITE_DISCORD_CLIENT_ID ? 'ready' : 'planned', desc: 'Link your Discord profile.' },
-  { provider: 'instagram', name: 'Instagram', color: '#e1306c', kind: 'planned', desc: 'Coming soon.' },
 ];
 
 export const providerInfo = (p: ConnectionProvider): ProviderInfo => PROVIDERS.find((x) => x.provider === p) ?? PROVIDERS[0];
@@ -95,7 +94,7 @@ const SITE = typeof location !== 'undefined' && /(^|\.)venband\.com$/i.test(loca
 const PROD = SITE === 'https://www.venband.com';
 
 /** Register exactly these in each provider's developer console. */
-export const REDIRECTS: Record<Exclude<ConnectionProvider, 'instagram'>, string> = {
+export const REDIRECTS: Record<ConnectionProvider, string> = {
   discord: `${SITE}/callback`,
   youtube: `${SITE}/callback`,
   tiktok: `${SITE}/callback`,

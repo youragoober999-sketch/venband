@@ -926,5 +926,16 @@ export const SCHEMA_MANIFEST: SchemaManifestEntry[] = [
       "google_email_account"
     ],
     "bodies": {}
+  },
+  {
+    "migration": "20261113003000_bio_pages.sql",
+    "tables": [
+      "bio_pages"
+    ],
+    "functions": [
+      "public_bio_page",
+      "save_bio_page"
+    ],
+    "bodies": {}
   }
 ];

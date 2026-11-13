@@ -22,6 +22,7 @@ function lazyNamed<T extends Record<string, any>, K extends keyof T>(load: () =>
 }
 const Shell = lazyNamed(() => import('./components/Shell'), 'Shell');
 const Onboarding = lazyNamed(() => import('./components/Onboarding'), 'Onboarding');
+const PublicBioPage = lazyNamed(() => import('./features/bio/BioPage'), 'PublicBioPage');
 const InvitePage = lazyNamed(() => import('./components/Invite'), 'InvitePage');
 const StorageConsole = lazyNamed(() => import('./components/Storage'), 'StorageConsole');
 const ApplicationsPage = lazyNamed(() => import('./components/Apps'), 'ApplicationsPage');
@@ -181,6 +182,7 @@ export default function App() {
     );
   }
   if (!configured) return <NotConfigured />;
+  if (route.kind === 'bio') return <Load><PublicBioPage username={route.username} /></Load>;
   // invite links work signed in or out
   if (route.kind === 'invite' && (status === 'signed-out' || (status === 'ready' && hasProfile && !needsOnboarding)))
     return (

@@ -71,6 +71,7 @@ export type Route =
   | { kind: 'home'; target: string | null; messageId?: string }
   | { kind: 'server'; serverId: string; channelId: string | null; messageId?: string }
   | { kind: 'discover' }
+  | { kind: 'bio'; username: string }
   | { kind: 'callback' }
   | { kind: 'qr-approve'; code: string }
   | { kind: 'invite'; code: string }
@@ -109,6 +110,9 @@ const PAGES: Record<string, PublicPage> = {
 
 export function parseRoute(path = currentPath()): Route {
   const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
+  if (parts.length === 2 && parts[1] === 'bio' && /^[a-z0-9_.]{2,32}$/i.test(parts[0])) {
+    return { kind: 'bio', username: parts[0].toLowerCase() };
+  }
   // a scanned login QR code: /login/qr/code/<64 hex>
   if (parts[0] === 'login' && parts[1] === 'qr' && parts[2] === 'code' && /^[0-9a-f]{64}$/i.test(parts[3] ?? '')) return { kind: 'qr-approve', code: parts[3].toLowerCase() };
   if (parts[0] === 'sign-in' || parts[0] === 'login') return { kind: 'sign-in' };

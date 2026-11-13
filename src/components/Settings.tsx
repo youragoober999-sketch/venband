@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { LooksPanel } from './LooksSettings';
 import { supabase, errorMessage, isOldSchema } from '../lib/supabase';
 import { changePassword, sessionStore, signOut, updateMyProfile, type ProfilePatch } from '../lib/session';
@@ -57,9 +57,12 @@ import {
 import { BrandLogo, ConnectionAvatar } from './ConnectionBits';
 import { QrScanModal } from './QrLogin';
 
+const BioEditor = lazy(() => import('../features/bio/BioEditor').then(({ BioEditor }) => ({ default: BioEditor })));
+
 const TABS: { id: SettingsTab; label: string; icon: string; group: string; staff?: boolean; perm?: StaffPerm; designer?: boolean; owner?: boolean }[] = [
   { id: 'account', label: 'My Account', icon: 'user', group: 'User Settings' },
   { id: 'profile', label: 'Profiles', icon: 'edit', group: 'User Settings' },
+  { id: 'bio', label: 'Bio Page', icon: 'globe', group: 'User Settings' },
   { id: 'special', label: 'Special', icon: 'sparkles', group: 'User Settings', owner: true },
   { id: 'privacy', label: 'Privacy & Safety', icon: 'eye', group: 'User Settings' },
   { id: 'security', label: 'Security', icon: 'shield', group: 'User Settings' },
@@ -184,6 +187,7 @@ export function SettingsPage() {
               {tab === 'language' && <LanguageTab />}
               {tab === 'my-apps' && <MyAppsTab />}
               {tab === 'connections' && <ConnectionsTab />}
+              {tab === 'bio' && <Suspense fallback={<p role="status">Loading bio editor…</p>}><BioEditor key={me.id} /></Suspense>}
               {tab === 'moderation' && staff && <ModerationCenter />}
               {tab === 'reports' && perms.includes('reports') && <ReportCentre />}
               {tab === 'appeals-queue' && perms.includes('appeals') && <AppealsQueue />}
