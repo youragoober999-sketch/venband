@@ -147,7 +147,7 @@ export function SecurityTab() {
               // clear half-finished attempts first
               const { data } = await supabase.auth.mfa.listFactors();
               for (const f of (data?.all ?? []).filter((x) => x.status === 'unverified')) await supabase.auth.mfa.unenroll({ factorId: f.id });
-              const { data: e, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: `Venband ${new Date().toISOString().slice(0, 10)}` });
+              const { data: e, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', issuer: 'Venband', friendlyName: `Venband ${new Date().toISOString().slice(0, 10)}` });
               if (error) return setMsg({ ok: false, text: /disabled|not enabled/i.test(error.message) ? 'Two-factor sign-in isn’t turned on for this Venband server yet.' : errorMessage(error) });
               setEnrolling({ id: e.id, qr: e.totp.qr_code, secret: e.totp.secret });
             }}
