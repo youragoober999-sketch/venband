@@ -1,7 +1,7 @@
 // GIF maker: turn pictures, an animated GIF or a video into a GIF, on device.
 // Frames are pulled on the main thread (it needs <video> / canvas), encoding
 // runs in a worker (gif.worker.ts) with progress, and everything is cancellable.
-import type { GifFrame } from './gifenc';
+import type { GifFrame } from './encodeGif';
 
 export type SourceKind = 'images' | 'gif' | 'video';
 export interface Source {
@@ -241,7 +241,7 @@ export async function extractFrames(src: Source, o: GifOptions, onProgress: (p: 
 /** Encode in a worker (progress 0..1). Rejects with Cancelled when the signal aborts. */
 export function encodeInWorker(w: number, h: number, frames: GifFrame[], onProgress: (p: number) => void, signal: AbortSignal): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./gif.worker.ts', import.meta.url), { type: 'module' });
+    const worker = new Worker(new URL('./encodeGif.worker.ts', import.meta.url), { type: 'module' });
     const stop = () => {
       worker.terminate();
       reject(new Cancelled());

@@ -59,6 +59,7 @@ export interface Settings {
     autoEmbeds: boolean;
     gifAutoplay: boolean;
     showJoins: boolean;
+    readReceipts: boolean;
     reduceMotion: boolean;
     /** spelling: off, underline + right-click suggestions, or fix automatically */
     autocorrect: 'off' | 'suggest' | 'auto';
@@ -134,6 +135,7 @@ export const DEFAULT_SETTINGS: Settings = {
     autoEmbeds: false,
     gifAutoplay: true,
     showJoins: true,
+    readReceipts: true,
     reduceMotion: false,
     autocorrect: 'suggest',
     codeTheme: 'vscode-dark',

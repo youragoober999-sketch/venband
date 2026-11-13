@@ -1,7 +1,7 @@
 // Builds src/lib/emoji-data.json from emojibase-data: [emoji, "short_names", group, "keywords"].
-// Run: node scripts/build-emoji.mjs  (output is committed; the app lazy-loads it)
+// Run: node scripts/assets/generate-emoji.mjs  (output is committed; the app lazy-loads it)
 import { readFileSync, writeFileSync } from 'node:fs';
-const load = (p) => JSON.parse(readFileSync(new URL(`../node_modules/emojibase-data/en/${p}`, import.meta.url), 'utf8'));
+const load = (p) => JSON.parse(readFileSync(new URL(`../../node_modules/emojibase-data/en/${p}`, import.meta.url), 'utf8'));
 const compact = load('compact.json');
 const sources = [load('shortcodes/github.json'), load('shortcodes/iamcal.json'), load('shortcodes/cldr.json')];
 const out = [];
@@ -16,5 +16,5 @@ for (const e of compact) {
   out.push([e.unicode, [...names].join(' '), e.group, (e.tags ?? []).join(' ')]);
 }
 out.sort((a, b) => compact.find((x) => x.unicode === a[0]).order - compact.find((x) => x.unicode === b[0]).order);
-writeFileSync(new URL('../src/lib/emoji-data.json', import.meta.url), JSON.stringify(out));
+writeFileSync(new URL('../../src/lib/emoji-data.json', import.meta.url), JSON.stringify(out));
 console.log(`${out.length} emoji`);

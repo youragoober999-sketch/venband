@@ -5,8 +5,8 @@ import QRCode from 'qrcode';
 import { errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { go } from '../lib/router';
-import { approveCode, claimCode, codeFromQr, codeStatus, denyCode, finishLogin, newCode, oneTimeKeys, qrLoginUrl, QR_LIFETIME_MS, startCode } from '../lib/qrLogin';
-import { Avatar, Icon, Modal } from './ui';
+import { approveCode, claimCode, codeFromQr, codeStatus, denyCode, finishLogin, oneTimeKeys, qrLoginUrl, QR_LIFETIME_MS, startCode } from '../lib/qrLogin';
+import { Avatar, Field, Icon, Modal } from './ui';
 import type { Profile } from '../lib/types';
 import './qrlogin.css';
 
@@ -32,10 +32,11 @@ export function QrLoginPanel({ compact = false }: { compact?: boolean }) {
     let dead = false;
     (async () => {
       try {
-        keys.current ??= await oneTimeKeys();
-        const next = newCode();
-        await startCode(next, keys.current.publicB64, code.current);
+        const nextKeys = await oneTimeKeys();
+        const next = nextKeys.code;
+        await startCode(next, nextKeys.publicB64, code.current);
         if (dead) return;
+        keys.current = nextKeys;
         code.current = next;
         until.current = Date.now() + QR_LIFETIME_MS;
         const svg = await QRCode.toString(qrLoginUrl(next), { type: 'svg', margin: 0, errorCorrectionLevel: 'Q', color: { dark: '#0b0b10', light: '#ffffff' } });
@@ -62,7 +63,11 @@ export function QrLoginPanel({ compact = false }: { compact?: boolean }) {
       if (phaseRef.current !== 'waiting') return;
       const ms = until.current - Date.now();
       setLeft(Math.max(0, ms));
-      if (ms <= 0 && !document.hidden) setRound((r) => r + 1);
+      if (ms <= -2000 && !document.hidden) {
+        phaseRef.current = 'loading';
+        setPhase('loading');
+        setRound((r) => r + 1);
+      }
     }, 200);
     return () => window.clearInterval(t);
   }, []);
@@ -71,17 +76,21 @@ export function QrLoginPanel({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     if (phase !== 'waiting' && phase !== 'scanned') return;
     let busy = false;
+    let cancelled = false;
     const t = window.setInterval(async () => {
       if (busy || !code.current || document.hidden) return;
       busy = true;
+      const currentCode = code.current;
+      const currentKeys = keys.current;
       try {
-        const s = await codeStatus(code.current);
+        const s = await codeStatus(currentCode);
+        if (cancelled || currentCode !== code.current || !currentKeys) return;
         if (s.state === 'scanned') {
           setWho({ name: s.name, avatar_url: s.avatar_url, avatar_color: s.avatar_color });
           setPhase('scanned');
         } else if (s.state === 'approved') {
           setPhase('signing');
-          await finishLogin(s.sealed, keys.current!.privateKey);
+          await finishLogin(s.sealed, currentKeys.privateKey);
           // the app's sign-in listener takes it from here
         } else if (s.state === 'denied') {
           setError('The login was denied on the other device.');
@@ -92,12 +101,15 @@ export function QrLoginPanel({ compact = false }: { compact?: boolean }) {
         }
       } catch (e) {
         setError(errorMessage(e));
-        setRound((r) => r + 1);
+        setPhase('error');
       } finally {
         busy = false;
       }
     }, 1500);
-    return () => window.clearInterval(t);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
   }, [phase]);
 
   const pct = Math.max(0, Math.min(1, left / QR_LIFETIME_MS));
@@ -151,8 +163,10 @@ export function QrLoginPanel({ compact = false }: { compact?: boolean }) {
 export function QrApprovePage({ code }: { code: string }) {
   const status = sessionStore.use((s) => s.status);
   const me = sessionStore.use((s) => s.me);
-  const [info, setInfo] = useState<{ device: string; created_at: string } | null>(null);
+  const [info, setInfo] = useState<{ device: string; created_at: string; public_key: string } | null>(null);
   const [step, setStep] = useState<'checking' | 'confirm' | 'busy' | 'done' | 'denied' | 'error'>('checking');
+  const [password, setPassword] = useState('');
+  const [needsPassword, setNeedsPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -206,7 +220,7 @@ export function QrApprovePage({ code }: { code: string }) {
           </span>
           <h1>You’re logged in there</h1>
           <p className="sub">
-            {info?.device ?? 'The other device'} is now logged in as you. To read your encrypted messages there, it asks once for your password or passkey (unless it remembers your keys).
+            {info?.device ?? 'The other device'} was approved. Finish any authenticator prompt on that device.
           </p>
           <button className="btn primary full" onClick={home}>
             Back to Venband
@@ -251,18 +265,25 @@ export function QrApprovePage({ code }: { code: string }) {
             Only approve if that QR code is on <b>your own screen, right now</b>. Never approve a code someone sent you — it would give them your account.
           </span>
         </p>
+        {needsPassword && <Field label="Confirm your password on this device">
+          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </Field>}
         {error && <div className="form-error">{error}</div>}
         <button
           className="btn primary full"
-          disabled={step === 'busy'}
+          disabled={step === 'busy' || !info || (needsPassword && !password)}
           onClick={async () => {
             setStep('busy');
             setError(null);
             try {
-              await approveCode(code);
+              if (!info) return;
+              await approveCode(code, info.public_key, password);
+              setPassword('');
               setStep('done');
             } catch (e) {
-              setError(errorMessage(e));
+              const message = errorMessage(e);
+              if (/password|decrypt|operation/i.test(message)) setNeedsPassword(true);
+              setError(message);
               setStep('confirm');
             }
           }}
@@ -318,7 +339,10 @@ export function QrScanModal({ onClose }: { onClose: () => void }) {
     (async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        if (dead || !video.current) return;
+        if (dead || !video.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         video.current.srcObject = stream;
         await video.current.play();
         const Detector = (window as unknown as { BarcodeDetector: new (o: { formats: string[] }) => { detect(v: HTMLVideoElement): Promise<{ rawValue: string }[]> } }).BarcodeDetector;

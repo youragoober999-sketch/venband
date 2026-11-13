@@ -4,7 +4,7 @@
 import { supabase } from './supabase';
 import { sessionStore } from './session';
 import { getSettings, updateSettings, type GifFavorite } from './settings';
-import { imagesToGif } from './gifenc';
+import { imagesToGif } from '../features/gifs/encodeGif';
 
 async function size(blob: Blob): Promise<{ width: number; height: number }> {
   try {

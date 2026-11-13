@@ -3,7 +3,7 @@ import { loadExpressions, resetExpressions } from './expressions';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, appUrl, errorMessage } from './supabase';
 import { createStore } from './store';
-import { argonMaster, deriveKeysFromMaster, deriveMasterKeys, type Identity } from './crypto';
+import { argonMaster, deriveKeysFromMaster, deriveMasterKeys, unsealIdentity, type Identity, type SealedIdentity } from './crypto';
 import {
   forgetIdentities,
   IdentityLockedError,
@@ -12,6 +12,7 @@ import {
   rememberIdentity,
   resetIdentity,
   resealStoredIdentity,
+  sealIdentityForDevice,
   verifyVault,
 } from './identity';
 import { hasPasskey, isPasskeySupported, registerPasskey, removePasskey, unlockWithPasskey as passkeyUnlock } from './passkey';
@@ -45,7 +46,7 @@ interface SessionState {
   setupError: string | null;
   pendingVault: CryptoKey | null;
   /** waiting on the second sign-in step (vaultKey is null when the keys are already on this device) */
-  pendingMfa: { vaultKey: CryptoKey | null; remember: boolean } | null;
+  pendingMfa: { vaultKey: CryptoKey | null; remember: boolean; qrIdentity?: Identity } | null;
 }
 
 export const sessionStore = createStore<SessionState>({
@@ -346,10 +347,10 @@ export function rememberPendingSignup(email: string, password: string) {
   pendingSignup = { email: email.trim(), password };
 }
 
-/** The 6-digit code from the sign-up email: confirms the address, then signs in. */
+export const isEmailCode = (token: string) => /^\d{6,10}$/.test(token);
 export async function verifySignupCode(email: string, code: string, remember = true): Promise<'signed-in' | 'confirmed'> {
   const token = code.replace(/\s/g, '');
-  if (!/^\d{6,10}$/.test(token)) throw new Error('Enter the code from the email.');
+  if (!isEmailCode(token)) throw new Error('Enter the code from the email.');
   const pending = pendingSignup && pendingSignup.email.toLowerCase() === email.trim().toLowerCase() ? pendingSignup : null;
   authInProgress++;
   try {
@@ -451,6 +452,57 @@ async function unlockWith(session: Session, vaultKey: CryptoKey, remember: boole
   }
 }
 
+export async function transferQrIdentity(transferKey: CryptoKey, password: string) {
+  const { identity, session } = sessionStore.get();
+  if (!identity || !session?.user.email) throw new Error('Log in on this device first.');
+  const master = password ? await argonMaster(session.user.email, password) : recentMaster?.slice();
+  if (!master) throw new Error('Enter your password on this device to approve access to encrypted chat.');
+  try {
+    const { vaultKey } = await deriveKeysFromMaster(master);
+    return await sealIdentityForDevice(identity, vaultKey, transferKey);
+  } finally {
+    master.fill(0);
+  }
+}
+
+export async function signInWithQr(tokenHash: string, transferred?: { userId: string; sealed: SealedIdentity; key: CryptoKey }) {
+  authInProgress++;
+  try {
+    const identity = transferred && await unsealIdentity(transferred.userId, transferred.sealed, transferred.key);
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' });
+    if (error) throw error;
+    const { session } = data;
+    if (!session) throw new Error('That QR sign-in expired. Scan a new code.');
+    if (identity && session.user.id !== identity.userId) {
+      await supabase.auth.signOut({ scope: 'local' });
+      throw new Error('The approved account did not match. Scan a new code.');
+    }
+    if (await needsMfa()) {
+      sessionStore.set({ status: 'mfa', session, pendingMfa: { vaultKey: null, remember: true, qrIdentity: identity } });
+    } else if (identity) {
+      await enterWithQrIdentity(session, identity);
+    } else {
+      authInProgress--;
+      try {
+        await onSession(session);
+      } finally {
+        authInProgress++;
+      }
+    }
+  } finally {
+    authInProgress--;
+  }
+}
+
+async function enterWithQrIdentity(session: Session, identity: Identity) {
+  if ((await currentIdentityMatches(identity.userId, identity.keyId)) !== true) {
+    sessionStore.set({ status: 'locked', session });
+    return;
+  }
+  await rememberIdentity(identity).catch(() => {});
+  await enterApp(session, identity);
+}
+
 /** Second sign-in step: the 6-digit code from an authenticator app. */
 export async function verifyMfa(code: string) {
   const { pendingMfa } = sessionStore.get();
@@ -467,7 +519,9 @@ export async function verifyMfa(code: string) {
     } = await supabase.auth.getSession();
     if (!session) throw new Error('Your sign-in expired. Please log in again.');
     sessionStore.set({ pendingMfa: null });
-    if (pendingMfa?.vaultKey) {
+    if (pendingMfa?.qrIdentity) {
+      await enterWithQrIdentity(session, pendingMfa.qrIdentity);
+    } else if (pendingMfa?.vaultKey) {
       await unlockWith(session, pendingMfa.vaultKey, pendingMfa.remember);
     } else {
       sessionStore.set({ status: 'loading' });

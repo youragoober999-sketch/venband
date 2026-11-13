@@ -1,7 +1,7 @@
 // Run tests/db/*_test.sql (in run.sh order) against the LOCAL Supabase stack
 // (`npx supabase start`) — real Supabase, not the PGlite stub. Resets the local
 // database first, so seeded test accounts are wiped (`npm run seed:local` again).
-//   node scripts/test-db-local.mjs
+//   node scripts/database/test-local.mjs
 import { execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 

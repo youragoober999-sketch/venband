@@ -388,37 +388,46 @@ export function useMessages(channel: Channel | null, threadRoot: string | null =
   const rowsRef = useRef<Map<string, MessageRow>>(new Map());
   const decCache = useRef<Map<string, DecryptedMessage>>(new Map());
 
+  const decryptVersion = useRef(0);
+  const paging = useRef(false);
   const decryptAll = useCallback(async () => {
     if (!keyring) return;
+    const version = ++decryptVersion.current;
     const rows = [...rowsRef.current.values()]
       .filter((r) => (threadRoot ? r.thread_root === threadRoot : !r.thread_root))
-      // stable order even when two messages share a timestamp
-      .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1));
-    await loadProfiles(rows.map((r) => r.author_id));
+      .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
     const cache = decCache.current;
-    const out = await Promise.all(
-      rows.map(async (r) => {
-        const k = `${r.id}|${r.signature}`;
-        const hit = cache.get(k);
-        if (hit && !hit.error) return hit;
-        const d = await keyring.decrypt(r);
-        cache.set(k, d);
-        return d;
-      }),
-    );
+    await loadProfiles(rows.map((r) => r.author_id));
+    const out = await Promise.all(rows.map(async (row) => {
+      const hit = cache.get(row.id);
+      if (hit && hit.row.signature === row.signature && !hit.error) return hit;
+      return keyring.decrypt(row);
+    }));
+    if (version !== decryptVersion.current) return;
+    decCache.current = new Map(out.map((message) => [message.row.id, message]));
     setMessages(out);
   }, [keyring, threadRoot]);
 
   const fetchPage = useCallback(
-    async (before?: string) => {
-      if (!channelId) return;
-      let q = supabase.from('messages').select('*').eq('channel_id', channelId).order('created_at', { ascending: false }).limit(PAGE);
-      q = threadRoot ? q.eq('thread_root', threadRoot) : q.is('thread_root', null);
-      if (before) q = q.lt('created_at', before);
-      const { data } = await q;
-      for (const r of (data ?? []) as MessageRow[]) rowsRef.current.set(r.id, r);
-      setHasMore((data ?? []).length === PAGE);
-      await decryptAll();
+    async (before?: MessageRow) => {
+      if (!channelId || paging.current) return;
+      paging.current = true;
+      const rows = rowsRef.current;
+      try {
+        let query = supabase.from('messages').select('*').eq('channel_id', channelId)
+          .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(PAGE);
+        query = threadRoot ? query.eq('thread_root', threadRoot) : query.is('thread_root', null);
+        if (before) query = query.or(`created_at.lt.${before.created_at},and(created_at.eq.${before.created_at},id.lt.${before.id})`);
+        const { data, error } = await query;
+        if (rowsRef.current !== rows || error) return;
+        for (const row of data as MessageRow[]) {
+          if (!rows.has(row.id)) rows.set(row.id, row);
+        }
+        setHasMore(data.length === PAGE);
+        await decryptAll();
+      } finally {
+        if (rowsRef.current === rows) paging.current = false;
+      }
     },
     [channelId, decryptAll, threadRoot],
   );
@@ -426,6 +435,9 @@ export function useMessages(channel: Channel | null, threadRoot: string | null =
   useEffect(() => {
     rowsRef.current = new Map();
     decCache.current = new Map();
+    decryptVersion.current++;
+    paging.current = false;
+    setHasMore(false);
     setMessages([]);
     setKeyStatus('loading');
     if (!channelId || !keyring) return;
@@ -450,6 +462,8 @@ export function useMessages(channel: Channel | null, threadRoot: string | null =
     });
     return () => {
       cancelled = true;
+      rowsRef.current = new Map();
+      decryptVersion.current++;
       offKeys();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -507,8 +521,8 @@ export function useMessages(channel: Channel | null, threadRoot: string | null =
   }, [messages, channel]);
 
   const loadOlder = useCallback(() => {
-    const oldest = messages[0]?.row.created_at;
-    return fetchPage(oldest);
+    const oldest = messages[0]?.row;
+    if (oldest) return fetchPage(oldest);
   }, [messages, fetchPage]);
 
   const upsertLocal = useCallback(

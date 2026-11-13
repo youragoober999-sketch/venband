@@ -189,11 +189,12 @@ app.on('web-contents-created', (_e, contents) => {
 function setupSession() {
   const ses = session.defaultSession;
   const allowed = new Set(['media', 'display-capture', 'notifications', 'clipboard-sanitized-write', 'fullscreen', 'mediaKeySystem']);
-  ses.setPermissionRequestHandler((wc, permission, callback) => {
-    callback(isAppUrl(wc.getURL(), BASE) && allowed.has(permission));
+  ses.setPermissionRequestHandler((wc, permission, callback, details) => {
+    const origin = details.requestingUrl || details.securityOrigin;
+    callback(Boolean(wc && isAppUrl(wc.getURL(), BASE) && isAppUrl(origin, BASE) && allowed.has(permission)));
   });
-  ses.setPermissionCheckHandler((wc, permission, origin) => {
-    return isAppUrl(origin || wc?.getURL() || '', BASE) && allowed.has(permission);
+  ses.setPermissionCheckHandler((_wc, permission, origin) => {
+    return isAppUrl(origin, BASE) && allowed.has(permission);
   });
   // downloads: always ask where to save, keep the original name
   ses.on('will-download', (_e, item) => {
@@ -201,7 +202,8 @@ function setupSession() {
   });
   // screen sharing: our own picker (Windows/Linux have no system picker)
   ses.setDisplayMediaRequestHandler(
-    async (_request, callback) => {
+    async (request, callback) => {
+      if (!isAppUrl(request.securityOrigin, BASE) || !request.userGesture) return callback({});
       try {
         const source = await pickScreen();
         if (!source) return callback({});

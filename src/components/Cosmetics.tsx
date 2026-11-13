@@ -1,3 +1,4 @@
+import { useSettings } from '../lib/settings';
 // Profile cosmetics: nameplates (animated scenes behind your name in lists),
 // avatar frames and profile effects (particles over your whole profile card).
 //
@@ -1078,6 +1079,7 @@ const EFFECTS: Record<string, EffectDef> = {
 /** Full-card particle effect over a profile. Purely decorative, never blocks clicks. */
 export function ProfileEffect({ id, className = '' }: { id?: string | null; className?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const reduceMotion = useSettings((settings) => settings.chat.reduceMotion);
   const def = id ? (EFFECTS[id] ?? (id.startsWith('effect.') ? (shopEffect(id) as EffectDef | undefined) : undefined)) : undefined;
   useEffect(() => {
     const canvas = ref.current;
@@ -1085,13 +1087,13 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-    const still = Boolean(motionQuery?.matches);
+    const still = reduceMotion || Boolean(motionQuery?.matches);
     const layers: EffectLayer[] = def.layers?.length ? [def, ...def.layers] : [def];
     let w = 0;
     let h = 0;
     let groups: P[][] = [];
     let raf = 0;
-    let visible = true;
+    let visible = false;
     let running = false;
     let last = performance.now();
     let t = 0;
@@ -1133,7 +1135,7 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
       running = false;
     };
     const start = () => {
-      if (still || !visible || running) return;
+      if (still || !visible || document.hidden || running) return;
       running = true;
       last = performance.now();
       raf = requestAnimationFrame(frame);
@@ -1234,7 +1236,7 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
-      if (!still && visible) {
+      if (!still && visible && !document.hidden) {
         raf = requestAnimationFrame(frame);
       } else {
         running = false;
@@ -1253,9 +1255,14 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
       } else if (!visible) stop();
     }, { threshold: 0 });
     io.observe(canvas);
+    const onVisibility = () => {
+      if (document.hidden) stop();
+      else if (visible && !still) start();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     if (still) frame(performance.now());
-    else start();
     return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
       stop();
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseout', onLeave);
@@ -1263,7 +1270,7 @@ export function ProfileEffect({ id, className = '' }: { id?: string | null; clas
       ro.disconnect();
       io.disconnect();
     };
-  }, [def]);
+  }, [def, reduceMotion]);
   if (!def) return null;
   return <canvas ref={ref} className={`profile-effect ${className}`} aria-hidden />;
 }

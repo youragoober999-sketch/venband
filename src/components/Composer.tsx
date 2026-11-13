@@ -16,7 +16,7 @@ import { getProfile, loadProfiles } from '../lib/directory';
 const ID_MENTION = /(^|[\s(])(?:@|<@)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})>?(?=[\s.,!?)]|$)/gi;
 import { formatSize } from './Attachments';
 import { EmojiPicker } from './EmojiPicker';
-import { GifPicker } from './GifPicker';
+import { GifPicker } from '../features/gifs/GifPicker';
 import { openMenu, openMenuAt, type Entry } from './ContextMenu';
 import { askText, showAlert } from './Dialogs';
 import { Avatar, Field, Icon, Modal } from './ui';
@@ -80,6 +80,7 @@ function fmtWait(s: number) {
 
 export function Composer({
   channelId,
+  serverId = null,
   placeholder,
   disabled,
   replyTo,
@@ -99,6 +100,7 @@ export function Composer({
   replyHasImage = false,
 }: {
   channelId: string;
+  serverId?: string | null;
   placeholder: string;
   disabled: boolean;
   replyTo: string | null;
@@ -756,7 +758,7 @@ export function Composer({
           ))}
         </div>
       )}
-      {gifs && <GifPicker onClose={() => setGifs(false)} onPick={(url) => submit(url)} onFile={(f) => submit('', [{ id: crypto.randomUUID(), file: f, spoiler: false, alt: '' }])} />}
+      {gifs && <GifPicker serverId={serverId} onClose={() => setGifs(false)} onPick={(url) => submit(url)} onFile={(f) => submit('', [{ id: crypto.randomUUID(), file: f, spoiler: false, alt: '' }])} />}
       {fmt && !disabled && (
         <div className="fmt-bar" style={{ left: fmt.x, top: fmt.y }} onMouseDown={(e) => e.preventDefault()} role="toolbar" aria-label="Formatting">
           <button title="Bold (Ctrl+B)" onClick={() => applyFormat('wrap', '**')}><b>B</b></button>

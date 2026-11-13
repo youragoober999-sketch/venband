@@ -5,7 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { sessionStore, updateMyProfile } from '../lib/session';
 import { useSettings } from '../lib/settings';
 import { errorMessage } from '../lib/supabase';
-import { ITEMS, SPECIAL_NAME_EFFECT, type ShopKind } from '../lib/shop';
+import { ITEMS, SPECIAL_EFFECTS, SPECIAL_NAME_EFFECT, type ShopKind } from '../lib/shop';
 import { equip, shopTheme } from '../lib/inventory';
 import type { Profile } from '../lib/types';
 import { NameplateArt, ProfileEffect } from './Cosmetics';
@@ -34,6 +34,7 @@ export function SpecialTab() {
         : p.kind === 'effect' ? me.profile_effect === p.id
           : p.kind === 'nameplate' ? me.nameplate === p.id
             : themeId === 'shop-sovereign';
+  const effects: Piece[] = SPECIAL_EFFECTS.map(({ id, name, desc }) => ({ id, kind: 'effect', title: name, blurb: desc }));
   const allOn = PIECES.every(wearing);
 
   async function run(fn: () => Promise<unknown>, ok: string) {
@@ -53,7 +54,7 @@ export function SpecialTab() {
     return equip(on ? ITEMS.get(p.id)! : null, p.kind);
   };
   const equipAll = () => run(async () => { for (const p of PIECES) if (!wearing(p)) await toggle(p, true); }, 'The full Sovereign set is on.');
-  const removeAll = () => run(async () => { for (const p of PIECES) if (wearing(p)) await toggle(p, false); }, 'Removed the Sovereign set.');
+  const removeAll = () => run(async () => { for (const p of [...PIECES, ...effects]) if (wearing(p)) await toggle(p, false); }, 'Removed the Sovereign set.');
 
   const previewMe = { ...me, name_style: { ...(me.name_style ?? {}), effect: SPECIAL_NAME_EFFECT } } as Profile;
   return (
@@ -85,7 +86,7 @@ export function SpecialTab() {
       </div>
 
       <div className="special-grid">
-        {PIECES.map((p) => {
+        {[...PIECES, ...effects].map((p) => {
           const on = wearing(p);
           return (
             <article key={p.id} className={`special-card${on ? ' on' : ''}`}>

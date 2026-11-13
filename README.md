@@ -45,6 +45,13 @@
 - **Public pages:** `/status` (live checks plus incidents staff can post), `/tos`, `/privacy`, `/guidelines`, `/changelog` and `/discovery` work without an account.
 - **Quality of life:** right-click menus everywhere, per-person and per-stream volume up to 200%, stream attenuation, resizable panels, and real URLs (`/sign-in`, `/register`, `/channels/@me/<user>`, `/channels/<server>/<channel>`).
 
+## Repository layout
+
+- `src/` contains the React app shared by the browser, Electron and Capacitor. `src/features/gifs/` contains the picker, editor, encoding worker and takedown checks.
+- `desktop/` is the Electron shell. `mobile/` contains the native Android and iOS wrappers.
+- `supabase/migrations/` contains the database schema, permissions and RPCs. `api/` contains server-side integrations, and `realtime/` is the optional WebSocket service.
+- `scripts/database/` contains schema generation, local seed data and database checks. `scripts/assets/` contains email, emoji, icon and bot art generators.
+
 ## How it runs (no PC required)
 
 | Piece | Service | Cost |
@@ -94,7 +101,7 @@ Read **[SECURITY.md](SECURITY.md)** for the threat model and the honest list of 
 
 1. Create a free project at <https://supabase.com/dashboard>.
 2. Load the database schema. Use **either** option:
-   - **Dashboard (easiest):** open **SQL Editor → New query**, paste the whole of [`supabase/setup.sql`](supabase/setup.sql), and click **Run**. It contains every migration in order and sets up the whole database in one go. (It's generated: run `node scripts/build-setup-sql.mjs` after adding a migration.)
+   - **Dashboard (easiest):** open **SQL Editor → New query**, paste the whole of [`supabase/setup.sql`](supabase/setup.sql), and click **Run**. It contains every migration in order and sets up the whole database in one go. (It's generated: run `node scripts/database/generate-schema.mjs` after adding a migration.)
    - **CLI:** `npx supabase login && npx supabase link --project-ref <ref> && npx supabase db push`
 3. **Authentication → Sign In / Providers → Email:** check that **Confirm email** is **on**.
 4. **Authentication → URL Configuration:**

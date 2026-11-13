@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, type ComponentType, type ReactNode } from 'react';
 import { configured } from './lib/supabase';
 import { initSession, sessionStore } from './lib/session';
-import { startIdleDetection } from './lib/idle';
+import { startIdleDetection, stopIdleDetection } from './lib/idle';
 import { startScreenTime } from './lib/screentime';
 import { AuthScreen, IdentityResetScreen, MfaScreen, RecoveryScreen, SetupErrorScreen, UnlockScreen } from './components/Auth';
 import { Logo } from './components/ui';
@@ -92,6 +92,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (status === 'ready' && hasProfile) startIdleDetection();
+    return stopIdleDetection;
     if (status === 'ready' && hasProfile) startScreenTime();
   }, [status, hasProfile]);
   // Android auto-update check

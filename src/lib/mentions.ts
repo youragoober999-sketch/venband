@@ -4,7 +4,7 @@
 import { createStore } from './store';
 import { supabase } from './supabase';
 import { sessionStore } from './session';
-import { unreadStore } from './notify';
+import { markRead, unreadStore } from './notify';
 
 export type PingKind = 'you' | 'role' | 'everyone' | 'here' | 'dm';
 export interface Ping {
@@ -83,12 +83,13 @@ export function clearPings() {
 
 /** Read all: every red dot and ping badge goes away (on every device, via read states). */
 export async function readAll() {
-  const me = sessionStore.get().identity?.userId;
   const { counts, mentions } = unreadStore.get();
-  const chans = [...new Set([...Object.keys(counts), ...Object.keys(mentions)])];
-  unreadStore.set({ counts: {}, mentions: {} });
+  const { error } = await supabase.rpc('mark_all_channels_read');
+  if (error) throw error;
+  const current = unreadStore.get();
+  for (const id of new Set([...Object.keys(counts), ...Object.keys(mentions)])) {
+    if (counts[id] === current.counts[id] && mentions[id] === current.mentions[id]) markRead(id);
+  }
   markPingsRead();
-  if (!me || !chans.length) return;
-  const now = new Date().toISOString();
-  await supabase.from('read_states').upsert(chans.map((channel_id) => ({ user_id: me, channel_id, last_read_at: now, manual_unread: false, updated_at: now })));
+  window.dispatchEvent(new Event('venband:read-all'));
 }

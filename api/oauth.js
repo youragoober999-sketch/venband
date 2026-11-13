@@ -256,11 +256,20 @@ async function qrApprove(request, b) {
   if (!user.email) throw new Fail(400, 'This account has no email, so it can’t use QR login.');
   const pubkey = await admin('/rest/v1/rpc/qr_login_pubkey', { p_code: code, p_user: user.id });
   if (!pubkey || typeof pubkey !== 'string') throw new Fail(404, 'This QR code expired. Scan the new one on the login screen.');
-  // a one-time sign-in link for this account (nothing is emailed)
+  const identity = b.identity;
+  if (identity != null && (
+    identity.userId !== user.id ||
+    typeof identity.publicKey !== 'string' || identity.publicKey.length > 150 ||
+    typeof identity.sealed?.keyId !== 'string' || identity.sealed.keyId.length > 64 ||
+    typeof identity.sealed.iv !== 'string' || identity.sealed.iv.length > 32 ||
+    typeof identity.sealed.ciphertext !== 'string' || identity.sealed.ciphertext.length > 2200
+  )) throw new Fail(400, 'That encrypted device transfer isn’t valid.');
+  // A one-time sign-in link for this account (nothing is emailed).
   const link = await admin('/auth/v1/admin/generate_link', { type: 'magiclink', email: user.email });
   const tokenHash = link.hashed_token || link.properties?.hashed_token;
   if (!tokenHash) throw new Fail(500, 'Couldn’t create the sign-in.');
-  const sealed = await sealTo(pubkey, JSON.stringify({ token_hash: tokenHash, type: 'magiclink' }));
+  const transfer = identity && { userId: user.id, publicKey: identity.publicKey, sealed: { keyId: identity.sealed.keyId, iv: identity.sealed.iv, ciphertext: identity.sealed.ciphertext } };
+  const sealed = await sealTo(pubkey, JSON.stringify({ token_hash: tokenHash, type: 'magiclink', identity: transfer }));
   const ok = await admin('/rest/v1/rpc/qr_login_finish', { p_code: code, p_user: user.id, p_sealed: sealed });
   if (ok !== true) throw new Fail(404, 'This QR code expired. Scan the new one on the login screen.');
   return { ok: true };

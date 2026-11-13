@@ -26,7 +26,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - name: setup.sql and schema manifest are up to date
-        run: node scripts/build-setup-sql.mjs --check
+        run: node scripts/database/generate-schema.mjs --check
       - name: Database security tests (RLS)
         run: tests/db/run.sh
         env:

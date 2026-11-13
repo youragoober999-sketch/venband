@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { gifsEnabled, reportGifShare, searchGifs, trendingGifs } from '../lib/klipy';
+import { gifsEnabled, reportGifShare, searchGifs, trendingGifs } from '../../lib/klipy';
 import { GifMaker } from './GifMaker';
-import { updateSettings, useSettings, type GifFavorite } from '../lib/settings';
-import { expressionStore } from '../lib/expressions';
-import { errorMessage } from '../lib/supabase';
-import { Icon } from './ui';
+import { updateSettings, useSettings, type GifFavorite } from '../../lib/settings';
+import { expressionStore } from '../../lib/expressions';
+import { errorMessage } from '../../lib/supabase';
+import { Icon, Modal } from '../../components/ui';
+import { useMediaStatuses } from './gifModeration';
 
 type Tab = 'favorites' | 'search' | 'server' | 'make';
 
@@ -42,7 +43,7 @@ function columns(list: GifFavorite[]): [GifFavorite[], GifFavorite[]] {
   return out;
 }
 
-export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) => void; onFile: (f: File) => void; onClose: () => void }) {
+export function GifPicker({ serverId, onPick, onFile, onClose }: { serverId: string | null; onPick: (url: string) => void; onFile: (f: File) => void; onClose: () => void }) {
   const favorites = useSettings((s) => s.gifFavorites);
   const [tab, setTab] = useState<Tab>(favorites.length ? 'favorites' : gifsEnabled ? 'search' : 'make');
   const [makeOpen, setMakeOpen] = useState(false);
@@ -57,11 +58,11 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest('.gif-btn')) onClose();
+      if (!makeOpen && e.target instanceof Element && !ref.current?.contains(e.target) && !e.target.closest('.gif-btn')) onClose();
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
-  }, [onClose]);
+  }, [onClose, makeOpen]);
 
   useEffect(() => {
     if (tab !== 'search' || !gifsEnabled) return;
@@ -98,6 +99,10 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
       setBusy(false);
     }
   }
+
+  const candidates = tab === 'favorites' ? favorites : items;
+  const mediaStatus = useMediaStatuses(candidates.map((gif) => gif.url), serverId);
+  const visibleGifs = candidates.filter((gif) => mediaStatus(gif.url) === 'allowed');
 
   const pick = (g: GifFavorite) => {
     reportGifShare(g.id);
@@ -149,7 +154,7 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
         </div>
       ) : (
         <div className="gif-grid gif-masonry">
-          {columns(tab === 'favorites' ? favorites : items).map((col, ci) => (
+          {columns(visibleGifs).map((col, ci) => (
             <div className="gif-col" key={ci}>
               {col.map((g) => (
                 <GifTile key={g.url} g={g} fav={isGifFavorite(favorites, g.url)} onPick={() => pick(g)} />
@@ -169,13 +174,9 @@ export function GifPicker({ onPick, onFile, onClose }: { onPick: (url: string) =
       {tab === 'search' && <div className="gif-attribution">Powered by KLIPY</div>}
     </div>
     {makeOpen && (
-      <div className="modal-backdrop" onClick={() => setMakeOpen(false)}>
-        <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
-          <h2>Make a GIF</h2>
-          <GifMaker onDone={(f) => { onFile(f); setMakeOpen(false); onClose(); }} />
-          <button className="btn ghost small" onClick={() => setMakeOpen(false)} style={{ marginTop: 8 }}>Close</button>
-        </div>
-      </div>
+      <Modal title="Make a GIF" onClose={() => setMakeOpen(false)} className="gif-maker-dialog">
+        <GifMaker onDone={(file) => { onFile(file); setMakeOpen(false); onClose(); }} />
+      </Modal>
     )}
     </>
   );

@@ -3126,9 +3126,11 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none !i
 }
 
 /* ---- GIF attachments: add to your GIFs */
-.attachment-img-wrap { position: relative; display: inline-block; max-width: 100%; }
+.attachment-img-wrap { position: relative; display: inline-grid; max-width: min(420px, 100%); margin-top: 6px; }
+.attachment-img-wrap .attachment-img { max-width: 100%; object-fit: contain; margin-top: 0; }
 .gif-fav { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #000a; color: #fff; opacity: 0; transition: opacity .15s, transform .15s var(--spring); }
 .attachment-img-wrap:hover .gif-fav, .gif-fav:focus-visible, .gif-fav.on { opacity: 1; }
+@media (hover: none) { .attachment-img-wrap .gif-fav { opacity: 1; } }
 .gif-fav.on { color: #ffd60a; }
 .gif-fav:active { transform: scale(.9); }
 
@@ -3305,3 +3307,19 @@ input[type=range].vb-slider:disabled { opacity: .5; cursor: default; }
 .code-boxes input { width: 48px; height: 58px; padding: 0; text-align: center; font-size: 26px; font-weight: 800; border-radius: 12px; font-variant-numeric: tabular-nums; caret-color: var(--accent); }
 .code-boxes input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
 @media (max-width: 400px) { .code-boxes { gap: 6px; } .code-boxes input { width: 40px; height: 50px; font-size: 22px; } }
+
+
+/* Message GIFs and the GIF editor use the same available width as their content. */
+.gif-embed-wrap { display: inline-grid; width: auto; max-width: min(380px, 100%); }
+.gif-embed-wrap .embed-gif { max-width: 100%; object-fit: contain; }
+.gif-embed-wrap .embed-star { inset: 6px 6px auto auto; }
+@media (hover: none) { .gif-embed-wrap .embed-star:not(.on) { opacity: 1; } }
+.gif-maker-dialog { width: 100%; max-width: 560px; max-height: min(90dvh, 740px); }
+.gif-maker-dialog .make-gif { padding: 0; overflow: visible; }
+.gif-maker-dialog .make-gif-preview { align-self: center; object-fit: contain; max-height: min(250px, 35dvh); }
+@media (max-width: 480px) {
+  .gif-maker-dialog .gif-row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+  .gif-maker-dialog .gif-row > :first-child { grid-column: 1 / -1; }
+  .gif-maker-dialog .gif-row > :nth-child(2):last-child { grid-column: 1 / -1; }
+}
+.dm-read-receipt { display: flex; justify-content: flex-end; align-items: center; gap: 4px; padding: 4px 18px 0; font-size: 11px; color: var(--text-2); }

@@ -51,6 +51,13 @@ export async function loadIdentity(userId: string, vaultKey: CryptoKey): Promise
   }
 }
 
+/** Wrap only the chat identity for the new device, never the password or vault key. */
+export async function sealIdentityForDevice(identity: Identity, vaultKey: CryptoKey, transferKey: CryptoKey) {
+  const sealed = await fetchSealed(identity.userId);
+  if (!sealed || sealed.keyId !== identity.keyId) throw new Error('Your chat keys changed. Sign in again before linking another device.');
+  return resealIdentity(identity.userId, sealed, vaultKey, transferKey);
+}
+
 /** Replace the identity (after a password reset). Old messages become unreadable to this account. */
 export async function resetIdentity(userId: string, vaultKey: CryptoKey): Promise<Identity> {
   const existing = await fetchSealed(userId);

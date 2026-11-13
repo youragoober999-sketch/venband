@@ -10,6 +10,7 @@ import { saveToMyGifs, toGif } from '../lib/myGifs';
 import { showToast } from './Undo';
 import { errorMessage } from '../lib/supabase';
 import { copyText, openMenu } from './ContextMenu';
+import type { Entry } from './ContextMenu';
 import { Icon, Modal } from './ui';
 import { Select } from './Select';
 import { getSettings } from '../lib/settings';
@@ -113,7 +114,7 @@ function FileCard({ a, children, onOpen }: { a: Attachment; children?: React.Rea
   );
 }
 
-export function AttachmentView({ a }: { a: Attachment }) {
+export function AttachmentView({ a, gifMenu }: { a: Attachment; gifMenu?: Entry[] }) {
   const [revealed, setRevealed] = useState(!a.spoiler);
   if (!revealed)
     return (
@@ -127,13 +128,13 @@ export function AttachmentView({ a }: { a: Attachment }) {
         </span>
       </button>
     );
-  return <AttachmentInner a={a} />;
+  return <AttachmentInner a={a} gifMenu={gifMenu} />;
 }
 
-function AttachmentInner({ a }: { a: Attachment }) {
+function AttachmentInner({ a, gifMenu }: { a: Attachment; gifMenu?: Entry[] }) {
   const kind = fileKind(a);
   const auto = shouldAutoload(kind, a.size);
-  if (kind === 'image') return <ImageAttachment a={a} auto={auto} />;
+  if (kind === 'image') return <ImageAttachment a={a} auto={auto} gifMenu={gifMenu} />;
   if (kind === 'video') return <MediaAttachment a={a} auto={auto} video />;
   if (kind === 'audio') return <MediaAttachment a={a} auto={auto} />;
   if (kind === 'pdf') return <PdfAttachment a={a} />;
@@ -153,7 +154,7 @@ function shouldAutoload(kind: keyof typeof AUTO_LOAD, size: number): boolean {
   return size <= AUTO_LOAD[kind] * 1024 * 1024;
 }
 
-function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
+function ImageAttachment({ a, auto, gifMenu }: { a: Attachment; auto: boolean; gifMenu?: Entry[] }) {
   const { url, blob, progress, error, load } = useDecrypted(a, auto);
   const caption = useCaptionAction();
   const [big, setBig] = useState(false);
@@ -182,6 +183,7 @@ function ImageAttachment({ a, auto }: { a: Attachment; auto: boolean }) {
     <>
       <span className="attachment-img-wrap">
         <img className="attachment-img" src={url} alt={a.alt || a.name} title={a.alt || undefined} onClick={() => setBig(true)} onError={() => setBroken(true)} onContextMenu={(e) => openMenu(e, [
+          ...(gifMenu ?? []),
           caption && { label: 'Caption', icon: 'edit', hint: '/caption', onClick: caption },
           caption && { type: 'sep' },
           { label: 'Save image', icon: 'download', onClick: () => { const a2 = document.createElement('a'); a2.href = url; a2.download = a.name; a2.click(); } },

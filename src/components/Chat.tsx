@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { setMediaRemoved, useMediaRemoved } from '../lib/mediaBans';
+import { assertMediaAllowed, REMOVED_TEXT, setMediaRemoved, useMediaStatuses } from '../features/gifs/gifModeration';
 import { supabase, errorMessage } from '../lib/supabase';
 import { sessionStore } from '../lib/session';
 import { insertEncrypted } from '../lib/sendMessage';
@@ -14,7 +14,10 @@ import { displayName, getProfile, loadProfiles, trustState } from '../lib/direct
 import type { DecryptedMessage } from '../lib/keyring';
 import type { Channel, MessageRow, Profile } from '../lib/types';
 import { openChannel, useMessages, type ServerData } from '../hooks/data';
-import { setUnread, setViewingChannel } from '../lib/notify';
+import { markRead, setUnread, setViewingBottom, setViewingChannel } from '../lib/notify';
+import { isLocallyIdle } from '../lib/idle';
+import { markPingsRead, readAll } from '../lib/mentions';
+import { markNotificationsRead } from '../lib/notifications';
 import { socialStore } from '../lib/social';
 import { getSettings, useSettings } from '../lib/settings';
 import { fetchPreview, previewableLink } from '../lib/linkPreview';
@@ -35,7 +38,7 @@ import { copyText, openMenu, type Entry } from './ContextMenu';
 import { askConfirm, askText, showAlert } from './Dialogs';
 import { loadMyReports, myReports, reportMessage } from '../lib/reports';
 import { Embed, findEmbeds, isBareGif, Markdown, mentionsMe, type MentionContext } from './Markdown';
-import { FavoriteStar, isGifFavorite, toggleGifFavorite } from './GifPicker';
+import { FavoriteStar, isGifFavorite, toggleGifFavorite } from '../features/gifs/GifPicker';
 import { COMET, cometBeforeSend, contentPurgeOf, forgetCometConfig, isCometApp, pickForPurge } from '../lib/comet';
 import { WordLoggerPanel } from './CometPanels';
 import { openProfile, ServerTag, userMenu } from './People';
@@ -95,12 +98,25 @@ const JOIN_LINES = [
 ];
 
 /** Where you stopped reading this conversation (synced across your devices). */
-function useReadMarker(channelId: string, latest: DecryptedMessage | undefined, active: boolean) {
+function useReadMarker(channelId: string, latest: DecryptedMessage | undefined, active: boolean, atBottom: boolean, hold: boolean) {
   const me = sessionStore.use((s) => s.identity?.userId);
   // the marker as it was when you opened the conversation: the divider stays put until you leave
   const [openedAt, setOpenedAt] = useState<string | null | undefined>(undefined);
   const manual = useRef(false);
   const saved = useRef<string | null>(null);
+  const idle = sessionStore.use((s) => s.me?.presence === 'idle');
+  const [focused, setFocused] = useState(() => document.hasFocus() && !document.hidden);
+  useEffect(() => {
+    const refresh = () => setFocused(document.hasFocus() && !document.hidden);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('blur', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('blur', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
   useEffect(() => {
     setOpenedAt(undefined);
     manual.current = false;
@@ -109,26 +125,34 @@ function useReadMarker(channelId: string, latest: DecryptedMessage | undefined, 
     let cancelled = false;
     supabase
       .from('read_states')
-      .select('last_read_at')
+      .select('last_read_at, seen_at')
       .eq('channel_id', channelId)
       .maybeSingle()
-      .then(({ data }) => !cancelled && setOpenedAt((data?.last_read_at as string | undefined) ?? null));
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        saved.current = data?.seen_at ?? null;
+        setOpenedAt(data?.last_read_at ?? null);
+      });
     return () => {
       cancelled = true;
     };
   }, [channelId, active]);
   // you're looking at it: move the marker to the newest message (once loaded, never backwards)
   useEffect(() => {
-    if (!active || openedAt === undefined || !latest || manual.current || !me) return;
+    if (!active || hold || !atBottom || !focused || idle || openedAt === undefined || !latest?.payload || manual.current || !me) return;
     const at = latest.row.created_at;
     if (saved.current && saved.current >= at) return;
     const t = setTimeout(() => {
-      if (document.visibilityState !== 'visible') return;
-      saved.current = at;
-      supabase.from('read_states').upsert({ user_id: me, channel_id: channelId, last_read_at: at, manual_unread: false, updated_at: new Date().toISOString() }).then(() => {});
+      if (document.hidden || !document.hasFocus() || isLocallyIdle() || manual.current || sessionStore.get().me?.presence === 'idle') return;
+      void supabase.rpc('mark_channel_read', { p_channel: channelId, p_at: at }).then(({ error }) => {
+        if (error) return;
+        saved.current = saved.current && saved.current > at ? saved.current : at;
+        markRead(channelId);
+        markPingsRead(channelId);
+      });
     }, 800);
     return () => clearTimeout(t);
-  }, [latest, openedAt, channelId, active, me]);
+  }, [latest, openedAt, channelId, active, me, atBottom, focused, idle, hold]);
   const markUnread = useCallback(
     async (fromIso: string) => {
       if (!me) return;
@@ -190,6 +214,16 @@ export function ChatView({
   const typingAt = useTyping(composerKey);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
+  const pageAnchor = useRef<{ id: string; top: number } | null>(null);
+  const loadOlderInPlace = () => {
+    const box = scroller.current;
+    const anchor = box && [...box.querySelectorAll<HTMLElement>('[id^="m-"]')].find(
+      (element) => element.getBoundingClientRect().bottom >= box.getBoundingClientRect().top,
+    );
+    if (anchor && !pageAnchor.current) pageAnchor.current = { id: anchor.id, top: anchor.getBoundingClientRect().top };
+    void loadOlder();
+  };
   const byId = useMemo(() => new Map(messages.map((m) => [m.row.id, m])), [messages]);
   const ids = useMemo(() => messages.map((m) => m.row.id), [messages]);
   const extras = useChannelExtras(channel.id, ids, threadRoot ? `:t${threadRoot.slice(0, 8)}` : '');
@@ -201,7 +235,8 @@ export function ChatView({
   // the official Venband account's DM: notifications only, no typing
   const officialDm = isDm && (dmMembers ?? []).some((p) => p.id === VENBAND_SYSTEM_ID);
   const canPin = isDm || can(P.MANAGE_MESSAGES);
-  const { openedAt, markUnread, manual } = useReadMarker(channel.id, messages[messages.length - 1], !isThread);
+  const [unreadDone, setUnreadDone] = useState(false);
+  const { openedAt, markUnread, manual } = useReadMarker(channel.id, messages[messages.length - 1], !isThread, atBottom, isDm && !unreadDone);
   const pinnedIds = useMemo(() => new Set(extras.pins.map((p) => p.message_id)), [extras.pins]);
   const [, bumpSaved] = useState(0);
 
@@ -211,7 +246,13 @@ export function ChatView({
   }, [channel.id]);
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (stick.current) el.scrollTop = el.scrollHeight;
+    else if (pageAnchor.current) {
+      const anchor = document.getElementById(pageAnchor.current.id);
+      if (anchor) el.scrollTop += anchor.getBoundingClientRect().top - pageAnchor.current.top;
+    }
+    pageAnchor.current = null;
   }, [messages, joins, botMessages, keyStatus]);
 
   // Images and embeds finish loading after the layout pass above, growing the
@@ -293,6 +334,10 @@ export function ChatView({
     setViewingChannel(channel.id);
     return () => setViewingChannel(null);
   }, [channel.id, isThread]);
+
+  useEffect(() => {
+    if (!isThread) setViewingBottom(atBottom && (!isDm || unreadDone));
+  }, [isThread, atBottom, isDm, unreadDone]);
 
   const typing = Object.entries(typingAt)
     .filter(([uid, at]) => !messages.some((m) => m.row.author_id === uid && new Date(m.row.created_at).getTime() >= at - 1000))
@@ -396,6 +441,7 @@ export function ChatView({
     if (/(^|[^\w`])@(everyone|here)\b/.test(text) && data && !can(P.MENTION_EVERYONE)) throw new Error('You can’t mention @everyone or @here in this server.');
     const keyring = sessionStore.get().keyring!;
     await keyring.prepareSend(channel.id);
+    await assertMediaAllowed(findEmbeds(text).filter((embed) => embed.kind === 'gif').map((embed) => embed.src), channel.server_id);
     const payload = await buildPayload(text, files, opts.onProgress, opts.poll);
     if (cmd) payload.cmd = cmd;
     if (opts.scheduleAt) {
@@ -491,57 +537,90 @@ export function ChatView({
     return items.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
   }, [messages, joins, botMessages, hasMore]);
 
-  // first unread message (from someone else) when you opened the conversation
-  const firstUnread = useMemo(() => {
-    if (!openedAt) return null;
-    return messages.find((m) => m.row.created_at > openedAt && m.row.author_id !== me.id)?.row.id ?? null;
-  }, [messages, openedAt, me.id]);
-
-  // "You have unread messages" bar: until you reach the first unread, mark read, or leave
-  const [unreadDone, setUnreadDone] = useState(false);
-  const pendingJump = useRef(false);
+  const firstUnreadAt = openedAt === null ? '1970-01-01T00:00:00Z' : openedAt;
+  const [initialNewest, setInitialNewest] = useState<string>();
+  useLayoutEffect(() => {
+    if (openedAt !== undefined && messages.length) {
+      setInitialNewest((previous) => previous ?? messages[messages.length - 1].row.created_at);
+    }
+  }, [openedAt, messages]);
+  const missed = useMemo(() => firstUnreadAt && initialNewest ? messages.filter(
+    (m) => m.row.created_at > firstUnreadAt && m.row.created_at <= initialNewest && m.row.author_id !== me.id,
+  ) : [], [messages, firstUnreadAt, initialNewest, me.id]);
+  const firstUnread = missed[0]?.row.id;
+  const unreadCount = missed.length;
   useEffect(() => {
-    setUnreadDone(false);
-    pendingJump.current = false;
-  }, [channel.id]);
-  const unreadCount = useMemo(() => (openedAt ? messages.filter((m) => m.row.created_at > openedAt && m.row.author_id !== me.id).length : 0), [messages, openedAt, me.id]);
-  const allUnreadLoaded = !hasMore || (messages[0] && openedAt ? messages[0].row.created_at <= openedAt : true);
-  const firstUnreadVisible = () => {
-    const box = scroller.current;
-    const el = firstUnread ? document.getElementById(`m-${firstUnread}`) : null;
-    if (!box || !el || !allUnreadLoaded) return false;
-    const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top;
-    return top >= 0 && top < box.clientHeight;
-  };
+    if (initialNewest && !unreadCount && (!hasMore || (firstUnreadAt && messages[0]?.row.created_at <= firstUnreadAt))) {
+      setUnreadDone(true);
+    }
+  }, [initialNewest, unreadCount, hasMore, firstUnreadAt, messages]);
+  const [readingAll, setReadingAll] = useState(false);
+  const pendingJump = useRef(false);
+  const allUnreadLoaded = !hasMore || Boolean(messages[0] && firstUnreadAt && messages[0].row.created_at <= firstUnreadAt);
   const jumpToUnread = () => {
-    if (!firstUnread || !allUnreadLoaded) {
+    if (!allUnreadLoaded) {
       pendingJump.current = true;
       stick.current = false;
-      loadOlder();
+      setAtBottom(false);
+      void loadOlder();
       return;
     }
-    const el = document.getElementById(`m-${firstUnread}`);
+    const el = firstUnread ? document.getElementById(`m-${firstUnread}`) : null;
     if (!el) return;
     stick.current = false;
-    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    setAtBottom(false);
+    el.scrollIntoView({ block: 'start', behavior: 'instant' });
     el.classList.add('flash');
     setTimeout(() => el.classList.remove('flash'), 2000);
     setUnreadDone(true);
   };
   useEffect(() => {
-    if (!pendingJump.current) return;
-    if (allUnreadLoaded) {
+    if (pendingJump.current) {
       pendingJump.current = false;
-      requestAnimationFrame(jumpToUnread);
-    } else if (keyStatus !== 'loading') loadOlder();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      jumpToUnread();
+    }
   }, [messages, allUnreadLoaded]);
+  useEffect(() => {
+    const clear = () => {
+      manual.current = false;
+      setUnreadDone(true);
+    };
+    window.addEventListener('venband:read-all', clear);
+    return () => window.removeEventListener('venband:read-all', clear);
+  }, [manual]);
   const markAllRead = async () => {
-    setUnreadDone(true);
-    const last = messages[messages.length - 1];
-    if (last) await supabase.from('read_states').upsert({ user_id: me.id, channel_id: channel.id, last_read_at: last.row.created_at, manual_unread: false, updated_at: new Date().toISOString() });
+    setReadingAll(true);
+    try {
+      await readAll();
+      await markNotificationsRead();
+    } catch (error) {
+      showAlert(errorMessage(error));
+    } finally {
+      setReadingAll(false);
+    }
   };
   const showUnreadBar = !isThread && unreadCount > 0 && !unreadDone && !manual.current;
+  const latestMessage = messages.at(-1)?.row;
+  const shareReceipts = useSettings((s) => s.chat.readReceipts);
+  const [seen, setSeen] = useState<{ id: string; count: number }>();
+  const receiptId = isDm && !isThread && shareReceipts && latestMessage?.author_id === me.id ? latestMessage.id : undefined;
+  useEffect(() => {
+    if (!receiptId) return;
+    let active = true;
+    const refresh = async () => {
+      if (document.hidden || !document.hasFocus()) return;
+      const { data, error } = await supabase.rpc('dm_seen_count', { p_channel: channel.id, p_message: receiptId });
+      if (active && !error) setSeen({ id: receiptId, count: data as number });
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 5000);
+    window.addEventListener('focus', refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [channel.id, receiptId]);
 
   const expressions = expressionStore.use((s) => s.list);
   const mentionables: Mentionables = useMemo(() => {
@@ -690,6 +769,21 @@ export function ChatView({
             {isThread ? threadHeader : headerExtra}
           </div>
         </header>
+          {showUnreadBar && (
+            <div className="unread-bar" role="status">
+              <button className="unread-bar-read" disabled={readingAll} onClick={() => void markAllRead()}>
+                <Icon name="check" size={14} /> Read all
+              </button>
+              <button className="unread-bar-jump" onClick={jumpToUnread}>
+                You missed {unreadCount}
+                {allUnreadLoaded ? '' : '+'} message{unreadCount === 1 ? '' : 's'}
+                {openedAt ? ` since ${new Date(openedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
+                <span className="unread-bar-go">
+                  Jump <Icon name="arrowUp" size={13} />
+                </span>
+              </button>
+            </div>
+          )}
         <div
           className="messages"
           ref={scroller}
@@ -699,32 +793,17 @@ export function ChatView({
           onScroll={(e) => {
             const el = e.currentTarget;
             stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-            if (showUnreadBar && firstUnreadVisible()) setUnreadDone(true);
+            setAtBottom(stick.current);
             if (el.scrollTop < 200 && hasMore && keyStatus !== 'loading' && messages.length && !stick.current) {
               // infinite scroll upwards (only once you've scrolled up — a short
               // chat that opens near the top must still stay on the newest message)
-              loadOlder();
+              loadOlderInPlace();
             }
           }}
         >
-          {showUnreadBar && (
-            <div className="unread-bar" role="status">
-              <button className="unread-bar-read" onClick={() => void markAllRead()}>
-                <Icon name="check" size={14} /> Mark as read
-              </button>
-              <button className="unread-bar-jump" onClick={jumpToUnread}>
-                You have {unreadCount}
-                {allUnreadLoaded ? '' : '+'} unread message{unreadCount === 1 ? '' : 's'}
-                {openedAt ? ` since ${new Date(openedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
-                <span className="unread-bar-go">
-                  Jump <Icon name="arrowUp" size={13} />
-                </span>
-              </button>
-            </div>
-          )}
           {keyStatus === 'loading' && !messages.length && <MessageSkeleton />}
           {hasMore && (
-            <button className="btn link load-older" onClick={() => ((stick.current = false), loadOlder())}>
+            <button className="btn link load-older" onClick={() => ((stick.current = false), loadOlderInPlace())}>
               Load older messages
             </button>
           )}
@@ -870,6 +949,9 @@ export function ChatView({
               </Fragment>
             );
           })}
+          {receiptId && seen?.id === receiptId && seen.count > 0 && (
+            <div className="dm-read-receipt"><Icon name="check" size={12} /> {channel.is_group ? `Read by ${seen.count}` : 'Read'}</div>
+          )}
           {manual.current && <div className="small muted unread-note">Marked as unread. It stays unread until you leave this conversation.</div>}
         </div>
         <div className="typing" aria-live="polite">
@@ -914,6 +996,7 @@ export function ChatView({
         ) : (
         <Composer
           channelId={composerKey}
+          serverId={channel.server_id}
           placeholder={
             threadLocked
               ? 'This thread is locked'
@@ -948,6 +1031,7 @@ export function ChatView({
       {openThread && !isThread && (
         <aside className="side-panel thread-panel" aria-label="Thread">
           <ChatView
+            key={openThread}
             channel={channel}
             title={threadInfo?.name ?? 'Thread'}
             canSend={canSend && !threadInfo?.archived}
@@ -1280,6 +1364,11 @@ function MessageItem({
   }, [text]);
   const bareGif = isBareGif(text);
   const gifUrls = embeds.filter((e) => e.kind === 'gif').map((e) => e.src);
+  const gifAttachments = (m.payload?.attachments ?? []).filter((file) => file.mime === 'image/gif' || /\.gif$/i.test(file.name));
+  const gifAttachmentKey = (path: string) => `attachment:${path}`;
+  const gifKeys = [...gifUrls, ...gifAttachments.map((file) => gifAttachmentKey(file.path))];
+  const gifStatus = useMediaStatuses(gifKeys, serverId);
+  const hasRestrictedGif = gifKeys.some((url) => gifStatus(url) !== 'allowed');
   const identity = sessionStore.use((s) => s.identity)!;
   const isStaff = sessionStore.use((s) => ['moderator', 'admin', 'owner'].includes(s.me?.platform_role ?? 'user'));
   const shownText = translation && !showOriginal ? translation.text : text;
@@ -1309,7 +1398,7 @@ function MessageItem({
       m.payload && { label: 'Quote', icon: 'quote', onClick: onQuote },
       canEdit && { label: 'Edit Message', icon: 'edit', onClick: onEdit },
       m.row.edited_at && { label: 'View Edit History', icon: 'history', onClick: () => setHistory(true) },
-      m.payload && { label: 'Forward', icon: 'share', onClick: () => setForwarding(true) },
+      m.payload && !hasRestrictedGif && { label: 'Forward', icon: 'share', onClick: () => setForwarding(true) },
       canThread && m.payload && { label: thread ? 'Open Thread' : 'Create Thread', icon: 'thread', onClick: thread ? onOpenThread : onCreateThread },
       canPin && m.payload && { label: pinned ? 'Unpin Message' : 'Pin Message', icon: 'pin', onClick: () => setPinned(m.row, !pinned).catch((err) => showAlert(errorMessage(err))) },
       m.payload && {
@@ -1327,28 +1416,28 @@ function MessageItem({
         onClick: () => setTimeout(() => openMenu(e, reminderMenu(m.row, (err) => showAlert(errorMessage(err)))), 0),
       },
       !mine && { label: 'Mark Unread', icon: 'unread', onClick: onMarkUnread },
-      m.payload && text && { label: 'Copy Text', icon: 'copy', onClick: () => copyText(text) },
+      m.payload && text && !hasRestrictedGif && { label: 'Copy Text', icon: 'copy', onClick: () => copyText(text) },
       m.payload &&
         text &&
         (translation
           ? { label: showOriginal ? 'Show Translation' : 'Show Original', icon: 'translate', onClick: () => setShowOriginal((v) => !v) }
           : { label: 'Translate', icon: 'translate', onClick: doTranslate }),
-      bareGif && {
+      bareGif && !hasRestrictedGif && {
         label: gifFavs.some((f) => f.url === text.trim()) ? 'Remove from Favorites' : 'Favorite GIF',
         icon: 'star',
         onClick: () => toggleGifFavorite({ id: text, url: text.trim(), preview: text.trim(), width: 1, height: 1 }),
       },
-      ...gifUrls.flatMap((url) => [
+      ...gifKeys.filter((url) => gifStatus(url) === 'allowed').flatMap((url) => [
         data?.server &&
           (data.server.owner_id === identity.userId || has(data.myPermissions, P.ADMINISTRATOR)) && {
-            label: 'Remove GIF from Server',
+            label: 'Ban GIF in Server',
             icon: 'block',
             danger: true,
             hint: 'everyone sees a notice instead',
             onClick: () => setMediaRemoved(url, data.server!.id, true).catch((err) => showAlert(errorMessage(err))),
           },
         isStaff && {
-          label: 'Remove GIF Everywhere',
+          label: 'Ban GIF Everywhere',
           icon: 'block',
           danger: true,
           hint: 'Venband staff',
@@ -1386,7 +1475,7 @@ function MessageItem({
       onContextMenu={menu}
       aria-label={`${name}, ${time.toLocaleString()}`}
     >
-      {forwarding && m.payload && <ForwardModal m={m} onClose={() => setForwarding(false)} />}
+      {forwarding && m.payload && !hasRestrictedGif && <ForwardModal m={m} onClose={() => setForwarding(false)} />}
       {history && <EditHistoryModal row={m.row} current={text} ctx={ctx} onClose={() => setHistory(false)} />}
       {picker && (
         <EmojiPicker
@@ -1517,7 +1606,7 @@ function MessageItem({
                     <span>{m.payload.quote.text}</span>
                   </button>
                 )}
-                {!bareGif && shownText && (
+                {!bareGif && !hasRestrictedGif && shownText && (
                   <div className="message-text">
                     <Markdown text={shownText} ctx={ctx} />
                     {m.row.edited_at && (
@@ -1553,15 +1642,37 @@ function MessageItem({
               </>
             ))}
           {!flagged &&
-            embeds.map((e) => (
-              <GifGuard key={e.src} url={e.src} active={e.kind === 'gif'} serverId={data?.server?.id ?? null}>
-                <div className="embed-wrap">
+            embeds.map((e) => {
+              const status = e.kind === 'gif' ? gifStatus(e.src) : 'allowed';
+              if (status === 'checking') return null;
+              if (status === 'removed') return (
+                <div className="gif-removed" key={e.src} role="note"><Icon name="block" size={16} /> {REMOVED_TEXT}</div>
+              );
+              return (
+                <div className={e.kind === 'gif' ? 'embed-wrap gif-embed-wrap' : 'embed-wrap'} key={e.src}>
                   <Embed e={e} />
                   {e.kind === 'gif' && <FavoriteStar className="embed-star" g={{ id: e.src, url: e.src, preview: e.src, width: 1, height: 1 }} fav={isGifFavorite(gifFavs, e.src)} />}
                 </div>
-              </GifGuard>
-            ))}
-          {m.payload?.attachments?.map((a) => <AttachmentView key={a.path} a={a} />)}
+              );
+            })}
+          {m.payload?.attachments?.map((a) => {
+            const isGif = gifAttachments.includes(a);
+            const status = isGif ? gifStatus(gifAttachmentKey(a.path)) : 'allowed';
+            if (status === 'checking') return null;
+            if (status === 'removed') return (
+              <div className="gif-removed" key={a.path} role="note"><Icon name="block" size={16} /> {REMOVED_TEXT}</div>
+            );
+            return <AttachmentView key={a.path} a={a} gifMenu={isGif ? [
+              data?.server && (data.server.owner_id === identity.userId || has(data.myPermissions, P.ADMINISTRATOR)) && {
+                label: 'Ban GIF in Server', icon: 'block', danger: true,
+                onClick: () => void setMediaRemoved(gifAttachmentKey(a.path), serverId, true).catch((error) => showAlert(errorMessage(error))),
+              },
+              isStaff && {
+                label: 'Ban GIF Everywhere', icon: 'block', danger: true,
+                onClick: () => void setMediaRemoved(gifAttachmentKey(a.path), null, true).catch((error) => showAlert(errorMessage(error))),
+              },
+            ] : undefined} />;
+          })}
           {reactions.length > 0 && <Reactions row={m.row} groups={reactions} canReact={canReact} />}
           {thread && <ThreadSummary t={thread} onOpen={onOpenThread} />}
         </div>
@@ -1578,7 +1689,7 @@ function MessageItem({
             </button>
           )}
           {m.payload && (
-            <button className="icon-btn" onClick={() => setForwarding(true)} title="Forward" aria-label="Forward">
+            <button className="icon-btn" disabled={hasRestrictedGif} onClick={() => setForwarding(true)} title="Forward" aria-label="Forward">
               <Icon name="share" size={16} />
             </button>
           )}
@@ -1830,23 +1941,6 @@ function BotMessageItem({ b, app, ctx, canManage }: { b: BotMessage; app?: Appli
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-/** Shows the removal notice instead of a GIF that was taken down. */
-function GifGuard({ url, active, serverId, children }: { url: string; active: boolean; serverId: string | null; children: ReactNode }) {
-  const removed = useMediaRemoved(active ? url : '', serverId);
-  if (!active || !removed) return <>{children}</>;
-  return (
-    <div className="gif-removed" role="note">
-      <Icon name="block" size={16} />
-      <span>
-        This GIF has been removed, probably because it didn’t follow{' '}
-        <a href="https://www.venband.com/tos#gifs" target="_blank" rel="noopener noreferrer">
-          https://www.venband.com/tos
-        </a>
-      </span>
     </div>
   );
 }

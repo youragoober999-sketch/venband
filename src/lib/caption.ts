@@ -3,7 +3,7 @@
 // animated where the browser can read GIF frames (Chrome, Edge, Safari 17+).
 import type { DecryptedMessage } from './keyring';
 import { downloadDecrypted, fileKind } from './files';
-import { encodeInWorker, MAX_FRAMES, Cancelled } from './gifmaker';
+import { encodeInWorker, MAX_FRAMES, Cancelled } from '../features/gifs/gifMakerPipeline';
 import { gifBySlug } from './klipy';
 
 const FONT = '"Inter", "Arial Black", "Helvetica Neue", Arial, sans-serif';

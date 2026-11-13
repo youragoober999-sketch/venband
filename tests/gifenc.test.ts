@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeGif } from '../src/lib/gifenc.ts';
+import { encodeGif } from '../src/features/gifs/encodeGif.ts';
 
 const solid = (w: number, h: number, rgb: [number, number, number]) => {
   const d = new Uint8ClampedArray(w * h * 4);

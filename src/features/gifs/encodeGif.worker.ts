@@ -1,5 +1,5 @@
 // Encodes a GIF off the main thread so the app stays responsive; reports progress.
-import { encodeGif, type GifFrame } from './gifenc';
+import { encodeGif, type GifFrame } from './encodeGif';
 
 const post = (m: unknown) => (self as unknown as { postMessage(m: unknown): void }).postMessage(m);
 

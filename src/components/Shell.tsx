@@ -70,7 +70,8 @@ import { AccountSwitcher } from './AccountSwitcher';
 import { rememberCurrent, watchTokens } from '../lib/accounts';
 import { startOnlineHeartbeat, stopOnlineHeartbeat } from '../lib/online';
 import { mentionsMe } from './Markdown';
-import { pingKind, recordPing } from '../lib/mentions';
+import { isLocallyIdle } from '../lib/idle';
+import { pingKind, readAll, recordPing } from '../lib/mentions';
 import { openAudioMenu, openAudioMenuAt } from './audioMenu';
 
 export function useActiveCall() {
@@ -99,7 +100,7 @@ function useMessageAlerts(servers: Server[]) {
   const seen = useRef(new Set<string>());
   return useCallback(async (row: MessageRow) => {
     const { me, keyring } = sessionStore.get();
-    if (!me || !keyring || row.author_id === me.id || isViewing(row.channel_id)) return;
+    if (!me || !keyring || row.author_id === me.id || (me.presence !== 'idle' && !isLocallyIdle() && isViewing(row.channel_id))) return;
     // a reconnecting feed can deliver the same row twice: alert once per message
     if (seen.current.has(row.id)) return;
     seen.current.add(row.id);
@@ -1042,6 +1043,7 @@ function HomeView({ dms }: { dms: DmChannel[] }) {
             )}
             {isRequest && <RequestBanner dm={current} />}
             <ChatView
+              key={current.channel.id}
               channel={current.channel}
               title={current.other ? displayName(current.other.id) : current.title}
               canSend={!isRequest}
@@ -1237,6 +1239,7 @@ function ServerView({ serverId }: { serverId: string }) {
           />
         ) : channel ? (
           <ChatView
+            key={channel.id}
             channel={channel}
             title={channel.name}
             canSend={has(data.permsFor(channel.id), P.SEND_MESSAGES) && (channel.type !== 'announcement' || has(data.permsFor(channel.id), P.MANAGE_MESSAGES))}
@@ -1262,6 +1265,7 @@ function ServerView({ serverId }: { serverId: string }) {
       {vcChat && channel?.type === 'voice' && (
         <aside className="vc-chat">
           <ChatView
+            key={channel.id}
             channel={channel}
             title={channel.name}
             canSend={has(data.permsFor(channel.id), P.SEND_MESSAGES)}
@@ -2032,7 +2036,7 @@ function QuickSwitcher({ servers, dms, onClose, onCreateServer }: { servers: Ser
       c('discover', 'Discover servers', 'compass', openDiscover),
       c('friends', 'Open friends', 'users', openFriends),
       c('create-server', 'Create or join a server', 'plus', onCreateServer),
-      c('readall', 'Mark everything as read', 'check', () => Object.keys(unreadStore.get().counts).forEach(markRead)),
+      c('readall', 'Mark everything as read', 'check', () => void readAll().catch((error) => showAlert(errorMessage(error)))),
       call && c('mute', call.muted ? 'Unmute microphone' : 'Mute microphone', call.muted ? 'mic' : 'micOff', () => call.toggleMute(), 'Call'),
       call && c('deafen', call.deafened ? 'Undeafen' : 'Deafen', 'headphones', () => call.toggleDeafen(), 'Call'),
       call && c('leave', 'Leave call', 'phoneOff', leaveCall, 'Call'),

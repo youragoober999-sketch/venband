@@ -10,7 +10,6 @@ import { markPingsRead, readAll, usePings, type Ping, type PingKind } from '../l
 import { getProfile } from '../lib/directory';
 import { openChannel } from '../hooks/data';
 import { uiStore } from '../lib/ui';
-import { unreadStore } from '../lib/notify';
 
 const SEVERITY_ICON: Record<AppNotification['severity'], string> = { info: 'bell', warning: 'warning', critical: 'shield' };
 const CATEGORY_ICON: Record<NotificationCategory, string> = { security: 'shield', moderation: 'gavel', platform: 'palette', community: 'flag' };
@@ -120,7 +119,8 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
   const pings = usePings();
   const [view, setView] = useState<'mentions' | 'notices'>('mentions');
   const [pf, setPf] = useState<PingFilter>('all');
-  const dots = unreadStore.use((s) => Object.keys(s.counts).length + Object.keys(s.mentions).length);
+  const [readingAll, setReadingAll] = useState(false);
+  const [readError, setReadError] = useState(false);
   const term = q.trim().toLowerCase();
   const pingShown = pings.filter((p) => (pf === 'all' || (pf === 'everyone-here' ? p.kind === 'everyone' || p.kind === 'here' : p.kind === pf)) && (!term || `${p.text} ${p.where}`.toLowerCase().includes(term)));
   const unreadPings = pings.filter((p) => !p.read).length;
@@ -164,10 +164,18 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
         <h3>Notifications</h3>
         <button
           className="btn secondary small notif-readall"
-          disabled={!dots && !unread && !unreadPings}
-          onClick={() => {
-            void readAll();
-            void markNotificationsRead();
+          disabled={readingAll}
+          onClick={async () => {
+            setReadingAll(true);
+            setReadError(false);
+            try {
+              await readAll();
+              await markNotificationsRead();
+            } catch {
+              setReadError(true);
+            } finally {
+              setReadingAll(false);
+            }
           }}
           title="Clear every unread dot and ping"
         >
@@ -177,6 +185,7 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
           <Icon name="x" size={16} />
         </button>
       </header>
+      {readError && <div className="form-error" role="alert">Couldn’t mark everything as read. Try again.</div>}
       <div className="notif-views" role="tablist">
         <button role="tab" aria-selected={view === 'mentions'} className={view === 'mentions' ? 'on' : ''} onClick={() => setView('mentions')}>
           Mentions{unreadPings ? <span className="notif-pill">{unreadPings > 9 ? '9+' : unreadPings}</span> : null}

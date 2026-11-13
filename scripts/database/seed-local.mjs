@@ -1,12 +1,12 @@
 // Seed the LOCAL Supabase stack (`npx supabase start`) with test accounts for
-// trying the signed-in app: `npm run dev:local` + `node scripts/dev-seed.mjs`.
+// trying the signed-in app: `npm run dev:local` + `node scripts/database/seed-local.mjs`.
 //
 // Refuses to run against anything but localhost. Accounts (all local-only):
 //   alice@venband.test — Venband owner      bob@venband.test — Alice's friend
 //   carol@venband.test — regular user
 // Password for all three: DEV_SEED_PASSWORD, default below (a throwaway test value).
 import { execSync } from 'node:child_process';
-import { deriveMasterKeys } from '../src/lib/crypto.ts';
+import { deriveMasterKeys } from '../../src/lib/crypto.ts';
 
 const PASSWORD = process.env.DEV_SEED_PASSWORD || 'venband-local-test-1';
 const env = Object.fromEntries(

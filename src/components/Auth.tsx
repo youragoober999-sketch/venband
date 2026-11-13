@@ -1,5 +1,5 @@
 import { QrLoginPanel } from './QrLogin';
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { currentPath, go, parseRoute, useRoute } from '../lib/router';
 import { supabase } from '../lib/supabase';
 import { vdlResolve } from '../lib/vdl';
@@ -9,6 +9,7 @@ import {
   completePasswordReset,
   confirmIdentityReset,
   friendlyError,
+  isEmailCode,
   requestEmailCode,
   requestPasswordReset,
   rememberPendingSignup,
@@ -337,6 +338,7 @@ function EmailCode({ email, setMode }: FormProps) {
     <form
       onSubmit={async (e) => {
         e.preventDefault();
+        if (busy || !isEmailCode(clean)) return;
         setBusy(true);
         setError(null);
         try {
@@ -364,7 +366,7 @@ function EmailCode({ email, setMode }: FormProps) {
         />
       </Field>
       {error && <div className="form-error">{error}</div>}
-      <button className="btn primary full" disabled={busy || clean.length !== 6}>
+      <button className="btn primary full" disabled={busy || !isEmailCode(clean)}>
         {busy ? 'Checking…' : 'Continue'}
       </button>
       <p className="switch">
@@ -546,98 +548,50 @@ function Signup({ email, setEmail, setMode }: FormProps) {
 }
 
 function VerifySent({ email, setMode }: { email: string; setMode: (m: Mode) => void }) {
-  const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [code, setCode] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(60);
-  const boxes = useRef<(HTMLInputElement | null)[]>([]);
   useEffect(() => {
     if (!cooldown) return;
     const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [cooldown]);
-  useEffect(() => boxes.current[0]?.focus(), []);
-
-  const submit = async (code: string) => {
-    if (busy || code.length < 6) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await verifySignupCode(email, code);
-      if (r === 'confirmed') {
-        sessionStore.set({ notice: 'Your email is confirmed. Log in to finish setting up.' });
-        setMode('login');
-      }
-    } catch (e) {
-      const msg = (e as Error)?.message ?? '';
-      setError(/code/i.test(msg) ? msg : friendlyError(e));
-      setDigits(['', '', '', '', '', '']);
-      boxes.current[0]?.focus();
-    } finally {
-      setBusy(false);
-    }
-  };
-  const put = (i: number, value: string) => {
-    const clean = value.replace(/\D/g, '');
-    if (!clean) {
-      const next = [...digits];
-      next[i] = '';
-      setDigits(next);
-      return;
-    }
-    // typing or pasting several digits fills the boxes in order
-    const next = [...digits];
-    let k = i;
-    for (const ch of clean) {
-      if (k > 5) break;
-      next[k++] = ch;
-    }
-    setDigits(next);
-    boxes.current[Math.min(k, 5)]?.focus();
-    if (next.every(Boolean)) void submit(next.join(''));
-  };
 
   return (
     <div>
       <h1>Enter your code</h1>
-      <p className="sub">
-        We emailed a 6-digit code to <b>{email || 'your email'}</b>. Enter it to finish creating your account.
-      </p>
-      <form
-        className="code-boxes"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit(digits.join(''));
-        }}
-      >
-        {digits.map((d, i) => (
-          <input
-            key={i}
-            ref={(el) => {
-              boxes.current[i] = el;
-            }}
-            value={d}
-            inputMode="numeric"
-            autoComplete={i === 0 ? 'one-time-code' : 'off'}
-            maxLength={6}
-            aria-label={`Digit ${i + 1}`}
-            disabled={busy}
-            onChange={(e) => put(i, e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Backspace' && !digits[i] && i > 0) boxes.current[i - 1]?.focus();
-              if (e.key === 'ArrowLeft' && i > 0) boxes.current[i - 1]?.focus();
-              if (e.key === 'ArrowRight' && i < 5) boxes.current[i + 1]?.focus();
-            }}
-            onFocus={(e) => e.target.select()}
+      <p className="sub">Enter the verification code we emailed to <b>{email || 'your email'}</b>.</p>
+      <form onSubmit={async (e) => {
+        e.preventDefault();
+        if (busy || !isEmailCode(code)) return;
+        setBusy(true);
+        setError(null);
+        try {
+          const result = await verifySignupCode(email, code);
+          if (result === 'confirmed') {
+            sessionStore.set({ notice: 'Your email is confirmed. Log in to finish setting up.' });
+            setMode('login');
+          }
+        } catch (e) {
+          setError(friendlyError(e));
+        } finally {
+          setBusy(false);
+        }
+      }}>
+        <Field label="Email code">
+          <input value={code} inputMode="numeric" autoComplete="one-time-code" autoFocus
+            className="otp-input" disabled={busy}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 10))}
           />
-        ))}
+        </Field>
+        <button className="btn primary full" disabled={busy || !isEmailCode(code)}>
+          {busy ? 'Checking…' : 'Confirm'}
+        </button>
       </form>
       {error && <div className="form-error">{error}</div>}
       {status && <div className="notice">{status}</div>}
-      <button className="btn primary full" disabled={busy || digits.some((d) => !d)} onClick={() => void submit(digits.join(''))}>
-        {busy ? 'Checking…' : 'Confirm'}
-      </button>
       <ul className="tips">
         <li>It can take a minute. Check spam too. The code works for 1 hour.</li>
         <li>The email also has a link — opening it works too, then log in here.</li>

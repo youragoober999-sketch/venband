@@ -1,5 +1,5 @@
 // Renders the desktop and mobile app icons + splash from public/favicon.svg.
-// Run: CHROME_PATH=/path/to/chromium node scripts/make-app-icons.mjs
+// Run: CHROME_PATH=/path/to/chromium node scripts/assets/generate-app-icons.mjs
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 const svg = readFileSync('public/favicon.svg', 'utf8');

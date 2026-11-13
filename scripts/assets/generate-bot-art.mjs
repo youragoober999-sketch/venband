@@ -1,6 +1,6 @@
 // Generates the built-in bots' profile pictures (512×512) and the official
 // Venband bot's banner (1500×500) as SVG in public/bots/ — original artwork.
-//   node scripts/make-bot-art.mjs
+//   node scripts/assets/generate-bot-art.mjs
 import fs from 'node:fs';
 
 const src = fs.readFileSync('src/components/logoPath.ts', 'utf8');

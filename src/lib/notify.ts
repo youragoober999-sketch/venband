@@ -11,12 +11,13 @@ export const unreadStore = createStore<{ counts: Record<string, number>; mention
 
 /** Channel currently on screen (set by the chat view). */
 let viewing: string | null = null;
+let atBottom = false;
+export function setViewingBottom(value: boolean) { atBottom = value; }
 export function setViewingChannel(id: string | null) {
   viewing = id;
-  if (id) markRead(id);
 }
 export function isViewing(id: string) {
-  return viewing === id && document.visibilityState === 'visible';
+  return atBottom && viewing === id && document.visibilityState === 'visible' && document.hasFocus();
 }
 
 export function addUnread(channelId: string, serverId: string | null, mention: boolean) {
@@ -47,10 +48,6 @@ export function markRead(channelId: string) {
   unreadStore.set({ counts, mentions });
   updateTitle();
 }
-
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && viewing) markRead(viewing);
-});
 
 function updateTitle() {
   const { counts, mentions, serverOf } = unreadStore.get();

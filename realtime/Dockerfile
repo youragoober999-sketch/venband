@@ -2,8 +2,8 @@
 #   docker build -f realtime/Dockerfile -t venband-realtime realtime
 FROM node:24-alpine
 WORKDIR /app
-COPY package.json ./
-RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY server.mjs ./
 USER node
 ENV PORT=4010

@@ -4625,6 +4625,101 @@ BASES.sovereign = (col) => {
   };
 };
 
+BASES.signal67 = specialSignal('67');
+BASES.flushwarp = specialSignal('flush');
+BASES.cameraunit = specialSignal('camera');
+
+function specialSignal(scene: '67' | 'flush' | 'camera'): Base {
+  return ([accent, secondary, light, dark]) => {
+    let logo: Path2D | undefined;
+    return {
+      count: 24,
+      additive: true,
+      spawn: (w, hh) => P({ x: R() * w, y: R() * hh, vx: 6 + R() * 16, vy: -8 - R() * 16, size: 1 + R() * 3, max: 3 + R() * 6 }),
+      draw(c, p) {
+        c.globalAlpha *= fade(p) * 0.65;
+        c.fillStyle = accent;
+        c.beginPath();
+        c.arc(p.x, p.y, p.size, 0, TAU);
+        c.fill();
+      },
+      backdrop(c, w, hh, t) {
+        const unit = Math.min(w, hh);
+        const x = w * 0.5;
+        const y = hh * 0.43;
+        const radius = unit * 0.43;
+        c.save();
+        c.translate(x, y);
+        const halo = c.createRadialGradient(0, 0, 0, 0, 0, unit * 0.85);
+        halo.addColorStop(0, secondary + 'b8');
+        halo.addColorStop(0.6, dark + '80');
+        halo.addColorStop(1, dark + '00');
+        c.fillStyle = halo;
+        c.fillRect(-x, -y, w, hh);
+        for (let i = 0; i < 6; i++) {
+          const r = radius * (0.45 + i * 0.18);
+          c.strokeStyle = i % 2 ? secondary : accent;
+          c.globalAlpha = 0.22 + i * 0.045;
+          c.lineWidth = 1.4;
+          c.beginPath();
+          const phase = t * (i % 2 ? -0.7 : 0.8) + i;
+          c.ellipse(0, 0, r, scene === 'flush' ? r * 0.46 : r * 0.81, Math.sin(t * 0.4 + i) * 0.3, phase, phase + Math.PI * 1.55);
+          c.stroke();
+          c.fillStyle = accent;
+          c.fillRect(Math.cos(phase) * r, Math.sin(phase) * r * 0.75, 3, 3);
+        }
+        c.globalAlpha = 0.82;
+        c.fillStyle = light;
+        c.strokeStyle = accent;
+        c.shadowColor = accent;
+        c.shadowBlur = 14;
+        if (scene === '67') {
+          c.font = `900 ${unit * 0.42}px monospace`;
+          c.textAlign = 'center';
+          c.textBaseline = 'middle';
+          c.strokeText('67', Math.sin(t * 3) * 3, 0);
+          c.fillText('67', 0, 0);
+        } else if (scene === 'flush') {
+          c.beginPath();
+          c.ellipse(0, 0, radius * 0.63, radius * 0.27, 0, 0, TAU);
+          c.fill();
+          c.fillStyle = secondary;
+          c.beginPath();
+          c.ellipse(0, 0, radius * 0.48, radius * 0.14, 0, 0, TAU);
+          c.fill();
+          c.fillStyle = light;
+          c.beginPath();
+          c.roundRect(-radius * 0.2, radius * 0.17, radius * 0.4, radius * 0.34, radius * 0.08);
+          c.fill();
+        } else {
+          c.rotate(Math.sin(t * 1.3) * 0.24);
+          c.beginPath();
+          c.roundRect(-radius * 0.54, -radius * 0.3, radius * 1.08, radius * 0.6, radius * 0.12);
+          c.fill();
+          c.fillStyle = dark;
+          c.beginPath();
+          c.arc(0, 0, radius * 0.23, 0, TAU);
+          c.fill();
+          c.fillStyle = accent;
+          c.beginPath();
+          c.arc(radius * 0.04, -radius * 0.04, radius * 0.08, 0, TAU);
+          c.fill();
+        }
+        c.restore();
+        logo ??= new Path2D(LOGO_PATH);
+        c.save();
+        const width = unit * 0.14;
+        c.translate(w - width * 1.4, hh - width * 1.2);
+        c.scale(width / 696, width / 696);
+        c.globalAlpha = 0.68;
+        c.fillStyle = accent;
+        c.fill(logo, 'evenodd');
+        c.restore();
+      },
+    };
+  };
+}
+
 export const EFFECT_BASES = Object.keys(BASES);
 const cache = new Map<string, FxDef>();
 /** The particle system for a shop effect id ("effect.petals.sakura"), cached. */

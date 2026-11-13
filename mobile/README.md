@@ -17,7 +17,7 @@ npm run ios           # opens Xcode (Mac only) → pick your team → Product �
 
 Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (like `.env.local` for the website) before building.
 
-Icons and splash screens come from `assets/` (made by `scripts/make-app-icons.mjs`); regenerate with `npm run assets`.
+Icons and splash screens come from `assets/` (made by `scripts/assets/generate-app-icons.mjs`); regenerate with `npm run assets`.
 
 ## Publishing
 

@@ -389,7 +389,16 @@ for (const b of BUNDLES) {
 // Not sold in the Shop and can't be collected: only people with the owner
 // role can equip these (enforced by the database, see 20261106160000).
 export const SPECIAL_PALETTE: Palette = PAL('owner', 'Sovereign', '#ffd56b', '#7c3aed', '#fff4cc', '#0a0016');
-export const SPECIAL_ITEMS = ['deco.sovereign.owner', 'effect.sovereign.owner', 'plate.sovereign.owner', 'theme.sovereign'] as const;
+export const SPECIAL_EFFECTS = [
+  { id: 'effect.signal67.owner', base: 'signal67', name: '67 Signal', desc: 'Venband broadcasts a neon 67 through a shifting radar grid.', colors: ['#70ffdb', '#8054ff', '#e6fff7', '#090f29'] },
+  { id: 'effect.flushwarp.owner', base: 'flushwarp', name: 'Flush Warp', desc: 'A porcelain vortex pulls the Venband signal into a spiral of bubbles.', colors: ['#70dbff', '#2365c4', '#e7faff', '#0b1439'] },
+  { id: 'effect.cameraunit.owner', base: 'cameraunit', name: 'Camera Unit', desc: 'A roaming camera locks onto the Venband sigil and sweeps the card with light.', colors: ['#ffc86b', '#ee5079', '#fff1cc', '#210d21'] },
+] as const;
+export const SPECIAL_ITEMS = ['deco.sovereign.owner', 'effect.sovereign.owner', 'plate.sovereign.owner', 'theme.sovereign', ...SPECIAL_EFFECTS.map((effect) => effect.id)] as const;
+for (const { id, base, name, desc, colors } of SPECIAL_EFFECTS) {
+  const product: Product = { key: id, kind: 'effect', base, name, desc, collection: 'originals', rarity: 'mythic', palettes: [] };
+  ITEMS.set(id, { id, kind: 'effect', base, name, palette: PAL('owner', name, colors[0], colors[1], colors[2], colors[3]), product });
+}
 export const SPECIAL_NAME_EFFECT = 'sovereign';
 for (const [id, kind, name, desc] of [
   ['deco.sovereign.owner', 'decoration', 'Sovereign Halo', 'Counter-rotating rune rings, a crown of light and orbiting gems around the Venband seal.'],

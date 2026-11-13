@@ -1,5 +1,5 @@
 // Builds the branded Supabase Auth email templates into supabase/templates/.
-//   node scripts/build-email-templates.mjs
+//   node scripts/assets/generate-email-templates.mjs
 // Then paste each file into Supabase → Authentication → Emails → Templates
 // (or run `npx supabase config push` — config.toml points at these files).
 //

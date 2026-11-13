@@ -151,6 +151,11 @@ do $t$ begin
 end $t$;
 
 -- ------------------------------------------------- impersonation guards --
+select pg_temp.nt_must_fail($$select public.create_application('Mod Toolkit', 'custom')$$, 'two-factor');
+reset role;
+insert into auth.mfa_factors (id, user_id, status, factor_type)
+values ('c0000000-0000-4000-8000-000000000002', auth.uid(), 'verified', 'totp');
+set role authenticated;
 select pg_temp.nt_must_fail($$select public.create_application('Venband', 'venband')$$, 'reserved');
 select pg_temp.nt_must_fail($$select public.create_application('Official Support', 'custom')$$, 'reserved');
 select set_config('nt.app', public.create_application('Mod Toolkit', 'venband')::text, false); -- the toolkit preset stays open

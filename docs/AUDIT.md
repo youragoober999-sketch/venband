@@ -195,7 +195,7 @@ into a throwaway Postgres (PGlite) with `tests/db/supabase_stub.sql`.
 | **Translate API** | Only Venband origins (+ Capacitor app, + the deployment's own host) get CORS; other sites get 403; `Vary: Origin`. | Handler tested with 6 origin cases |
 | **Navigation** | One shared header (`SiteNav`) on the homepage, sign-in/up and all public pages: Features · Discover · Developers · Download · Status. Phones get a real menu (was: links hidden, no menu). One footer listing every public page; "TOS" → "Terms"; the header's **Privacy link pointed at `privacy.venband.com` (404)** → now `/privacy`. | 375px: one line, no overflow, menu opens/closes (Esc, outside tap); Features from an inner page lands just below the header |
 | **Contrast** | `--muted` raised to `#8a8a92` (and per-theme: Graphite `#94949c`, Daylight `#64646c` — Daylight was 3.81:1). The theme system overrides the stylesheet, so the fix is in `src/lib/themes.ts`. | Measured WCAG ratios on 12 public pages: **291/291 text elements pass AA** (was 37 failing) |
-| CI | Runs `node scripts/build-setup-sql.mjs --check`; `tests/db/run.sh` matches Supabase's `search_path` (it would have failed on `gen_salt`) and runs the generated manifest test. | Not executed in GitHub Actions here (CI only runs on branches/PRs) |
+| CI | Runs `node scripts/database/generate-schema.mjs --check`; `tests/db/run.sh` matches Supabase's `search_path` (it would have failed on `gen_salt`) and runs the generated manifest test. | Not executed in GitHub Actions here (CI only runs on branches/PRs) |
 
 **Must be run on the live Supabase project** (SQL Editor, in order):
 `20261105010000_schema_check.sql`, then `20261105020000_lock_down_internal.sql`
@@ -423,7 +423,7 @@ Reported from venband.com while the live database was still on the old schema:
   server-side language detection, code / links / mentions / emoji kept out, chat
   slang spelled out first. `tests/translateText.test.ts`.
 * `supabase/update-2026-11.sql` is generated (and CI-checked) by
-  `scripts/build-setup-sql.mjs`: every migration since 20261105000000 in one paste.
+  `scripts/database/generate-schema.mjs`: every migration since 20261105000000 in one paste.
 
 ## 14. Phase F — staff permissions, appeals, audit search (done 2026-11-06)
 

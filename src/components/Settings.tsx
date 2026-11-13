@@ -1635,6 +1635,7 @@ function ChatTab() {
         <TrustedSites />
       </Section>
       <Section title="Servers">
+        <Toggle label="Read receipts" desc="Let people see when you read their direct or group messages." checked={c.readReceipts} onChange={(v) => updateChat({ readReceipts: v })} />
         <Toggle label="Show join messages" desc="“Someone just joined” notices in welcome channels." checked={c.showJoins} onChange={(v) => updateChat({ showJoins: v })} />
       </Section>
       <Section title="Spelling" desc="Checked on this device with a built-in English dictionary — your text is never sent anywhere.">

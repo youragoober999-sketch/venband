@@ -1,10 +1,10 @@
 // Make a GIF from pictures, an animated GIF or a video — trim, size, crop,
 // captions; encoded in the background with progress and Cancel.
 import { useEffect, useRef, useState } from 'react';
-import { errorMessage } from '../lib/supabase';
-import { Cancelled, canReadGifFrames, defaultOptions, encodeInWorker, extractFrames, frameCount, inspect, MAX_FRAMES, outputSize, type GifOptions, type Source } from '../lib/gifmaker';
-import { Icon, Slider } from './ui';
-import { Select } from './Select';
+import { errorMessage } from '../../lib/supabase';
+import { Cancelled, canReadGifFrames, defaultOptions, encodeInWorker, extractFrames, frameCount, inspect, MAX_FRAMES, outputSize, type GifOptions, type Source } from './gifMakerPipeline';
+import { Icon, Slider } from '../../components/ui';
+import { Select } from '../../components/Select';
 
 const fmt = (s: number) => `${s.toFixed(1)}s`;
 
