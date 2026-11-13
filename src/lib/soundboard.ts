@@ -54,8 +54,8 @@ function env(c: OfflineAudioContext, at: number, attack: number, hold: number, r
   const g = c.createGain();
   g.gain.setValueAtTime(0.0001, at);
   g.gain.exponentialRampToValueAtTime(peak, at + attack);
-  g.gain.setValueAtTime(peak, at + attack + hold);
-  g.gain.exponentialRampToValueAtTime(0.0001, at + attack + hold + release);
+  g.gain.setValueAtTime(peak, at + attack + Math.max(0, hold));
+  g.gain.exponentialRampToValueAtTime(0.0001, at + attack + Math.max(0, hold) + release);
   return g;
 }
 
@@ -74,6 +74,56 @@ async function synth(id: string): Promise<AudioBuffer> {
     o.stop(at + dur);
     return o;
   };
+  // Early room reflections give short acoustic hits space without washing out the attack.
+  const percussion = c.createGain();
+  percussion.connect(out);
+  for (const [time, level] of [[0.019, 0.15], [0.033, 0.09], [0.053, 0.06]]) {
+    const delay = c.createDelay();
+    const gain = c.createGain();
+    delay.delayTime.value = time;
+    gain.gain.value = level;
+    percussion.connect(delay).connect(gain).connect(out);
+  }
+
+  const noiseHit = (at: number, decay: number, frequency: number, level: number, type: BiquadFilterType, q = 0.8) => {
+    const source = noise(c, decay + 0.01);
+    const filter = c.createBiquadFilter();
+    filter.type = type;
+    filter.frequency.value = frequency;
+    filter.Q.value = q;
+    source.connect(filter).connect(env(c, at, 0.0015, 0.003, decay, level)).connect(percussion);
+    source.start(at);
+  };
+
+  const drumHit = (at: number, pitch: number, strength: number, rim = false) => {
+    // Drumhead modes are inharmonic, and the initial strike pulls the pitch sharp briefly.
+    for (const [ratio, level, decay] of [[1, 0.44, 0.17], [1.59, 0.18, 0.11], [2.14, 0.1, 0.075], [2.92, 0.045, 0.045]]) {
+      const envelope = env(c, at, 0.001, 0.003, decay, level * strength);
+      envelope.connect(percussion);
+      const voice = osc('sine', pitch * ratio * 1.16, at, decay + 0.006, envelope);
+      voice.frequency.exponentialRampToValueAtTime(pitch * ratio, at + 0.025);
+    }
+    noiseHit(at, rim ? 0.15 : 0.07, rim ? 2400 : 1750, strength * (rim ? 0.82 : 0.25), 'bandpass');
+    if (rim) noiseHit(at, 0.024, 4200, strength * 0.44, 'highpass');
+  };
+
+  const cymbalHit = (at: number, strength: number) => {
+    noiseHit(at, 0.83, 4600, strength * 0.54, 'highpass');
+    noiseHit(at, 0.42, 7600, strength * 0.45, 'bandpass', 1.2);
+    noiseHit(at, 0.055, 9400, strength * 0.35, 'highpass');
+    for (const [frequency, decay] of [[2749, 0.19], [3427, 0.31], [4817, 0.24], [6211, 0.17], [8171, 0.13]]) {
+      const envelope = env(c, at, 0.003, 0.008, decay, 0.022 * strength);
+      envelope.connect(percussion);
+      osc('sine', frequency, at, decay + 0.012, envelope);
+    }
+  };
+
+  const handClap = (at: number, strength: number, pitch: number) => {
+    noiseHit(at, 0.035, pitch, strength * 0.64, 'bandpass');
+    noiseHit(at + 0.004, 0.027, pitch * 2.4, strength * 0.4, 'highpass');
+    noiseHit(at + 0.012, 0.105, pitch * 0.73, strength * 0.23, 'bandpass');
+  };
+
   if (id === 'airhorn') {
     // three bursts of a brassy chord
     for (const [at, dur] of [[0, 0.22], [0.27, 0.22], [0.54, 0.95]]) {
@@ -134,16 +184,8 @@ async function synth(id: string): Promise<AudioBuffer> {
         osc('sine', 4400, at, 0.05, g);
       }
   } else if (id === 'clap') {
-    for (const at of [0, 0.012, 0.024, 0.04]) {
-      const n = noise(c, 0.25);
-      const bp = c.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = 1300;
-      bp.Q.value = 0.8;
-      const g = env(c, at, 0.002, 0.005, at > 0.03 ? 0.25 : 0.03, 0.9);
-      n.connect(bp).connect(g).connect(out);
-      n.start(at);
-    }
+    handClap(0.012, 0.95, 1350);
+    handClap(0.18, 0.72, 1480);
   } else if (id === 'sadhorn') {
     // wah wah wah waaah
     const notes: [number, number, number][] = [[392, 0, 0.42], [370, 0.46, 0.42], [349, 0.92, 0.42], [330, 1.38, 0.95]];
@@ -167,26 +209,9 @@ async function synth(id: string): Promise<AudioBuffer> {
       }
     }
   } else if (id === 'badumtss') {
-    const drum = (at: number, f: number) => {
-      const g = env(c, at, 0.003, 0.02, 0.18, 0.9);
-      g.connect(out);
-      const o = c.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(f * 1.8, at);
-      o.frequency.exponentialRampToValueAtTime(f, at + 0.08);
-      o.connect(g);
-      o.start(at);
-      o.stop(at + 0.25);
-    };
-    drum(0, 180);
-    drum(0.22, 120);
-    const n = noise(c, 1.2);
-    const hp = c.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 6500;
-    const g = env(c, 0.44, 0.002, 0.03, 1, 0.5);
-    n.connect(hp).connect(g).connect(out);
-    n.start(0.44);
+    drumHit(0.012, 155, 0.78);
+    drumHit(0.158, 116, 1, true);
+    cymbalHit(0.301, 0.9);
   } else if (id === 'tada') {
     // a quick pickup, then a big bright brass chord
     for (const [at, dur, fs] of [[0, 0.14, [523, 659]], [0.16, 1.5, [523, 659, 784, 1047]]] as [number, number, number[]][]) {
@@ -201,23 +226,13 @@ async function synth(id: string): Promise<AudioBuffer> {
       }
     }
   } else if (id === 'drumroll') {
-    // snare roll that builds, then a cymbal
-    const n = noise(c, 2.6);
-    const bp = c.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 2200;
-    bp.Q.value = 0.8;
-    const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, 0);
-    for (let t = 0; t < 1.9; t += 0.045) {
-      const peak = 0.15 + (t / 1.9) * 0.55;
-      g.gain.setValueAtTime(peak, t);
-      g.gain.exponentialRampToValueAtTime(0.02, t + 0.04);
+    for (let i = 0; i < 27; i++) {
+      const at = 0.012 + i * 0.063 + (Math.random() - 0.5) * 0.012;
+      const accent = i % 4 === 0 ? 1 : i % 2 === 0 ? 0.84 : 0.62;
+      drumHit(at, 166 + Math.random() * 12, (0.21 + i * 0.021) * accent, true);
     }
-    g.gain.setValueAtTime(0.9, 1.95);
-    g.gain.exponentialRampToValueAtTime(0.0001, 2.6);
-    n.connect(bp).connect(g).connect(out);
-    n.start(0);
+    drumHit(1.78, 138, 1, true);
+    cymbalHit(1.78, 0.9);
   } else if (id === 'boing') {
     const g = env(c, 0, 0.005, 0.1, 0.75, 0.6);
     g.connect(out);
@@ -258,18 +273,13 @@ async function synth(id: string): Promise<AudioBuffer> {
     n.connect(bp).connect(g).connect(out);
     n.start(0);
   } else if (id === 'applause') {
-    // many random claps that swell and fade
-    for (let i = 0; i < 70; i++) {
-      const at = Math.random() * 2.1;
-      const n = noise(c, 0.06);
-      const bp = c.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = 900 + Math.random() * 1800;
-      bp.Q.value = 1.1;
-      const swell = Math.sin((at / 2.1) * Math.PI);
-      const g = env(c, at, 0.002, 0.004, 0.05, 0.12 + swell * 0.35);
-      n.connect(bp).connect(g).connect(out);
-      n.start(at);
+    for (let person = 0; person < 9; person++) {
+      const interval = 0.19 + Math.random() * 0.16;
+      const pitch = 1000 + Math.random() * 1000;
+      for (let at = 0.04 + Math.random() * 0.28; at < 2.35; at += interval + Math.random() * 0.035) {
+        const swell = Math.sin(Math.PI * at / 2.4) ** 0.55;
+        handClap(at, (0.2 + Math.random() * 0.26) * swell, pitch);
+      }
     }
   } else if (id === 'ding') {
     for (const [mult, level] of [[1, 0.5], [2.76, 0.18], [5.4, 0.08]]) {
