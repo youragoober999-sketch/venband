@@ -101,6 +101,27 @@ async function youtube({ code, redirect_uri, code_verifier }) {
   return { external_id: ch.id, display_name: ch.snippet?.title || 'YouTube', handle: ch.snippet?.customUrl || '', avatar_url: th.medium?.url || th.default?.url || null };
 }
 
+async function discord({ code, redirect_uri }) {
+  if (!redirect_uri || new URL(redirect_uri).pathname !== '/callback') {
+    throw new Fail(400, 'Invalid Discord callback address.');
+  }
+  const token = await call('https://discord.com/api/v10/oauth2/token', form({
+    client_id: secret('DISCORD_CLIENT_ID', 'Discord'),
+    client_secret: secret('DISCORD_CLIENT_SECRET', 'Discord'),
+    grant_type: 'authorization_code',
+    code: need(code, 'code'),
+    redirect_uri,
+  }), 'Discord sign-in');
+  const user = await call('https://discord.com/api/v10/users/@me', {
+    headers: { authorization: `Bearer ${need(token.access_token, 'Discord access token')}` },
+  }, 'Discord profile');
+  if (typeof user.id !== 'string' || !/^\d{17,20}$/.test(user.id)) throw new Fail(400, 'Discord returned an invalid profile.');
+  const avatar = typeof user.avatar === 'string' && /^(?:a_)?[a-f0-9]{32}$/.test(user.avatar)
+    ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.webp`
+    : null;
+  return { external_id: user.id, display_name: user.global_name || user.username, avatar_url: avatar };
+}
+
 async function tiktok({ code, redirect_uri, code_verifier }) {
   const tok = await call(
     'https://open.tiktokapis.com/v2/oauth/token/',
@@ -203,7 +224,7 @@ async function steam({ query }) {
   return { external_id: m[1], display_name: name, avatar_url: avatar };
 }
 
-const HANDLERS = { github, youtube, tiktok, twitch, xbox, steam };
+const HANDLERS = { discord, github, youtube, tiktok, twitch, xbox, steam };
 
 // ------------------------------------------------------------- QR login ----
 // POST /api/oauth { action: 'qr-approve', code } with the APPROVING device's

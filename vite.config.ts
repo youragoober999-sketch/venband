@@ -114,6 +114,7 @@ function csp(env: Record<string, string>): Plugin {
           'https://static-cdn.jtvnw.net', // Twitch
           'https://*.xboxlive.com', // Xbox
           'https://avatars.githubusercontent.com', // GitHub
+          'https://cdn.discordapp.com', // Discord
           'https://*.ggpht.com https://*.googleusercontent.com', // YouTube
           'https://*.tiktokcdn.com https://*.tiktokcdn-us.com', // TikTok
         ].join(' ');

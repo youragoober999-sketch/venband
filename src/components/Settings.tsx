@@ -41,6 +41,7 @@ import { useStaffPerms, type StaffPerm } from '../lib/staff';
 import { Markdown } from './Markdown';
 import { SecurityTab } from './Security';
 import {
+  CONNECTION_UPDATE,
   connectionsVersion,
   myConnections,
   PROVIDERS,
@@ -321,6 +322,7 @@ function MyAppsTab() {
 // ------------------------------------------------------------- connections --
 
 function ConnectionsTab() {
+  const accountId = sessionStore.use((s) => s.me?.id);
   const links = useConnections();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -360,14 +362,15 @@ function ConnectionsTab() {
                 {ready ? (
                   <button
                     className="btn secondary small connection-btn"
-                    disabled={busy === info.provider}
+                    disabled={!accountId || busy === info.provider}
                     onClick={async () => {
                       setBusy(info.provider);
                       setError(null);
                       try {
-                        await connect(info.provider);
+                        if (accountId) await connect(info.provider, accountId);
                       } catch (e) {
                         setError(errorMessage(e));
+                      } finally {
                         setBusy(null);
                       }
                     }}
@@ -439,7 +442,17 @@ function ConnectionsTab() {
 function useConnections(): ConnectionRow[] {
   useSyncExternalStore(subscribeConnections, connectionsVersion);
   useEffect(() => {
-    void reloadConnections();
+    const refresh = () => void reloadConnections().catch(() => {});
+    const update = (event: StorageEvent) => {
+      if (event.key === CONNECTION_UPDATE) refresh();
+    };
+    refresh();
+    window.addEventListener('storage', update);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener('storage', update);
+      window.removeEventListener('focus', refresh);
+    };
   }, []);
   return myConnections();
 }

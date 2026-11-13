@@ -73,6 +73,12 @@ export default function App() {
     // Back from a provider's sign-in (Settings → Connections): finish the link,
     // then always leave the "Connecting…" screen — success or not.
     const sp = new URLSearchParams(window.location.search);
+    if (sp.get('connections') === '1') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('connections');
+      history.replaceState(history.state, '', url);
+      openSettings('connections');
+    }
     const legacySteam = sp.has('steam') && sp.has('openid.mode');
     if (!legacySteam && parseRoute().kind !== 'callback') return;
     const leave = () => {

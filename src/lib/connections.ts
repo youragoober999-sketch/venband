@@ -82,7 +82,7 @@ export const PROVIDERS: ProviderInfo[] = [
   { provider: 'youtube', name: 'YouTube', color: '#ff0000', kind: 'ready', desc: 'Link your YouTube channel.' },
   { provider: 'tiktok', name: 'TikTok', color: '#000000', kind: 'ready', desc: 'Link your TikTok profile.' },
   { provider: 'github', name: 'GitHub', color: '#24292f', kind: 'ready', desc: 'Show off your GitHub profile.' },
-  { provider: 'discord', name: 'Discord', color: '#5865f2', kind: 'planned', desc: 'Coming soon.' },
+  { provider: 'discord', name: 'Discord', color: '#5865f2', kind: import.meta.env.VITE_DISCORD_CLIENT_ID ? 'ready' : 'planned', desc: 'Link your Discord profile.' },
   { provider: 'instagram', name: 'Instagram', color: '#e1306c', kind: 'planned', desc: 'Coming soon.' },
 ];
 
@@ -95,7 +95,8 @@ const SITE = typeof location !== 'undefined' && /(^|\.)venband\.com$/i.test(loca
 const PROD = SITE === 'https://www.venband.com';
 
 /** Register exactly these in each provider's developer console. */
-export const REDIRECTS: Record<Exclude<ConnectionProvider, 'discord' | 'instagram'>, string> = {
+export const REDIRECTS: Record<Exclude<ConnectionProvider, 'instagram'>, string> = {
+  discord: `${SITE}/callback`,
   youtube: `${SITE}/callback`,
   tiktok: `${SITE}/callback`,
   github: `${SITE}/github/auth`,
@@ -175,22 +176,44 @@ async function pkce() {
 }
 
 /** Remember what we sent, so the return can be checked. */
-function remember(provider: ConnectionProvider, verifier?: string) {
+function remember(storage: Storage, accountId: string, provider: ConnectionProvider, verifier?: string) {
   const state = `${provider}.${random()}`;
-  sessionStorage.setItem('vb_oauth', JSON.stringify({ provider, state, verifier: verifier ?? null, at: Date.now() }));
+  storage.setItem('vb_oauth', JSON.stringify({ provider, state, accountId, verifier: verifier ?? null, at: Date.now() }));
   return state;
 }
 
-/** Send the browser to the provider's sign-in page. */
-export async function connect(provider: ConnectionProvider): Promise<void> {
-  const to = (base: string, params: Record<string, string>) => window.location.assign(`${base}?${new URLSearchParams(params)}`);
+export const CONNECTION_UPDATE = 'venband:connections-update';
+
+/** Open synchronously, before PKCE generation can consume the click gesture. */
+export async function connect(provider: ConnectionProvider, accountId: string): Promise<void> {
+  if (window.venbandDesktop?.isDesktop || 'Capacitor' in window) {
+    window.open(`${SITE}/channels/@me?connections=1`, '_blank', 'noopener');
+    return;
+  }
+  const popup = window.open('', '_blank');
+  if (!popup) throw new Error('Allow pop-ups for Venband, then try connecting again.');
+  try {
+    popup.document.title = 'Connecting to ' + NAMES[provider];
+    popup.document.body.textContent = 'Opening ' + NAMES[provider] + '…';
+    popup.opener = null;
+    await navigateToProvider(provider, popup, accountId);
+  } catch (error) {
+    popup.close();
+    throw error;
+  }
+}
+
+async function navigateToProvider(provider: ConnectionProvider, tab: Window, accountId: string) {
+  const save = (verifier?: string) => remember(tab.sessionStorage, accountId, provider, verifier);
+  const to = (base: string, params: Record<string, string>) => tab.location.replace(`${base}?${new URLSearchParams(params)}`);
   switch (provider) {
     case 'steam': {
-      remember('steam');
+      const returnTo = new URL(REDIRECTS.steam);
+      returnTo.searchParams.set('state', save());
       return to('https://steamcommunity.com/openid/login', {
         'openid.ns': 'http://specs.openid.net/auth/2.0',
         'openid.mode': 'checkid_setup',
-        'openid.return_to': REDIRECTS.steam,
+        'openid.return_to': returnTo.href,
         'openid.realm': SITE,
         'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
         'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select',
@@ -205,8 +228,16 @@ export async function connect(provider: ConnectionProvider): Promise<void> {
         scope: 'https://www.googleapis.com/auth/youtube.readonly',
         code_challenge_method: 'S256',
         code_challenge: challenge,
-        state: remember('youtube', verifier),
+        state: save(verifier),
         prompt: 'select_account',
+      });
+    }
+    case 'discord': {
+      const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID?.trim();
+      if (!clientId) throw new Error('Discord linking is not configured.');
+      return to('https://discord.com/oauth2/authorize', {
+        client_id: clientId, response_type: 'code', scope: 'identify',
+        redirect_uri: REDIRECTS.discord, state: save(),
       });
     }
     case 'tiktok':
@@ -215,14 +246,14 @@ export async function connect(provider: ConnectionProvider): Promise<void> {
         response_type: 'code',
         scope: 'user.info.basic',
         redirect_uri: REDIRECTS.tiktok,
-        state: remember('tiktok'),
+        state: save(),
       });
     case 'github': {
       const { verifier, challenge } = await pkce();
       return to('https://github.com/login/oauth/authorize', {
         client_id: CLIENT.github,
         redirect_uri: REDIRECTS.github,
-        state: remember('github', verifier),
+        state: save(verifier),
         code_challenge: challenge,
         code_challenge_method: 'S256',
         allow_signup: 'true',
@@ -238,7 +269,7 @@ export async function connect(provider: ConnectionProvider): Promise<void> {
         scope: 'XboxLive.signin',
         code_challenge: challenge,
         code_challenge_method: 'S256',
-        state: remember('xbox', verifier),
+        state: save(verifier),
         prompt: 'select_account',
       });
     }
@@ -249,7 +280,7 @@ export async function connect(provider: ConnectionProvider): Promise<void> {
         redirect_uri: REDIRECTS.twitch,
         response_type: 'token',
         scope: '',
-        state: remember('twitch'),
+        state: save(),
         force_verify: 'true',
       });
     default:
@@ -282,7 +313,7 @@ export async function handleOAuthReturn(): Promise<OAuthResult | null> {
   const legacySteam = q.has('steam') && q.has('openid.mode');
   if (!isOAuthReturnPath(path) && !legacySteam) return null;
 
-  let saved: { provider: ConnectionProvider; state: string; verifier: string | null; at: number } | null = null;
+  let saved: { provider: ConnectionProvider; state: string; verifier: string | null; accountId?: string; at: number } | null = null;
   try {
     saved = JSON.parse(sessionStorage.getItem('vb_oauth') || 'null');
   } catch {
@@ -310,9 +341,14 @@ export async function handleOAuthReturn(): Promise<OAuthResult | null> {
   // on GitHub, so it has no state — that one only proves who you are.)
   const githubInstall = provider === 'github' && !state && q.has('installation_id');
   if (provider !== 'steam' && !githubInstall && (!saved || saved.state !== state)) return fail(`${name} sign-in expired or was started in another tab. Please try again.`);
+  if (saved?.accountId && (saved.provider !== provider || state !== saved.state)) return fail('That connection could not be verified. Start it again from Venband.');
   if (saved && Date.now() - saved.at > 15 * 60_000) return fail(`${name} sign-in took too long. Please try again.`);
 
   try {
+    if (saved?.accountId) {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user.id !== saved.accountId) return fail('Sign in to the same Venband account and start the connection again.');
+    }
     let got: { external_id: string; display_name: string; avatar_url: string | null; handle?: string };
     const code = q.get('code') || '';
     switch (provider) {
@@ -327,6 +363,11 @@ export async function handleOAuthReturn(): Promise<OAuthResult | null> {
         got = await serverFinish({ provider, code, redirect_uri: REDIRECTS[provider as keyof typeof REDIRECTS], code_verifier: saved?.verifier || undefined });
     }
     await addConnection(provider, got.external_id, got.display_name, got.avatar_url, { verified: true, ...(got.handle ? { handle: got.handle } : {}) });
+    try {
+      localStorage.setItem(CONNECTION_UPDATE, random());
+    } catch {
+      // The original tab also refreshes when it regains focus.
+    }
     return { ok: true, provider, name: got.display_name };
   } catch (e) {
     return fail(`${name} link failed: ${errorMessage(e)}`);
